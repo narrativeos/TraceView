@@ -21,6 +21,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using Avalonia;
 using Caly.Core.Services;
 
@@ -31,9 +32,16 @@ public static class Debug
     [Conditional("DEBUG")]
     public static void ThrowOnUiThread()
     {
+        // On macOS with software rendering (AvaloniaNative), rendering happens on the UI thread.
+        // This is expected behavior on macOS, so we skip this check there.
         if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
         {
-            throw new InvalidOperationException("Call from UI thread");
+            // Check if we're on macOS with AvaloniaNative
+            var platformName = RuntimeInformation.OSDescription;
+            if (!platformName.Contains("macOS", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("Call from UI thread");
+            }
         }
     }
 

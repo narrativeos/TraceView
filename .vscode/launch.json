@@ -1,0 +1,32 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": ".NET Core Attach",
+            "type": "coreclr",
+            "request": "attach",
+            "processId": "${command:pickProcess}",
+            "pipeTransport": {
+                "pipeCwd": "${workspaceFolder}",
+                "pipeProgram": "dotnet",
+                "pipeArgs": [
+                    "run"
+                ],
+                "debuggerPath": "/usr/local/share/dotnet/sdk/10.0.301/OpenDebugAD7/bin/OpenDebugAD7",
+                "quoteArgs": true
+            }
+        },
+        {
+            "name": "Launch Caly Desktop",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build-debug",
+            "program": "${workspaceFolder}/Caly.Desktop/bin/Debug/net10.0/Caly",
+            "args": [],
+            "cwd": "${workspaceFolder}/Caly.Desktop/bin/Debug/net10.0",
+            "console": "internalConsole",
+            "stopAtEntry": false,
+            "justMyCode": true
+        }
+    ]
+}

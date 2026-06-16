@@ -1,0 +1,63 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build-debug",
+            "type": "shell",
+            "command": "dotnet",
+            "args": [
+                "build",
+                "${workspaceFolder}/Caly.Desktop/Caly.Desktop.csproj",
+                "-c",
+                "Debug",
+                "-f",
+                "net10.0"
+            ],
+            "group": "build",
+            "problemMatcher": "$msCompile"
+        },
+        {
+            "label": "build-release",
+            "type": "shell",
+            "command": "dotnet",
+            "args": [
+                "build",
+                "${workspaceFolder}/Caly.Desktop/Caly.Desktop.csproj",
+                "-c",
+                "Release",
+                "-f",
+                "net10.0"
+            ],
+            "group": "build",
+            "problemMatcher": "$msCompile"
+        },
+        {
+            "label": "publish",
+            "type": "shell",
+            "command": "dotnet",
+            "args": [
+                "publish",
+                "${workspaceFolder}/Caly.Desktop/Caly.Desktop.csproj",
+                "-c",
+                "Release",
+                "-f",
+                "net10.0",
+                "-o",
+                "${workspaceFolder}/publish"
+            ],
+            "group": "build",
+            "problemMatcher": "$msCompile"
+        },
+        {
+            "label": "clean",
+            "type": "shell",
+            "command": "dotnet",
+            "args": [
+                "clean",
+                "${workspaceFolder}/Caly.Desktop/Caly.Desktop.csproj"
+            ],
+            "group": "build",
+            "problemMatcher": []
+        }
+    ]
+}
