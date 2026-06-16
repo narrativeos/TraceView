@@ -86,10 +86,13 @@ public partial class TiledPdfPageControl
             }
 
 #if DEBUG
-            using var backgroundPaint = new SKPaint();
-            backgroundPaint.Style = SKPaintStyle.Fill;
-            backgroundPaint.Color = SKColors.Aqua;
-            canvas.DrawPaint(backgroundPaint);
+            if (PageInteractiveLayerControl.ShowLayoutAnalysisDebug)
+            {
+                using var backgroundPaint = new SKPaint();
+                backgroundPaint.Style = SKPaintStyle.Fill;
+                backgroundPaint.Color = SKColors.Aqua;
+                canvas.DrawPaint(backgroundPaint);
+            }
 #endif
 
             canvas.Save();
@@ -110,25 +113,28 @@ public partial class TiledPdfPageControl
             canvas.Restore();
 
 #if DEBUG
-            using var borderPaint = new SKPaint();
-            borderPaint.Style = SKPaintStyle.Stroke;
-            borderPaint.Color = SKColors.Red.WithAlpha(120);
-            borderPaint.StrokeWidth = 5f;
-
-            if (canvas.TotalMatrix.TryInvert(out var invert))
+            if (PageInteractiveLayerControl.ShowLayoutAnalysisDebug)
             {
-                // Scale width to get consistency across scales
-                borderPaint.StrokeWidth *= invert.ScaleX;
-            }
+                using var borderPaint = new SKPaint();
+                borderPaint.Style = SKPaintStyle.Stroke;
+                borderPaint.Color = SKColors.Red.WithAlpha(120);
+                borderPaint.StrokeWidth = 5f;
 
-            for (int i = 0; i < _tileCount; ++i)
-            {
-                ref readonly var tile = ref tiles[i];
-                canvas.DrawRect(tile.DestRect, borderPaint);
-            }
+                if (canvas.TotalMatrix.TryInvert(out var invert))
+                {
+                    // Scale width to get consistency across scales
+                    borderPaint.StrokeWidth *= invert.ScaleX;
+                }
 
-            borderPaint.Color = SKColors.DarkMagenta.WithAlpha(120);
-            canvas.DrawRect(_cullRect, borderPaint);
+                for (int i = 0; i < _tileCount; ++i)
+                {
+                    ref readonly var tile = ref tiles[i];
+                    canvas.DrawRect(tile.DestRect, borderPaint);
+                }
+
+                borderPaint.Color = SKColors.DarkMagenta.WithAlpha(120);
+                canvas.DrawRect(_cullRect, borderPaint);
+            }
 #endif
         }
 

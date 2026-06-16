@@ -172,6 +172,11 @@ internal sealed class JsonSettingsService : ISettingsService
                 {
                     mw.RendererDiagnostics.DebugOverlays |= Avalonia.Rendering.RendererDebugOverlays.DirtyRects;
                 }
+
+#if DEBUG
+                Caly.Core.Controls.PageInteractiveLayerControl.ShowLayoutAnalysisDebug =
+                    _current.Debug.LayoutAnalysis;
+#endif
             }
 
             if (mw.DataContext is MainViewModel vm)

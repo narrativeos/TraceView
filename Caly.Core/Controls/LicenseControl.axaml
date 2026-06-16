@@ -72,6 +72,19 @@ SOFTWARE.</TextBox>
 
                     <Separator DockPanel.Dock="Top"/>
 
+                    <Expander x:Name="PART_DebugExpander"
+                              DockPanel.Dock="Top"
+                              Header="Debug"
+                              IsExpanded="True">
+                        <StackPanel Margin="5">
+                            <CheckBox Content="Layout Analysis"
+                                      IsChecked="{Binding ShowLayoutAnalysis}"/>
+                        </StackPanel>
+                    </Expander>
+
+                    <Separator x:Name="PART_DebugSeparator"
+                               DockPanel.Dock="Top"/>
+
                     <Button DockPanel.Dock="Bottom"
                             Name="PART_OpenLogsButton"
                             Content="Open logs folder"

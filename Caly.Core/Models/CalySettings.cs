@@ -51,6 +51,7 @@ public sealed class CalySettings
         public bool Layout { get; set; }
         public bool Fps { get; set; }
         public bool DirtyRects { get; set; }
+        public bool LayoutAnalysis { get; set; }
     }
     
     public enum CalySettingsProperty

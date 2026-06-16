@@ -268,6 +268,15 @@ public sealed class PageInteractiveLayerControl : Control
 #if DEBUG
         else if (change.Property == PdfTextLayerProperty)
         {
+            if (!ShowLayoutAnalysisDebug)
+            {
+                _annotationsGeometry = null;
+                _textBlockGeometry = null;
+                _textLineGeometry = null;
+                _wordsGeometry = null;
+                return;
+            }
+
             _annotationsGeometry = null;
             _textBlockGeometry = null;
             _textLineGeometry = null;
@@ -331,7 +340,10 @@ public sealed class PageInteractiveLayerControl : Control
         }
 
 #if DEBUG
-        RenderDebug(context);
+        if (ShowLayoutAnalysisDebug)
+        {
+            RenderDebug(context);
+        }
 #endif
 
         // Draw search results first
@@ -364,6 +376,9 @@ public sealed class PageInteractiveLayerControl : Control
     }
 
 #if DEBUG
+    // LayoutAnalysis debug overlay toggle - set from settings
+    internal static bool ShowLayoutAnalysisDebug = false;
+
     private static readonly ImmutableSolidColorBrush AnnotationsBrush = new(Colors.Purple, 0.4);
     private static readonly ImmutablePen AnnotationsPen = new(AnnotationsBrush, 0.5);
     private static readonly ImmutableSolidColorBrush YellowBrush = new(Colors.Yellow, 0.4);

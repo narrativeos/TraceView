@@ -140,15 +140,18 @@ namespace Caly.Core.Controls.Rendering;
                         canvas.DrawPicture(_picture.Item, in scale, _paint);
 
 #if DEBUG
-                        using (var skFont = SKTypeface.Default.ToFont((float)Bounds.Height / 4f, 1f))
-                        using (var paint = new SKPaint())
+                        if (PageInteractiveLayerControl.ShowLayoutAnalysisDebug)
                         {
-                            paint.Style = SKPaintStyle.Fill;
-                            paint.Color = SKColors.Blue.WithAlpha(100);
-                            canvas.DrawText(_picture.Item.UniqueId.ToString(),
-                                (float)Bounds.Width / 4f,
-                                (float)Bounds.Height / 2f,
-                                skFont, paint);
+                            using (var skFont = SKTypeface.Default.ToFont((float)Bounds.Height / 4f, 1f))
+                            using (var paint = new SKPaint())
+                            {
+                                paint.Style = SKPaintStyle.Fill;
+                                paint.Color = SKColors.Blue.WithAlpha(100);
+                                canvas.DrawText(_picture.Item.UniqueId.ToString(),
+                                    (float)Bounds.Width / 4f,
+                                    (float)Bounds.Height / 2f,
+                                    skFont, paint);
+                            }
                         }
 #endif
                         canvas.Restore();

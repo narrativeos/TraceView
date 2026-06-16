@@ -34,12 +34,24 @@ namespace Caly.Core.Controls;
 public class LicenseControl : TemplatedControl
 {
     private Button? _openLogsButton;
+    private Expander? _debugExpander;
+    private Separator? _debugSeparator;
+
     protected override void OnApplyTemplate(TemplateAppliedEventArgs e)
     {
         base.OnApplyTemplate(e);
 
         _openLogsButton = e.NameScope.Find<Button>("PART_OpenLogsButton");
         _openLogsButton?.Click += OnOpenLogsButtonClick;
+
+        _debugExpander = e.NameScope.Find<Expander>("PART_DebugExpander");
+        _debugSeparator = e.NameScope.Find<Separator>("PART_DebugSeparator");
+
+#if !DEBUG
+        // Hide debug section in Release builds
+        _debugExpander!.IsVisible = false;
+        _debugSeparator!.IsVisible = false;
+#endif
     }
 
     protected override void OnDetachedFromLogicalTree(LogicalTreeAttachmentEventArgs e)

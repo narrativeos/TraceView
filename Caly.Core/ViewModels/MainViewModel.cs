@@ -58,6 +58,30 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     public partial bool IsDocumentPaneOpen { get; set; } = !CalyExtensions.IsMobilePlatform();
 
     /// <summary>
+    /// Debug: show PDF layout analysis overlay (colored boxes for text blocks, lines, words).
+    /// </summary>
+    [ObservableProperty]
+    public partial bool ShowLayoutAnalysis { get; set; }
+
+    partial void OnShowLayoutAnalysisChanged(bool value)
+    {
+#if DEBUG
+        Caly.Core.Controls.PageInteractiveLayerControl.ShowLayoutAnalysisDebug = value;
+#endif
+        // Persist to settings
+        var settings = App.Current?.Services?.GetService<ISettingsService>()?.GetSettings();
+        if (settings?.Debug is null)
+        {
+            settings = settings ?? new CalySettings();
+            settings.Debug = new CalySettings.CalySettingsDebug { LayoutAnalysis = value };
+        }
+        else
+        {
+            settings.Debug.LayoutAnalysis = value;
+        }
+    }
+
+    /// <summary>
     /// Width of the document side pane. App-level value (shared across all documents) persisted to settings.
     /// </summary>
     [ObservableProperty]
@@ -89,6 +113,10 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
     public MainViewModel()
     {
+        // Initialize ShowLayoutAnalysis from settings
+        var settings = App.Current?.Services?.GetService<ISettingsService>()?.GetSettings();
+        ShowLayoutAnalysis = settings?.Debug?.LayoutAnalysis == true;
+
         _documentCollectionDisposable = PdfDocuments
             .GetWeakCollectionChangedObservable()
             .ObserveOn(Scheduler.Default)
