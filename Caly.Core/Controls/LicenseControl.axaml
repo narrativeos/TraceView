@@ -75,11 +75,15 @@ SOFTWARE.</TextBox>
                     <Expander x:Name="PART_DebugExpander"
                               DockPanel.Dock="Top"
                               Header="Debug"
+                              HorizontalAlignment="Stretch"
                               IsExpanded="True">
-                        <StackPanel Margin="5">
-                            <CheckBox Content="Layout Analysis"
-                                      IsChecked="{Binding ShowLayoutAnalysis}"/>
-                        </StackPanel>
+                        <Border Margin="5">
+                            <StackPanel HorizontalAlignment="Stretch">
+                                <CheckBox Content="Layout Analysis"
+                                          IsChecked="{Binding ShowLayoutAnalysis}"
+                                          HorizontalAlignment="Stretch"/>
+                            </StackPanel>
+                        </Border>
                     </Expander>
 
                     <Separator x:Name="PART_DebugSeparator"
