@@ -179,6 +179,21 @@
 
 						<controls:VerticalSeparator/>
 
+						<!-- MinerU AI Parse -->
+						<Button DockPanel.Dock="Right"
+                                Margin="0,0,5,0"
+								HorizontalAlignment="Center"
+								VerticalAlignment="Stretch"
+								Background="Transparent"
+								Command="{Binding ParseWithMinerUCommand}"
+                                IsVisible="{Binding MinerUEnabled}">
+							<PathIcon Width="17"
+									  Height="17"
+									  Data="{StaticResource document_search_regular}">
+								<ToolTip.Tip>AI Parse with MinerU</ToolTip.Tip>
+							</PathIcon>
+						</Button>
+
 						<!-- Print -->
 						<Button DockPanel.Dock="Right"
                                 Margin="0,0,5,0"
@@ -345,7 +360,7 @@
                                                     <ToolTip.Tip>Embedded Files</ToolTip.Tip>
                                                 </PathIcon>
                                             </TabItem.Header>
-											
+                                            
                                             <ListBox ItemsSource="{Binding EmbeddedFiles^}"
                                                      Background="Transparent">
                                                 <ListBox.Styles>
@@ -394,6 +409,21 @@
                                                     </DataTemplate>
                                                 </ListBox.ItemTemplate>
                                             </ListBox>
+                                        </TabItem>
+
+                                        <!-- AI Analysis tab -->
+                                        <TabItem MinHeight="40"
+                                                 IsVisible="{Binding HasPopoDocument}"
+                                                 IsEnabled="{Binding HasPopoDocument}">
+                                            <TabItem.Header>
+                                                <PathIcon Width="17"
+                                                          Height="17"
+                                                          Data="{StaticResource tree_structure_regular}">
+                                                    <ToolTip.Tip>AI Analysis</ToolTip.Tip>
+                                                </PathIcon>
+                                            </TabItem.Header>
+
+                                            <controls:PopoAnalysisView DataContext="{Binding PopoAnalysisViewModel}"/>
                                         </TabItem>
 
 									</TabControl>

@@ -30,6 +30,16 @@ public sealed partial class DocumentViewModel
     [ObservableProperty]
     private PopoDocument? _popoDocument;
 
+    partial void OnPopoDocumentChanged(PopoDocument? value)
+    {
+        OnPropertyChanged(nameof(HasPopoDocument));
+    }
+
+    /// <summary>
+    /// Gets whether a PopoDocument has been loaded (for UI visibility binding).
+    /// </summary>
+    public bool HasPopoDocument => PopoDocument is not null;
+
     [ObservableProperty]
     private PopoAnalysisViewModel? _popoAnalysisViewModel;
 

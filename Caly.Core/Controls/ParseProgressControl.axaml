@@ -1,0 +1,49 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:controls="using:Caly.Core.Controls"
+                    xmlns:viewModels="clr-namespace:Caly.Core.ViewModels">
+
+	<Design.PreviewWith>
+		<StackPanel Width="400" Spacing="10">
+			<StackPanel Background="{DynamicResource SystemRegionBrush}">
+				<controls:ParseProgressControl />
+			</StackPanel>
+		</StackPanel>
+	</Design.PreviewWith>
+
+	<ControlTheme x:Key="{x:Type controls:ParseProgressControl}"
+                  TargetType="controls:ParseProgressControl"
+                  x:DataType="viewModels:DocumentViewModel">
+		<Setter Property="Template">
+			<ControlTemplate>
+				<StackPanel Spacing="6"
+                            IsVisible="{Binding IsMinerUParsing}">
+					<!-- Title -->
+					<StackPanel Spacing="4">
+						<TextBlock Text="MinerU AI Parsing"
+                                   FontWeight="Bold"
+                                   FontSize="13"/>
+						<TextBlock Text="{Binding MinerUStatusText}"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource SystemControlPageTextBaseMediumBrush}"
+                                   TextWrapping="Wrap"/>
+					</StackPanel>
+
+					<!-- Progress Bar -->
+					<ProgressBar MinWidth="100"
+                                 Minimum="0"
+                                 Maximum="100"
+                                 Value="{Binding MinerUProgress}"
+                                 IsIndeterminate="{Binding IsMinerUParsing}"/>
+
+					<!-- Cancel Button -->
+					<Button Content="Cancel"
+                            Command="{Binding CancelMinerUParseCommand}"
+                            HorizontalAlignment="Center"
+                            Classes="accent"
+                            Width="100"/>
+				</StackPanel>
+			</ControlTemplate>
+		</Setter>
+	</ControlTheme>
+</ResourceDictionary>

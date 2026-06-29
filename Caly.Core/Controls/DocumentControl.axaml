@@ -57,31 +57,42 @@
                                                ScrollOffset="{TemplateBinding ScrollOffset, Mode=TwoWay}"
                                                RefreshPages="{TemplateBinding RefreshPages}"/>
 
-                    <Grid IsVisible="{Binding !Pages.Count}">
-                        <!-- Progress Ring for when the document is opening -->
-                        <progRing:ProgressRing Width="50"
-                                               Height="50"
-                                               HorizontalAlignment="Center"
-                                               VerticalAlignment="Center"
-                                               Foreground="{DynamicResource SystemAccentColor}"
-                                               IsVisible="{Binding IsPagesLoading}"
-                                               IsActive="{Binding IsPagesLoading}"
-                                               IsEnabled="{Binding IsPagesLoading}"/>
+                     <Grid IsVisible="{Binding !Pages.Count}">
+                         <!-- Progress Ring for when the document is opening -->
+                         <progRing:ProgressRing Width="50"
+                                                Height="50"
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
+                                                Foreground="{DynamicResource SystemAccentColor}"
+                                                IsVisible="{Binding IsPagesLoading}"
+                                                IsActive="{Binding IsPagesLoading}"
+                                                IsEnabled="{Binding IsPagesLoading}"/>
 
-                        <!-- Corrupted document icon -->
-                        <Border Padding="20"
-                                IsVisible="{Binding !IsPagesLoading}"
-                                IsEnabled="{Binding !IsPagesLoading}">
-                            <PathIcon Width="50"
-                                      Height="50"
-                                      HorizontalAlignment="Center"
-                                      VerticalAlignment="Center"
-                                      Data="{StaticResource document_dismiss_regular}"
-                                      Opacity="200"/>
-                        </Border>
-                    </Grid>
-					
-				</Grid>
+                         <!-- Corrupted document icon -->
+                         <Border Padding="20"
+                                 IsVisible="{Binding !IsPagesLoading}"
+                                 IsEnabled="{Binding !IsPagesLoading}">
+                             <PathIcon Width="50"
+                                       Height="50"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       Data="{StaticResource document_dismiss_regular}"
+                                       Opacity="200"/>
+                         </Border>
+                     </Grid>
+
+                     <!-- MinerU AI Parse Progress Overlay -->
+                     <Border Background="#CCFFFFFF"
+                             IsVisible="{Binding IsMinerUParsing}"
+                             HorizontalAlignment="Center"
+                             VerticalAlignment="Center"
+                             CornerRadius="8"
+                             Padding="24"
+                             MaxWidth="350">
+                         <controls:ParseProgressControl/>
+                     </Border>
+
+ 				</Grid>
 			</ControlTemplate>
 		</Setter>
 	</ControlTheme>

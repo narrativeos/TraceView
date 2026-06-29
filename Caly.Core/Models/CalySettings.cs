@@ -27,7 +27,10 @@ public sealed class CalySettings
         Width = 1000,
         Height = 500,
         PaneSize = 350,
-        Debug = null
+        Debug = null,
+        MinerUBaseUrl = "http://localhost:8401",
+        MinerUBackend = "hybrid-engine",
+        MinerUEnabled = true
     };
 
     // TODO - Add version for compatibility checks
@@ -44,6 +47,22 @@ public sealed class CalySettings
 
     public CalySettingsDebug? Debug { get; set; }
 
+    // ========== MinerU Configuration ==========
+
+    /// <summary>
+    /// MinerU service base URL (e.g., "http://localhost:8401")
+    /// </summary>
+    public string MinerUBaseUrl { get; set; } = "http://localhost:8401";
+
+    /// <summary>
+    /// MinerU backend engine name (e.g., "hybrid-engine", "docling", "marker")
+    /// </summary>
+    public string MinerUBackend { get; set; } = "hybrid-engine";
+
+    /// <summary>
+    /// Whether MinerU AI parsing is enabled
+    /// </summary>
+    public bool MinerUEnabled { get; set; } = true;
 
     public sealed class CalySettingsDebug
     {
