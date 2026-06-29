@@ -1,0 +1,29 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:controls="using:Caly.Core.Controls"
+                    xmlns:vm="using:Caly.Core.ViewModels"
+                    xmlns:models="using:Caly.Core.Models"
+                    x:Class="Caly.Core.Controls.AggregationViewControl"
+                    x:DataType="vm:PopoAnalysisViewModel">
+
+    <ScrollViewer>
+        <ItemsControl ItemsSource="{Binding Aggregations}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="models:PopoAggregation">
+                    <Border BorderBrush="#DDD"
+                            BorderThickness="1"
+                            Margin="4,2"
+                            Padding="6">
+                        <StackPanel>
+                            <TextBlock FontWeight="SemiBold"
+                                       Text="{Binding LabelText}"/>
+                            <TextBlock Opacity="0.7"
+                                       FontSize="11"
+                                       Text="{Binding Type}"/>
+                        </StackPanel>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+    </ScrollViewer>
+</UserControl>

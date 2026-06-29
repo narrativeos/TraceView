@@ -1,0 +1,15 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:controls="using:Caly.Core.Controls"
+                    xmlns:vm="using:Caly.Core.ViewModels"
+                    x:Class="Caly.Core.Controls.MarkdownPreviewControl"
+                    x:DataType="vm:PopoAnalysisViewModel">
+
+    <ScrollViewer>
+        <TextBlock Text="{Binding MarkdownText}"
+                   TextWrapping="Wrap"
+                   FontFamily="Consolas, monospace"
+                   FontSize="13"
+                   Margin="8"/>
+    </ScrollViewer>
+</UserControl>

@@ -1,0 +1,57 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:controls="using:Caly.Core.Controls"
+                    xmlns:vm="using:Caly.Core.ViewModels"
+                    x:Class="Caly.Core.Controls.PopoAnalysisView"
+                    x:DataType="vm:PopoAnalysisViewModel">
+
+    <DockPanel>
+        <!-- Top toolbar -->
+        <StackPanel Orientation="Horizontal"
+                    DockPanel.Dock="Top"
+                    Margin="4"
+                    Spacing="4">
+            <Button Content="Block 叠加"
+                    Command="{Binding ToggleTypeFilterCommand}"
+                    CommandParameter="text"
+                    MinWidth="80"/>
+            <Button Content="重置选择"
+                    Command="{Binding ResetSelectionCommand}"
+                    MinWidth="80"/>
+            <TextBox PlaceholderText="搜索 Block..."
+                     Text="{Binding BlockSearchText}"
+                     MinWidth="150"/>
+        </StackPanel>
+
+        <!-- Main content with tabs -->
+        <TabControl>
+            <!-- Block List Tab -->
+            <TabItem Header="Block 列表">
+                <StackPanel>
+                    <controls:BlockListControl DataContext="{Binding}"/>
+                </StackPanel>
+            </TabItem>
+
+            <!-- Tree View Tab -->
+            <TabItem Header="树形结构">
+                <StackPanel>
+                    <controls:TreeViewControl DataContext="{Binding}"/>
+                </StackPanel>
+            </TabItem>
+
+            <!-- Markdown Preview Tab -->
+            <TabItem Header="Markdown">
+                <StackPanel>
+                    <controls:MarkdownPreviewControl DataContext="{Binding}"/>
+                </StackPanel>
+            </TabItem>
+
+            <!-- Aggregation Tab -->
+            <TabItem Header="聚合关系">
+                <StackPanel>
+                    <controls:AggregationViewControl DataContext="{Binding}"/>
+                </StackPanel>
+            </TabItem>
+        </TabControl>
+    </DockPanel>
+</UserControl>

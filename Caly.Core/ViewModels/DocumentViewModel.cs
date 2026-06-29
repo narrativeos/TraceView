@@ -350,6 +350,12 @@ public sealed partial class DocumentViewModel : ViewModelBase
             _pdfPageService.Initialise();
         }
 
+        // Load Popo analysis data if available
+        if (pageCount > 0)
+        {
+            Dispatcher.UIThread.Invoke(() => TryLoadPopoData());
+        }
+
         return pageCount;
     }
     
