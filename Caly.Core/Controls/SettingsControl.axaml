@@ -21,52 +21,65 @@
                         BorderThickness="1">
 
                     <ScrollViewer>
-                        <StackPanel Spacing="16" Margin="16">
+                        <StackPanel Spacing="12" Margin="16">
 
                             <!-- License -->
                             <controls:LicenseControl/>
 
                             <!-- MinerU Configuration -->
                             <Expander Header="MinerU AI Configuration" IsExpanded="True">
-                                <StackPanel Spacing="10" Margin="10,5">
+                                <StackPanel Spacing="8" Margin="8,8">
 
                                     <!-- Server URL -->
-                                    <StackPanel Spacing="4">
-                                        <TextBlock Text="Server URL"
-                                                   FontSize="12"
-                                                   FontWeight="SemiBold"/>
-                                        <TextBox Text="{Binding Settings.MinerUBaseUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
-                                    </StackPanel>
+                                    <Grid ColumnDefinitions="Auto,12,*" RowDefinitions="Auto">
+                                        <TextBlock Grid.Column="0"
+                                                   Grid.Row="0"
+                                                   VerticalAlignment="Center"
+                                                   Text="Server URL"/>
+                                        <TextBox Grid.Column="2"
+                                                 Grid.Row="0"
+                                                 Margin="0,2"
+                                                 Text="{Binding Settings.MinerUBaseUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                    </Grid>
 
                                     <!-- Backend Engine -->
-                                    <StackPanel Spacing="4">
-                                        <TextBlock Text="Backend Engine"
-                                                   FontSize="12"
-                                                   FontWeight="SemiBold"/>
-                                        <ComboBox SelectedValue="{Binding Settings.MinerUBackend, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                    <Grid ColumnDefinitions="Auto,12,*" RowDefinitions="Auto">
+                                        <TextBlock Grid.Column="0"
+                                                   Grid.Row="0"
+                                                   VerticalAlignment="Center"
+                                                   Text="Backend"/>
+                                        <ComboBox Grid.Column="2"
+                                                  Grid.Row="0"
+                                                  Margin="0,2"
+                                                  SelectedValue="{Binding Settings.MinerUBackend, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
                                             <ComboBoxItem Content="hybrid-engine"/>
                                             <ComboBoxItem Content="docling"/>
                                             <ComboBoxItem Content="marker"/>
                                         </ComboBox>
-                                    </StackPanel>
+                                    </Grid>
 
                                     <!-- Enable Toggle -->
                                     <CheckBox Content="Enable MinerU AI Parsing"
+                                              Margin="0,4,0,0"
                                               IsChecked="{Binding Settings.MinerUEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
                                 </StackPanel>
                             </Expander>
 
                             <!-- Popo Configuration -->
                             <Expander Header="Popo Configuration" IsExpanded="True">
-                                <StackPanel Spacing="10" Margin="10,5">
+                                <StackPanel Spacing="8" Margin="8,8">
 
                                     <!-- Popo Server URL -->
-                                    <StackPanel Spacing="4">
-                                        <TextBlock Text="Popo Server URL"
-                                                   FontSize="12"
-                                                   FontWeight="SemiBold"/>
-                                        <TextBox Text="{Binding Settings.PopoBaseUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
-                                    </StackPanel>
+                                    <Grid ColumnDefinitions="Auto,12,*" RowDefinitions="Auto">
+                                        <TextBlock Grid.Column="0"
+                                                   Grid.Row="0"
+                                                   VerticalAlignment="Center"
+                                                   Text="Server URL"/>
+                                        <TextBox Grid.Column="2"
+                                                 Grid.Row="0"
+                                                 Margin="0,2"
+                                                 Text="{Binding Settings.PopoBaseUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                    </Grid>
                                 </StackPanel>
                             </Expander>
 
