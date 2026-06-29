@@ -171,6 +171,19 @@
 							</PathIcon>
 						</Button>
 
+						<!-- Fit to Page Width -->
+						<Button DockPanel.Dock="Left"
+								HorizontalAlignment="Center"
+								VerticalAlignment="Stretch"
+								Background="Transparent"
+								Command="{Binding ZoomToPageWidthCommand}">
+							<PathIcon Width="17"
+									  Height="17"
+									  Data="{StaticResource fit_to_width_regular}">
+								<ToolTip.Tip>Fit to Page Width</ToolTip.Tip>
+							</PathIcon>
+						</Button>
+
 						<TextBlock DockPanel.Dock="Left"
 								   Margin="5,0"
 								   Text="{Binding ZoomLevel, StringFormat={}{0:0.#%}}"

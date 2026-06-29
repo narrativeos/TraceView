@@ -30,6 +30,7 @@ using Avalonia.LogicalTree;
 using Avalonia.Media.Transformation;
 using Caly.Core.Models;
 using Caly.Core.Utilities;
+using Caly.Core.ViewModels;
 using Caly.Pdf;
 using Caly.Pdf.Models;
 using System;
@@ -195,7 +196,15 @@ public sealed class PageItemsControl : ItemsControl
             AdjustXOffsetOnExtentChanged(e);
             PostUpdatePagesVisibility();
         };
-        _sizeChangedHandler = (_, _) => PostUpdatePagesVisibility();
+        _sizeChangedHandler = (_, e) =>
+        {
+            PostUpdatePagesVisibility();
+            // Update viewport width for fit-to-width zoom
+            if (DataContext is DocumentViewModel vm)
+            {
+                vm.ViewportWidth = e.NewSize.Width;
+            }
+        };
 
         // Use a Tunnel handler to ensure zoom checks run before bubble-phase handlers
         // and avoid unwanted event scrolls by 50px before we can reject them.

@@ -100,6 +100,36 @@ public partial class DocumentViewModel
         return ZoomLevel > MinZoomLevel;
     }
 
+    /// <summary>
+    /// Viewport width in pixels, used for fit-to-width calculations.
+    /// Set by the PageItemsControl when its size changes.
+    /// </summary>
+    [ObservableProperty]
+    private double _viewportWidth;
+
+    [RelayCommand]
+    private void ZoomToPageWidth()
+    {
+        if (Pages.Count == 0 || !SelectedPageNumber.HasValue)
+        {
+            return;
+        }
+
+        var currentPage = Pages[SelectedPageNumber.Value - 1];
+        double pageWidth = currentPage.Size.Width;
+
+        if (pageWidth <= 0 || ViewportWidth <= 0)
+        {
+            return;
+        }
+
+        // Calculate the zoom level that makes the current page fill the viewport width
+        double targetZoom = ViewportWidth / pageWidth;
+
+        // Clamp to allowed zoom range
+        ZoomLevel = Math.Max(MinZoomLevel, Math.Min(MaxZoomLevel, targetZoom));
+    }
+
     [RelayCommand]
     private void RotateAllPagesClockwise()
     {
