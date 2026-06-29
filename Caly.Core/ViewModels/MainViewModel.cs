@@ -105,6 +105,14 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
     public string Version => CalyExtensions.CalyVersion;
 
+    /// <summary>
+    /// Gets the current application settings for binding in SettingsControl.
+    /// </summary>
+    public CalySettings Settings
+    {
+        get => App.Current?.Services?.GetService<ISettingsService>()?.GetSettings() ?? CalySettings.Default;
+    }
+
     partial void OnPaneSizeChanged(double oldValue, double newValue)
     {
         App.Current?.Services?.GetService<ISettingsService>()?

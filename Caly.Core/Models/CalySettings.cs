@@ -30,7 +30,8 @@ public sealed class CalySettings
         Debug = null,
         MinerUBaseUrl = "http://localhost:8401",
         MinerUBackend = "hybrid-engine",
-        MinerUEnabled = true
+        MinerUEnabled = true,
+        PopoBaseUrl = "http://localhost:8080"
     };
 
     // TODO - Add version for compatibility checks
@@ -63,6 +64,13 @@ public sealed class CalySettings
     /// Whether MinerU AI parsing is enabled
     /// </summary>
     public bool MinerUEnabled { get; set; } = true;
+
+    // ========== Popo Configuration ==========
+
+    /// <summary>
+    /// Popo service base URL (e.g., "http://localhost:8080")
+    /// </summary>
+    public string PopoBaseUrl { get; set; } = "http://localhost:8080";
 
     public sealed class CalySettingsDebug
     {

@@ -4,7 +4,7 @@
                     xmlns:vm="clr-namespace:Caly.Core.ViewModels">
 
     <Design.PreviewWith>
-        <DockPanel Width="300" Height="700">
+        <DockPanel Width="400" Height="700">
             <DockPanel Background="{DynamicResource SystemRegionBrush}">
                 <controls:SettingsControl />
             </DockPanel>
@@ -20,7 +20,58 @@
                 <Border BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
                         BorderThickness="1">
 
-                    <controls:LicenseControl/>
+                    <ScrollViewer>
+                        <StackPanel Spacing="16" Margin="16">
+
+                            <!-- License -->
+                            <controls:LicenseControl/>
+
+                            <!-- MinerU Configuration -->
+                            <Expander Header="MinerU AI Configuration" IsExpanded="True">
+                                <StackPanel Spacing="10" Margin="10,5">
+
+                                    <!-- Server URL -->
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="Server URL"
+                                                   FontSize="12"
+                                                   FontWeight="SemiBold"/>
+                                        <TextBox Text="{Binding Settings.MinerUBaseUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                    </StackPanel>
+
+                                    <!-- Backend Engine -->
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="Backend Engine"
+                                                   FontSize="12"
+                                                   FontWeight="SemiBold"/>
+                                        <ComboBox SelectedValue="{Binding Settings.MinerUBackend, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                            <ComboBoxItem Content="hybrid-engine"/>
+                                            <ComboBoxItem Content="docling"/>
+                                            <ComboBoxItem Content="marker"/>
+                                        </ComboBox>
+                                    </StackPanel>
+
+                                    <!-- Enable Toggle -->
+                                    <CheckBox Content="Enable MinerU AI Parsing"
+                                              IsChecked="{Binding Settings.MinerUEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                </StackPanel>
+                            </Expander>
+
+                            <!-- Popo Configuration -->
+                            <Expander Header="Popo Configuration" IsExpanded="True">
+                                <StackPanel Spacing="10" Margin="10,5">
+
+                                    <!-- Popo Server URL -->
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="Popo Server URL"
+                                                   FontSize="12"
+                                                   FontWeight="SemiBold"/>
+                                        <TextBox Text="{Binding Settings.PopoBaseUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Expander>
+
+                        </StackPanel>
+                    </ScrollViewer>
 
                 </Border>
 
