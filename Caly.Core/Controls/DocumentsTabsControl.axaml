@@ -4,11 +4,16 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:Caly.Core.ViewModels"
              xmlns:controls="clr-namespace:Caly.Core.Controls"
+             xmlns:utilities="clr-namespace:Caly.Core.Utilities"
              xmlns:tabalonia="clr-namespace:Tabalonia.Controls;assembly=Tabalonia"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
              x:Class="Caly.Core.Controls.DocumentsTabsControl"
              x:DataType="vm:MainViewModel"
              SizeChanged="OnSizeChanged">
+
+    <UserControl.Resources>
+        <utilities:BoolToGridLengthConverter x:Key="BoolToGridLengthConverter"/>
+    </UserControl.Resources>
 
     <Design.DataContext>
         <vm:MainViewModel />
@@ -262,9 +267,14 @@
 							   CompactPaneLength="0"
 							   DisplayMode="CompactInline">
 
-                    <!-- Three-column layout: PDF | MinerU Blocks | Popo Blocks (equal width, adjustable) -->
+                    <!-- Three-column layout: PDF | MinerU Blocks | Popo Blocks (dynamic width based on visibility) -->
                     <SplitView.Content>
-                        <Grid ColumnDefinitions="*,*,*">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="{Binding ShowMinerUColumn, Converter={StaticResource BoolToGridLengthConverter}}"/>
+                                <ColumnDefinition Width="{Binding ShowPopoColumn, Converter={StaticResource BoolToGridLengthConverter}}"/>
+                            </Grid.ColumnDefinitions>
 
                             <!-- Column 1: PDF Document -->
                             <controls:DocumentControl Grid.Column="0"/>
