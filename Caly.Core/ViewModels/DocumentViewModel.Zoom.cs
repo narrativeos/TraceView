@@ -131,7 +131,9 @@ public partial class DocumentViewModel
         }
 
         // Calculate the zoom level that makes the current page fill the viewport width
-        double targetZoom = ViewportWidth / pageWidth;
+        // Apply 0.97 scaling factor to ensure the page fits within the actual visible area
+        // without triggering horizontal scrollbar (accounts for layout overhead, rounding, etc.)
+        double targetZoom = (ViewportWidth * 0.97) / pageWidth;
 
         // Clamp to allowed zoom range
         ZoomLevel = Math.Max(MinZoomLevel, Math.Min(MaxZoomLevel, targetZoom));

@@ -202,7 +202,8 @@ public sealed class PageItemsControl : ItemsControl
             // Update viewport width for fit-to-width zoom
             if (DataContext is DocumentViewModel vm)
             {
-                vm.ViewportWidth = e.NewSize.Width;
+                // Use ScrollViewer's Viewport.Width to exclude scrollbar width from the available width
+                vm.ViewportWidth = Scroll?.Viewport.Width ?? e.NewSize.Width;
                 // 首次加载完成后自动适配页宽
                 if (!vm.AutoFitDone && vm.ViewportWidth > 0 && vm.Pages.Count > 0)
                 {
