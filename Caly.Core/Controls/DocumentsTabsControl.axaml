@@ -179,7 +179,7 @@
 								Command="{Binding ZoomToPageWidthCommand}">
 							<PathIcon Width="17"
 									  Height="17"
-									  Data="{StaticResource fit_to_width_regular}">
+									  Data="{StaticResource open_regular}">
 								<ToolTip.Tip>Fit to Page Width</ToolTip.Tip>
 							</PathIcon>
 						</Button>
