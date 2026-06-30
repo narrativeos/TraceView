@@ -130,14 +130,23 @@ namespace Caly.Pdf.TextLayer
                 return;
             }
 
-            for (var i = 0; i < operations.Count; ++i)
+            try
             {
-                if (i % 100 == 0)
+                for (var i = 0; i < operations.Count; ++i)
                 {
-                    _token.ThrowIfCancellationRequested();
-                }
+                    if (i % 100 == 0)
+                    {
+                        _token.ThrowIfCancellationRequested();
+                    }
 
-                operations[i].Run(this);
+                    operations[i].Run(this);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Swallow the cancellation exception and return partial results.
+                // The caller (PdfPigDocumentService) checks the cancellation state
+                // and handles it appropriately (e.g., show timeout notification).
             }
         }
 

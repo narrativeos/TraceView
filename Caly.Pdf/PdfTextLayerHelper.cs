@@ -38,6 +38,13 @@ namespace Caly.Pdf
             {
                 return document.GetPage<PageTextLayerContent>(pageNumber);
             }
+            catch (OperationCanceledException)
+            {
+                // Safety net: if TextLayerStreamProcessor's internal cancellation handling
+                // somehow doesn't catch the exception, return an empty content instead of
+                // letting it bubble up through PdfPig's internal call chain.
+                return new PageTextLayerContent { Letters = Array.Empty<PdfLetter>(), Annotations = Array.Empty<PdfAnnotation>() };
+            }
             finally
             {
                 TextLayerFactory.CurrentToken = previous;
