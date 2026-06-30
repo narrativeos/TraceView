@@ -37,6 +37,8 @@ namespace Caly.Core.Services;
 
 [JsonSourceGenerationOptions(DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault)]
 [JsonSerializable(typeof(CalySettings), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(MinerUTaskSubmitResponse), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(MinerUTaskStatusResponse), GenerationMode = JsonSourceGenerationMode.Metadata)]
 internal partial class SourceGenerationContext : JsonSerializerContext;
 
 internal sealed class JsonSettingsService : ISettingsService

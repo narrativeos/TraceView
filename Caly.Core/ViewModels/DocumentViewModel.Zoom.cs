@@ -107,6 +107,13 @@ public partial class DocumentViewModel
     [ObservableProperty]
     private double _viewportWidth;
 
+    /// <summary>
+    /// Whether the first page has been loaded and auto-fit to width has been performed.
+    /// Used to trigger auto-fit only once when the document is first opened.
+    /// </summary>
+    [ObservableProperty]
+    private bool _autoFitDone;
+
     [RelayCommand]
     private void ZoomToPageWidth()
     {

@@ -197,11 +197,33 @@ public sealed class MinerUService : IDisposable
         response.EnsureSuccessStatusCode();
 
         var json = await response.Content.ReadAsStringAsync(ct);
-        var result = JsonSerializer.Deserialize<MinerUTaskSubmitResponse>(json);
-
-        if (result is null || string.IsNullOrEmpty(result.TaskId))
+        
+        if (string.IsNullOrEmpty(json) || !json.TrimStart().StartsWith("{"))
         {
-            throw new MinerUServiceException("Failed to get task ID from MinerU response.");
+            var preview = json?.Length > 200 ? json.Substring(0, 200) + "..." : json;
+            throw new MinerUServiceException(
+                $"Invalid JSON response from MinerU /tasks. Response: {preview}");
+        }
+
+        MinerUTaskSubmitResponse result;
+        try
+        {
+            result = JsonSerializer.Deserialize(json, SourceGenerationContext.Default.MinerUTaskSubmitResponse)
+                ?? throw new MinerUServiceException($"JsonSerializer returned null for /tasks response. Raw: {json?.Substring(0, Math.Min(500, json.Length))}");
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
+        {
+            var rawJson = json?.Substring(0, Math.Min(2000, json?.Length ?? 0));
+            var errorMsg = $"Failed to deserialize MinerU /tasks response. Error: {ex.GetType().Name}: {ex.Message}. Raw JSON: {rawJson}";
+            System.Diagnostics.Debug.WriteLine($"[MinerU] {errorMsg}");
+            System.Console.Error.WriteLine($"[MinerU] {errorMsg}");
+            throw new MinerUServiceException(errorMsg, ex);
+        }
+
+        if (string.IsNullOrEmpty(result.TaskId))
+        {
+            throw new MinerUServiceException(
+                $"Failed to get task ID from MinerU response. Raw: {json?.Substring(0, Math.Min(500, json.Length))}");
         }
 
         return result.TaskId;
@@ -216,20 +238,45 @@ public sealed class MinerUService : IDisposable
         response.EnsureSuccessStatusCode();
 
         var json = await response.Content.ReadAsStringAsync(ct);
-        var result = JsonSerializer.Deserialize<MinerUTaskStatusResponse>(json);
 
-        return result ?? throw new MinerUServiceException("Failed to parse task status response.");
+        if (string.IsNullOrEmpty(json) || !json.TrimStart().StartsWith("{"))
+        {
+            var preview = json?.Length > 200 ? json.Substring(0, 200) + "..." : json;
+            throw new MinerUServiceException(
+                $"Invalid JSON response from MinerU /tasks/{{id}}. Response: {preview}");
+        }
+
+        MinerUTaskStatusResponse result;
+        try
+        {
+            result = JsonSerializer.Deserialize(json, SourceGenerationContext.Default.MinerUTaskStatusResponse)
+                ?? throw new MinerUServiceException($"JsonSerializer returned null for /tasks/{{id}} response. Raw: {json?.Substring(0, Math.Min(500, json.Length))}");
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
+        {
+            var rawJson = json?.Substring(0, Math.Min(2000, json?.Length ?? 0));
+            var errorMsg = $"Failed to deserialize MinerU /tasks/{{id}} response. Error: {ex.GetType().Name}: {ex.Message}. Raw JSON: {rawJson}";
+            System.Diagnostics.Debug.WriteLine($"[MinerU] {errorMsg}");
+            System.Console.Error.WriteLine($"[MinerU] {errorMsg}");
+            throw new MinerUServiceException(errorMsg, ex);
+        }
+
+        return result;
     }
 
     /// <summary>
     /// Polls the task status until it completes or fails.
     /// Calls onProgress at each status change.
+    /// Note: MinerU v3.4.0 no longer provides a "progress" field,
+    /// so progress is inferred from status transitions.
     /// </summary>
     public async Task PollUntilCompleteAsync(
         string taskId,
         Action<MinerUParseStatus, int>? onProgress = null,
         CancellationToken ct = default)
     {
+        int lastProgress = 15;
+
         while (!ct.IsCancellationRequested)
         {
             var status = await GetTaskStatusAsync(taskId, ct);
@@ -241,8 +288,15 @@ public sealed class MinerUService : IDisposable
                     ? MinerUParseStatus.Queued
                     : MinerUParseStatus.Processing;
 
-                var progress = status.Progress ?? minerUStatus.ToProgressPercent();
-                onProgress?.Invoke(minerUStatus, progress);
+                // Infer progress from status (v3.4.0 no longer returns progress)
+                var progress = minerUStatus == MinerUParseStatus.Queued ? 20 : 50;
+                
+                // Only update if progress changed significantly
+                if (progress != lastProgress)
+                {
+                    lastProgress = progress;
+                    onProgress?.Invoke(minerUStatus, progress);
+                }
             }
             else if (status.IsCompleted)
             {
@@ -252,12 +306,18 @@ public sealed class MinerUService : IDisposable
             else if (status.IsFailed)
             {
                 onProgress?.Invoke(MinerUParseStatus.Failed, -1);
-                throw new MinerUServiceException($"MinerU task failed: {status.Message}");
+                var errorMessage = status.GetErrorMessage() ?? "Unknown error";
+                throw new MinerUServiceException($"MinerU task failed: {errorMessage}");
             }
             else
             {
                 // Unknown status, treat as running
-                onProgress?.Invoke(MinerUParseStatus.Processing, status.Progress ?? 35);
+                var progress = 35;
+                if (progress != lastProgress)
+                {
+                    lastProgress = progress;
+                    onProgress?.Invoke(MinerUParseStatus.Processing, progress);
+                }
             }
 
             await Task.Delay(DefaultPollInterval, ct);

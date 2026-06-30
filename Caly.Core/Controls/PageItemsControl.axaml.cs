@@ -203,6 +203,12 @@ public sealed class PageItemsControl : ItemsControl
             if (DataContext is DocumentViewModel vm)
             {
                 vm.ViewportWidth = e.NewSize.Width;
+                // 首次加载完成后自动适配页宽
+                if (!vm.AutoFitDone && vm.ViewportWidth > 0 && vm.Pages.Count > 0)
+                {
+                    vm.AutoFitDone = true;
+                    vm.ZoomToPageWidthCommand.Execute(null);
+                }
             }
         };
 
@@ -1276,6 +1282,13 @@ public sealed class PageItemsControl : ItemsControl
 
         if (GetMaxPageIndex() > 0)
         {
+            // 首次加载完成后自动适配页宽
+            if (DataContext is DocumentViewModel vm && !vm.AutoFitDone && vm.ViewportWidth > 0 && vm.Pages.Count > 0)
+            {
+                vm.AutoFitDone = true;
+                vm.ZoomToPageWidthCommand.Execute(null);
+            }
+
             if (_pendingScrollToPage)
             {
                 // After a DataContext change (tab/document switch), items are now realized.

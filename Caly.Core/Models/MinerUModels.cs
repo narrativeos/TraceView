@@ -18,12 +18,13 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
 namespace Caly.Core.Models;
 
 /// <summary>
-/// Response from POST /tasks endpoint.
+/// Response from POST /tasks endpoint (MinerU v3.4.0+).
 /// </summary>
 public class MinerUTaskSubmitResponse
 {
@@ -35,10 +36,39 @@ public class MinerUTaskSubmitResponse
 
     [JsonPropertyName("message")]
     public string? Message { get; set; }
+
+    [JsonPropertyName("backend")]
+    public string? Backend { get; set; }
+
+    [JsonPropertyName("file_names")]
+    public List<string>? FileNames { get; set; }
+
+    [JsonPropertyName("created_at")]
+    public string? CreatedAt { get; set; }
+
+    [JsonPropertyName("started_at")]
+    public string? StartedAt { get; set; }
+
+    [JsonPropertyName("completed_at")]
+    public string? CompletedAt { get; set; }
+
+    [JsonPropertyName("error")]
+    public string? Error { get; set; }
+
+    [JsonPropertyName("status_url")]
+    public string? StatusUrl { get; set; }
+
+    [JsonPropertyName("result_url")]
+    public string? ResultUrl { get; set; }
+
+    [JsonPropertyName("queued_ahead")]
+    public int? QueuedAhead { get; set; }
 }
 
 /// <summary>
-/// Response from GET /tasks/{task_id} endpoint.
+/// Response from GET /tasks/{task_id} endpoint (MinerU v3.4.0+).
+/// Note: MinerU v3.4.0 no longer returns "progress" field.
+/// Progress is now inferred from status transitions.
 /// </summary>
 public class MinerUTaskStatusResponse
 {
@@ -46,30 +76,48 @@ public class MinerUTaskStatusResponse
     public string TaskId { get; set; } = string.Empty;
 
     /// <summary>
-    /// Task status: pending, running, completed, failed
+    /// Task status: pending, running/processing, completed, failed
     /// </summary>
     [JsonPropertyName("status")]
     public string Status { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Progress percentage (0-100), provided by MinerU if available.
-    /// </summary>
-    [JsonPropertyName("progress")]
-    public int? Progress { get; set; }
+    [JsonPropertyName("backend")]
+    public string? Backend { get; set; }
 
-    [JsonPropertyName("message")]
-    public string? Message { get; set; }
+    [JsonPropertyName("file_names")]
+    public List<string>? FileNames { get; set; }
 
     [JsonPropertyName("created_at")]
     public string? CreatedAt { get; set; }
 
-    [JsonPropertyName("updated_at")]
-    public string? UpdatedAt { get; set; }
+    [JsonPropertyName("started_at")]
+    public string? StartedAt { get; set; }
+
+    [JsonPropertyName("completed_at")]
+    public string? CompletedAt { get; set; }
+
+    [JsonPropertyName("error")]
+    public string? Error { get; set; }
+
+    [JsonPropertyName("status_url")]
+    public string? StatusUrl { get; set; }
+
+    [JsonPropertyName("result_url")]
+    public string? ResultUrl { get; set; }
+
+    [JsonPropertyName("queued_ahead")]
+    public int? QueuedAhead { get; set; }
 
     /// <summary>
-    /// Determines if the task is still running (pending or running).
+    /// Optional message (present in some responses).
     /// </summary>
-    public bool IsRunning => Status is "pending" or "running";
+    [JsonPropertyName("message")]
+    public string? Message { get; set; }
+
+    /// <summary>
+    /// Determines if the task is still running (pending, running, or processing).
+    /// </summary>
+    public bool IsRunning => Status is "pending" or "running" or "processing";
 
     /// <summary>
     /// Determines if the task is completed successfully.
@@ -80,6 +128,11 @@ public class MinerUTaskStatusResponse
     /// Determines if the task has failed.
     /// </summary>
     public bool IsFailed => Status == "failed";
+
+    /// <summary>
+    /// Gets the error message if the task failed.
+    /// </summary>
+    public string? GetErrorMessage() => Error ?? Message;
 }
 
 /// <summary>
