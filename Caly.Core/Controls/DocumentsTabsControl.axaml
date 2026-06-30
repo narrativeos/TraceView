@@ -179,11 +179,12 @@
 								Command="{Binding ZoomToPageWidthCommand}">
 							<PathIcon Width="17"
 									  Height="17"
-									  Data="{StaticResource open_regular}">
+									  Data="{StaticResource fit_to_width_regular}">
 								<ToolTip.Tip>Fit to Page Width</ToolTip.Tip>
 							</PathIcon>
 						</Button>
 
+						<!-- Commented out:
 						<TextBlock DockPanel.Dock="Left"
 								   Margin="5,0"
 								   Text="{Binding ZoomLevel, StringFormat={}{0:0.#%}}"
@@ -191,6 +192,7 @@
 								   HorizontalAlignment="Center"/>
 
 						<controls:VerticalSeparator/>
+						-->
 
 						<!-- MinerU AI Parse -->
 						<Button DockPanel.Dock="Right"
