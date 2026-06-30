@@ -24,6 +24,7 @@ using Caly.Core.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System;
+using System.Collections.ObjectModel;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -52,9 +53,51 @@ public sealed partial class DocumentViewModel
 
     private CancellationTokenSource? _minerUCts;
 
+    /// <summary>
+    /// Raw MinerU blocks for the middle column of the three-column layout.
+    /// </summary>
+    [ObservableProperty]
+    private ObservableCollection<MinerUBlockViewModel> _minerUBlocks = new();
+
+    /// <summary>
+    /// Raw MinerU middle JSON data (for reference).
+    /// </summary>
+    [ObservableProperty]
+    private MinerUMiddleJson? _minerUMiddleJson;
+
+    /// <summary>
+    /// Gets whether MinerU raw blocks are available for display.
+    /// </summary>
+    public bool HasMinerUBlocks => MinerUBlocks.Count > 0;
+
+    /// <summary>
+    /// Whether the MinerU column is visible (user toggle).
+    /// </summary>
+    [ObservableProperty]
+    private bool _showMinerUColumn = true;
+
+    /// <summary>
+    /// Whether the Popo column is visible (user toggle).
+    /// </summary>
+    [ObservableProperty]
+    private bool _showPopoColumn = true;
+
+
     #endregion
 
     #region MinerU Commands
+
+    [RelayCommand]
+    private void ToggleMinerUColumn()
+    {
+        ShowMinerUColumn = !ShowMinerUColumn;
+    }
+
+    [RelayCommand]
+    private void TogglePopoColumn()
+    {
+        ShowPopoColumn = !ShowPopoColumn;
+    }
 
     /// <summary>
     /// Parses the current document using MinerU AI service.
@@ -117,6 +160,32 @@ public sealed partial class DocumentViewModel
                 foreach (var page in Pages)
                 {
                     page.PopoBlocks = result.PopoDocument.GetBlocksForPage(page.PageNumber);
+                }
+
+                // Populate raw MinerU blocks for the middle column
+                // Populate flat Popo blocks for the right column
+                if (result.PopoDocument.PagesBlocks is not null)
+                {
+                    var allBlocks = result.PopoDocument.GetAllBlocks();
+                    MinerUBlocks.Clear();
+                    PopoBlocksFlat.Clear();
+                    foreach (var block in allBlocks)
+                    {
+                        MinerUBlocks.Add(new MinerUBlockViewModel(
+                            new MinerUMiddlePageBlock
+                            {
+                                Id = block.Id,
+                                Page = block.Page,
+                                Type = block.Type,
+                                Content = block.Content,
+                                SourceLabel = block.SourceLabel,
+                                Contd = block.Contd,
+                                Level = block.Level,
+                                Image = block.Image,
+                                Bbox = new double[] { block.Bbox.X, block.Bbox.Y, block.Bbox.Right, block.Bbox.Bottom }
+                            }));
+                        PopoBlocksFlat.Add(new BlockViewModel(block));
+                    }
                 }
 
                 // Auto-open the Popo analysis pane

@@ -22,6 +22,7 @@ using Caly.Core.Models;
 using Caly.Core.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using System.Collections.ObjectModel;
 
 namespace Caly.Core.ViewModels;
 
@@ -45,6 +46,17 @@ public sealed partial class DocumentViewModel
 
     [ObservableProperty]
     private bool _isPopoPaneOpen;
+
+    /// <summary>
+    /// Flat list of Popo blocks for the right column of the three-column layout.
+    /// </summary>
+    [ObservableProperty]
+    private ObservableCollection<BlockViewModel> _popoBlocksFlat = new();
+
+    /// <summary>
+    /// Gets whether Popo blocks are available for display.
+    /// </summary>
+    public bool HasPopoBlocksFlat => PopoBlocksFlat.Count > 0;
 
     [RelayCommand]
     private void TogglePopoPane()
@@ -72,6 +84,13 @@ public sealed partial class DocumentViewModel
         foreach (var page in Pages)
         {
             page.PopoBlocks = popoDoc.GetBlocksForPage(page.PageNumber);
+        }
+
+        // Populate flat Popo blocks for the right column
+        PopoBlocksFlat.Clear();
+        foreach (var block in popoDoc.GetAllBlocks())
+        {
+            PopoBlocksFlat.Add(new BlockViewModel(block));
         }
     }
 }

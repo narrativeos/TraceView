@@ -81,18 +81,10 @@
                          </Border>
                      </Grid>
 
-                     <!-- MinerU AI Parse Progress Overlay -->
-                     <Border Background="#CCFFFFFF"
-                             IsVisible="{Binding IsMinerUParsing}"
-                             HorizontalAlignment="Center"
-                             VerticalAlignment="Center"
-                             CornerRadius="8"
-                             Padding="24"
-                             MaxWidth="350">
-                         <controls:ParseProgressControl/>
-                     </Border>
+                      <!-- MinerU AI Parse Progress (Non-blocking bottom bar) -->
+                      <controls:ParseProgressControl/>
 
- 				</Grid>
+  				</Grid>
 			</ControlTemplate>
 		</Setter>
 	</ControlTheme>

@@ -18,76 +18,85 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-using Avalonia;
-using Avalonia.Media;
 using Caly.Core.Models;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace Caly.Core.ViewModels;
 
 /// <summary>
-/// View model for displaying a single Popo block in the block list view.
+/// View model for displaying a raw MinerU block in the middle column of the three-column layout.
+/// Wraps MinerUMiddlePageBlock for UI binding.
 /// </summary>
-public partial class BlockViewModel : ObservableObject
+public partial class MinerUBlockViewModel : ObservableObject
 {
-    private readonly PopoBlock _block;
+    private readonly MinerUMiddlePageBlock _block;
 
-    public BlockViewModel(PopoBlock block)
+    public MinerUBlockViewModel(MinerUMiddlePageBlock block)
     {
         _block = block;
     }
 
     public int Id => _block.Id;
     public int Page => _block.Page;
-    public Rect Bbox => _block.Bbox;
     public string Type => _block.Type;
     public string Content => _block.Content;
-    public int? TitleLevel => _block.TitleLevel;
     public string SourceLabel => _block.SourceLabel;
     public int Contd => _block.Contd;
     public int Level => _block.Level;
     public int Image => _block.Image;
-    public int TableMerge => _block.TableMerge;
-
-    public Color TypeColor => _block.TypeColor;
+    public double[] Bbox => _block.Bbox;
 
     /// <summary>
-    /// Display label for the block (e.g., "1:title" or "3:text").
+    /// Gets a short preview of the content for display in the list.
     /// </summary>
-    public string DisplayLabel => $"{Id}:{Type}";
-
-    /// <summary>
-    /// Bbox display string.
-    /// </summary>
-    public string BboxDisplay => $"[{Bbox.X:F3}, {Bbox.Y:F3}, {Bbox.Right:F3}, {Bbox.Bottom:F3}]";
-
-    /// <summary>
-    /// Truncated content for display (max 100 chars).
-    /// </summary>
-    public string DisplayContent
+    public string ContentPreview
     {
         get
         {
-            if (Content.Length <= 100)
-                return Content;
-            return Content.Substring(0, 100) + "...";
+            if (string.IsNullOrEmpty(Content))
+                return "[empty]";
+            return Content.Length > 100 ? Content.Substring(0, 100) + "..." : Content;
         }
     }
 
     /// <summary>
-    /// Short content preview for compact display (alias for DisplayContent).
+    /// Gets a display label combining type and source_label.
     /// </summary>
-    public string ContentPreview => DisplayContent;
+    public string TypeLabel
+    {
+        get
+        {
+            var parts = new System.Collections.Generic.List<string>();
+            if (!string.IsNullOrEmpty(Type))
+                parts.Add(Type);
+            if (!string.IsNullOrEmpty(SourceLabel) && SourceLabel != Type)
+                parts.Add(SourceLabel);
+            return string.Join(" / ", parts);
+        }
+    }
 
     /// <summary>
-    /// Whether this block is currently selected/highlighted.
+    /// Gets a color key for the block type (used for visual distinction).
     /// </summary>
+    public string TypeColorKey
+    {
+        get
+        {
+            return Type.ToLowerInvariant() switch
+            {
+                "text" or "paragraph" => "Blue",
+                "title" or "heading" => "Purple",
+                "image" or "figure" => "Green",
+                "table" => "Orange",
+                "caption" => "Gray",
+                _ => "Default"
+            };
+        }
+    }
+
     [ObservableProperty]
     private bool _isSelected;
 
-    /// <summary>
-    /// Whether this block type is currently visible (based on type filter).
-    /// </summary>
     [ObservableProperty]
-    private bool _isVisible = true;
+    private bool _isExpanded;
 }

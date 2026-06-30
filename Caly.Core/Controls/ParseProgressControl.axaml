@@ -16,33 +16,52 @@
                   x:DataType="viewModels:DocumentViewModel">
 		<Setter Property="Template">
 			<ControlTemplate>
-				<StackPanel Spacing="6"
-                            IsVisible="{Binding IsMinerUParsing}">
-					<!-- Title -->
-					<StackPanel Spacing="4">
-						<TextBlock Text="MinerU AI Parsing"
-                                   FontWeight="Bold"
-                                   FontSize="13"/>
-						<TextBlock Text="{Binding MinerUStatusText}"
-                                   FontSize="11"
-                                   Foreground="{DynamicResource SystemControlPageTextBaseMediumBrush}"
-                                   TextWrapping="Wrap"/>
-					</StackPanel>
+				<!-- Non-blocking bottom progress bar -->
+				<Panel IsVisible="{Binding IsMinerUParsing}">
+					<Border HorizontalAlignment="Stretch"
+					        VerticalAlignment="Bottom"
+					        Background="#E62D2D2D"
+					        BorderThickness="0,1"
+					        BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+					        Padding="12,8">
+						<StackPanel Spacing="6"
+						            Orientation="Horizontal">
+							<!-- Status Icon -->
+							<PathIcon Width="16"
+							          Height="16"
+							          Data="{StaticResource spinner_regular}"
+							          Foreground="{DynamicResource SystemAccentColor}"/>
 
-					<!-- Progress Bar -->
-					<ProgressBar MinWidth="100"
-                                 Minimum="0"
-                                 Maximum="100"
-                                 Value="{Binding MinerUProgress}"
-                                 IsIndeterminate="{Binding IsMinerUParsing}"/>
+							<!-- Status Text -->
+							<TextBlock Text="{Binding MinerUStatusText}"
+							           FontSize="12"
+							           VerticalAlignment="Center"/>
 
-					<!-- Cancel Button -->
-					<Button Content="Cancel"
-                            Command="{Binding CancelMinerUParseCommand}"
-                            HorizontalAlignment="Center"
-                            Classes="accent"
-                            Width="100"/>
-				</StackPanel>
+							<!-- Progress Bar -->
+							<ProgressBar Width="150"
+							             Height="16"
+							             Minimum="0"
+							             Maximum="100"
+							             Value="{Binding MinerUProgress}"
+							             VerticalAlignment="Center"/>
+
+							<!-- Progress Percentage -->
+							<TextBlock Text="{Binding MinerUProgress, StringFormat='{}{0}%'}"
+							           FontSize="11"
+							           Width="35"
+							           TextAlignment="Right"
+							           VerticalAlignment="Center"
+							           Opacity="0.7"/>
+
+							<!-- Cancel Button -->
+							<Button Content="Cancel"
+							        Command="{Binding CancelMinerUParseCommand}"
+							        HorizontalAlignment="Right"
+							        Padding="12,2"
+							        FontSize="11"/>
+						</StackPanel>
+					</Border>
+				</Panel>
 			</ControlTemplate>
 		</Setter>
 	</ControlTheme>
