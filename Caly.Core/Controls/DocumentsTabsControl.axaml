@@ -202,10 +202,40 @@
                                 IsVisible="{Binding MinerUEnabled}">
 							<PathIcon Width="17"
 									  Height="17"
-									  Data="{StaticResource document_search_regular}">
+									  Data="{StaticResource mineru_parse_regular}">
 								<ToolTip.Tip>AI Parse with MinerU</ToolTip.Tip>
 							</PathIcon>
 						</Button>
+
+						<!-- Toggle MinerU Column -->
+						<ToggleButton DockPanel.Dock="Right"
+                                       Margin="0,0,5,0"
+									   HorizontalAlignment="Center"
+									   VerticalAlignment="Stretch"
+									   Background="Transparent"
+									   Command="{Binding ToggleMinerUColumnCommand}"
+									   IsChecked="{Binding ShowMinerUColumn}">
+							<PathIcon Width="17"
+									  Height="17"
+									  Data="{StaticResource mineru_blocks_regular}">
+								<ToolTip.Tip>Toggle MinerU Blocks</ToolTip.Tip>
+							</PathIcon>
+						</ToggleButton>
+
+						<!-- Toggle Popo Column -->
+						<ToggleButton DockPanel.Dock="Right"
+                                        Margin="0,0,5,0"
+									   HorizontalAlignment="Center"
+									   VerticalAlignment="Stretch"
+									   Background="Transparent"
+									   Command="{Binding TogglePopoColumnCommand}"
+									   IsChecked="{Binding ShowPopoColumn}">
+							<PathIcon Width="17"
+									  Height="17"
+									  Data="{StaticResource popo_blocks_regular}">
+								<ToolTip.Tip>Toggle Popo Blocks</ToolTip.Tip>
+							</PathIcon>
+						</ToggleButton>
 
 						<!-- Print -->
 						<Button DockPanel.Dock="Right"
@@ -232,10 +262,133 @@
 							   CompactPaneLength="0"
 							   DisplayMode="CompactInline">
 
-                        <!-- Document control -->
-                        <SplitView.Content>
-                            <controls:DocumentControl />
-                        </SplitView.Content>
+                    <!-- Three-column layout: PDF | MinerU Blocks | Popo Blocks (equal width, adjustable) -->
+                    <SplitView.Content>
+                        <Grid ColumnDefinitions="*,*,*">
+
+                            <!-- Column 1: PDF Document -->
+                            <controls:DocumentControl Grid.Column="0"/>
+
+                            <!-- GridSplitter between PDF and MinerU -->
+                            <GridSplitter Grid.Column="0"
+                                          HorizontalAlignment="Right"
+                                          Width="4"
+                                          Background="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                                          IsVisible="{Binding ShowMinerUColumn}"/>
+
+                            <!-- Column 2: MinerU Raw Blocks -->
+                            <Border Grid.Column="1"
+                                    Padding="8"
+                                    Background="{DynamicResource SystemChromeLowColor}"
+                                    BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                                    BorderThickness="1"
+                                    IsVisible="{Binding ShowMinerUColumn}">
+                                <DockPanel>
+                                    <StackPanel DockPanel.Dock="Top"
+                                                Orientation="Horizontal"
+                                                Spacing="4"
+                                                Margin="0,0,0,6">
+                                        <TextBlock Text="MinerU"
+                                                   FontWeight="Bold"
+                                                   FontSize="12"/>
+                                        <TextBlock Text="{Binding MinerUBlocks.Count, StringFormat='({0} blocks)'}"
+                                                   FontSize="11"
+                                                   Opacity="0.6"/>
+                                    </StackPanel>
+                                    <ScrollViewer>
+                                        <ItemsControl ItemsSource="{Binding MinerUBlocks}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="vm:MinerUBlockViewModel">
+                                                    <Border Padding="6"
+                                                            Margin="0,2"
+                                                            Background="{DynamicResource SystemChromeMediumLowColor}"
+                                                            CornerRadius="3">
+                                                        <StackPanel Spacing="3">
+                                                            <StackPanel Orientation="Horizontal"
+                                                                        Spacing="4">
+                                                                <TextBlock Text="{Binding Id, StringFormat='#{0}'}"
+                                                                           FontSize="10"
+                                                                           FontWeight="Bold"
+                                                                           Opacity="0.7"/>
+                                                                <TextBlock Text="{Binding TypeLabel}"
+                                                                           FontSize="10"
+                                                                           FontWeight="SemiBold"/>
+                                                            </StackPanel>
+                                                            <TextBlock Text="{Binding ContentPreview}"
+                                                                       FontSize="10"
+                                                                       TextWrapping="Wrap"
+                                                                       Opacity="0.8"
+                                                                       MaxLines="3"/>
+                                                        </StackPanel>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                </DockPanel>
+                            </Border>
+
+                            <!-- GridSplitter between MinerU and Popo -->
+                            <GridSplitter Grid.Column="1"
+                                          HorizontalAlignment="Right"
+                                          Width="4"
+                                          Background="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                                          IsVisible="{Binding ShowPopoColumn}"/>
+
+                            <!-- Column 3: Popo Blocks -->
+                            <Border Grid.Column="2"
+                                    Padding="8"
+                                    Background="{DynamicResource SystemChromeLowColor}"
+                                    BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                                    BorderThickness="1"
+                                    IsVisible="{Binding ShowPopoColumn}">
+                                <DockPanel>
+                                    <StackPanel DockPanel.Dock="Top"
+                                                Orientation="Horizontal"
+                                                Spacing="4"
+                                                Margin="0,0,0,6">
+                                        <TextBlock Text="Popo"
+                                                   FontWeight="Bold"
+                                                   FontSize="12"/>
+                                        <TextBlock Text="{Binding PopoBlocksFlat.Count, StringFormat='({0} blocks)'}"
+                                                   FontSize="11"
+                                                   Opacity="0.6"/>
+                                    </StackPanel>
+                                    <ScrollViewer>
+                                        <ItemsControl ItemsSource="{Binding PopoBlocksFlat}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="vm:BlockViewModel">
+                                                    <Border Padding="6"
+                                                            Margin="0,2"
+                                                            Background="{DynamicResource SystemChromeMediumLowColor}"
+                                                            CornerRadius="3">
+                                                        <StackPanel Spacing="3">
+                                                            <StackPanel Orientation="Horizontal"
+                                                                        Spacing="4">
+                                                                <TextBlock Text="{Binding Id, StringFormat='#{0}'}"
+                                                                           FontSize="10"
+                                                                           FontWeight="Bold"
+                                                                           Opacity="0.7"/>
+                                                                <TextBlock Text="{Binding Type}"
+                                                                           FontSize="10"
+                                                                           FontWeight="SemiBold"/>
+                                                            </StackPanel>
+                                                            <TextBlock Text="{Binding ContentPreview}"
+                                                                       FontSize="10"
+                                                                       TextWrapping="Wrap"
+                                                                       Opacity="0.8"
+                                                                       MaxLines="3"/>
+                                                        </StackPanel>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                </DockPanel>
+                            </Border>
+
+                        </Grid>
+                    </SplitView.Content>
 
 						<!-- Left navigation bar -->
 						<SplitView.Pane>
@@ -431,7 +584,7 @@
                                             <TabItem.Header>
                                                 <PathIcon Width="17"
                                                           Height="17"
-                                                          Data="{StaticResource tree_structure_regular}">
+                                                          Data="{StaticResource question_regular}">
                                                     <ToolTip.Tip>AI Analysis</ToolTip.Tip>
                                                 </PathIcon>
                                             </TabItem.Header>
