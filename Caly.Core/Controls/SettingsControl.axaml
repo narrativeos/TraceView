@@ -65,25 +65,53 @@
                                 </StackPanel>
                             </Expander>
 
-                            <!-- Popo Configuration -->
-                            <Expander Header="Popo Configuration" IsExpanded="True">
-                                <StackPanel Spacing="8" Margin="8,8">
+                             <!-- Popo Configuration -->
+                             <Expander Header="Popo Configuration" IsExpanded="True">
+                                 <StackPanel Spacing="8" Margin="8,8">
 
-                                    <!-- Popo Server URL -->
-                                    <Grid ColumnDefinitions="Auto,12,*" RowDefinitions="Auto">
-                                        <TextBlock Grid.Column="0"
-                                                   Grid.Row="0"
-                                                   VerticalAlignment="Center"
-                                                   Text="Server URL"/>
-                                        <TextBox Grid.Column="2"
-                                                 Grid.Row="0"
-                                                 Margin="0,2"
-                                                 Text="{Binding Settings.PopoBaseUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
-                                    </Grid>
-                                </StackPanel>
-                            </Expander>
+                                     <!-- Popo Server URL -->
+                                     <Grid ColumnDefinitions="Auto,12,*" RowDefinitions="Auto">
+                                         <TextBlock Grid.Column="0"
+                                                    Grid.Row="0"
+                                                    VerticalAlignment="Center"
+                                                    Text="Server URL"/>
+                                         <TextBox Grid.Column="2"
+                                                  Grid.Row="0"
+                                                  Margin="0,2"
+                                                  Text="{Binding Settings.PopoBaseUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                     </Grid>
+                                 </StackPanel>
+                             </Expander>
 
-                        </StackPanel>
+                             <!-- Project Settings -->
+                             <Expander Header="Project Settings" IsExpanded="True">
+                                 <StackPanel Spacing="8" Margin="8,8">
+
+                                     <!-- Project Home Directory -->
+                                     <Grid ColumnDefinitions="Auto,12,*,Auto" RowDefinitions="Auto">
+                                         <TextBlock Grid.Column="0"
+                                                    Grid.Row="0"
+                                                    VerticalAlignment="Center"
+                                                    Text="Project Home"/>
+                                         <TextBox Grid.Column="2"
+                                                  Grid.Row="0"
+                                                  Margin="0,2"
+                                                  Text="{Binding Settings.ProjectHome, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                         <Button x:Name="PART_BrowseProjectHome"
+                                                  Grid.Column="3"
+                                                  Grid.Row="0"
+                                                  Margin="4,0,0,0"
+                                                  Content="Browse..."/>
+                                     </Grid>
+
+                                     <TextBlock Margin="0,4,0,0"
+                                                FontSize="11"
+                                                Foreground="{DynamicResource SystemControlPageTextChromeDisabledBrush}"
+                                                Text="All TraceView projects will be stored in this directory."/>
+                                 </StackPanel>
+                             </Expander>
+
+                         </StackPanel>
                     </ScrollViewer>
 
                 </Border>

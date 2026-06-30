@@ -18,6 +18,9 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+using System;
+using System.IO;
+
 namespace Caly.Core.Models;
 
 public sealed class CalySettings
@@ -71,6 +74,14 @@ public sealed class CalySettings
     /// Popo service base URL (e.g., "http://localhost:8080")
     /// </summary>
     public string PopoBaseUrl { get; set; } = "http://localhost:8080";
+
+    // ========== Project Configuration ==========
+
+    /// <summary>
+    /// Root directory for all TraceView projects. Each PDF creates a project folder here.
+    /// Default: ~/.TraceView
+    /// </summary>
+    public string ProjectHome { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".TraceView");
 
     public sealed class CalySettingsDebug
     {

@@ -73,7 +73,9 @@ public sealed partial class DocumentViewModel
         if (LocalPath is null)
             return;
 
-        var popoDoc = PopoJsonService.LoadPopoDocument(LocalPath);
+        // Try to load from project's popo directory first, then fallback to default location
+        var popoDoc = PopoJsonService.LoadPopoDocumentFromProject(ProjectPath)
+                    ?? PopoJsonService.LoadPopoDocument(LocalPath);
         if (popoDoc is null)
             return;
 

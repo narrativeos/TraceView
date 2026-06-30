@@ -144,6 +144,7 @@ public partial class App : Application
 #endif
 
         services.AddSingleton<ISettingsService, JsonSettingsService>();
+        services.AddSingleton<ProjectService>();
         services.AddSingleton<IFilesService, FilesService>();
         services.AddSingleton<IDialogService, DialogService>();
         services.AddSingleton<IClipboardService, ClipboardService>();

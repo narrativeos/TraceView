@@ -25,6 +25,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -130,9 +131,13 @@ public sealed partial class DocumentViewModel
         MinerUStatusText = MinerUParseStatus.Submitting.ToDisplayName();
 
         try
-        {
-            var settings = CalySettings.Default;
-            var service = new MinerUService(settings.MinerUBaseUrl);
+            {
+                var settings = CalySettings.Default;
+                // Use project's mineru directory as cache if project path is available
+                var minerUDir = ProjectPath is not null
+                    ? Path.Combine(ProjectPath, "mineru")
+                    : null;
+                var service = new MinerUService(settings.MinerUBaseUrl, minerUDir);
 
             // Health check
             if (!await service.HealthCheckAsync(_minerUCts.Token))

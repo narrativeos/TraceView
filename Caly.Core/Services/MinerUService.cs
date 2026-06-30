@@ -62,7 +62,7 @@ public sealed class MinerUService : IDisposable
     /// Creates a new MinerUService instance.
     /// </summary>
     /// <param name="baseUrl">MinerU API base URL (default: http://localhost:8401).</param>
-    /// <param name="cacheDirectory">Local directory for caching parse results.</param>
+    /// <param name="cacheDirectory">Local directory for caching parse results. If null, uses project's mineru/ dir or default cache.</param>
     public MinerUService(string? baseUrl = null, string? cacheDirectory = null)
     {
         _baseUrl = baseUrl ?? DefaultBaseUrl;

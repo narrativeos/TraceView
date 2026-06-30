@@ -26,6 +26,7 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Caly.Core.Services.Interfaces;
@@ -43,10 +44,12 @@ internal sealed partial class PdfDocumentsManagerService : IPdfDocumentsManagerS
         public required DocumentViewModel Document { get; init; }
     }
 
+    private readonly Visual _target;
     private readonly MainViewModel _mainViewModel;
     private readonly IFilesService _filesService;
     private readonly IDialogService _dialogService;
     private readonly IClipboardService _clipboardService;
+    private readonly ProjectService _projectService;
 
     private readonly ChannelWriter<IStorageFile?> _channelWriter;
     private readonly ChannelReader<IStorageFile?> _channelReader;
@@ -87,7 +90,7 @@ internal sealed partial class PdfDocumentsManagerService : IPdfDocumentsManagerS
         }
     }
 
-    public PdfDocumentsManagerService(Visual target, IFilesService filesService, IDialogService dialogService, IClipboardService clipboardService)
+    public PdfDocumentsManagerService(Visual target, IFilesService filesService, IDialogService dialogService, IClipboardService clipboardService, ProjectService projectService)
     {
         Debug.ThrowNotOnUiThread();
 
@@ -98,9 +101,11 @@ internal sealed partial class PdfDocumentsManagerService : IPdfDocumentsManagerS
 
         _mainViewModel = mvm;
 
+        _target = target;
         _filesService = filesService ?? throw new NullReferenceException("Missing File Service instance.");
         _dialogService = dialogService ?? throw new NullReferenceException("Missing Dialog Service instance.");
         _clipboardService = clipboardService ?? throw new NullReferenceException("Missing clipboard Service instance.");
+        _projectService = projectService ?? throw new NullReferenceException("Missing Project Service instance.");
 
         Channel<IStorageFile?> fileChannel = Channel.CreateUnbounded<IStorageFile?>(new UnboundedChannelOptions()
         {
@@ -214,11 +219,13 @@ internal sealed partial class PdfDocumentsManagerService : IPdfDocumentsManagerS
             return;
         }
 
+        var pdfPath = storageFile.Path.LocalPath;
+
         // TODO - Look into Avalonia bookmark
         // string? id = await storageFile.SaveBookmarkAsync();
 
         // Check if file is already open
-        if (_openedFiles.TryGetValue(storageFile.Path.LocalPath, out var doc))
+        if (_openedFiles.TryGetValue(pdfPath, out var doc))
         {
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
@@ -232,10 +239,34 @@ internal sealed partial class PdfDocumentsManagerService : IPdfDocumentsManagerS
             return;
         }
 
+
+        // Determine project path - check if project already exists
+        string projectPath;
+        bool projectExists = _projectService.ProjectExists(pdfPath);
+
+        if (projectExists)
+            {
+                // Show notification that project exists, default to creating new project
+                var projectName = Path.GetFileName(_projectService.GetDefaultProjectPath(pdfPath));
+                _dialogService.ShowNotification(
+                    "项目已存在",
+                    $"项目 '{projectName}' 已存在，将创建为新项目。",
+                    Avalonia.Controls.Notifications.NotificationType.Warning);
+
+                projectPath = _projectService.GetUniqueProjectPath(pdfPath);
+                _projectService.CreateProject(pdfPath, projectPath);
+            }
+        else
+        {
+            // No existing project - create one automatically
+            projectPath = _projectService.CreateProject(pdfPath);
+        }
+
         var scope = App.Current!.Services!.CreateAsyncScope();
 
         var documentViewModel = scope.ServiceProvider.GetRequiredService<DocumentViewModel>();
-        documentViewModel.FileName = $"Opening '{Path.GetFileNameWithoutExtension(storageFile.Path.LocalPath)}'...";
+        documentViewModel.FileName = $"Opening '{Path.GetFileNameWithoutExtension(pdfPath)}'...";
+        documentViewModel.SetProjectPath(projectPath);
 
         var docRecord = new PdfDocumentRecord()
         {
@@ -243,7 +274,7 @@ internal sealed partial class PdfDocumentsManagerService : IPdfDocumentsManagerS
             Document = documentViewModel
         };
 
-        if (_openedFiles.TryAdd(storageFile.Path.LocalPath, docRecord))
+        if (_openedFiles.TryAdd(pdfPath, docRecord))
         {
             // Do not await just yet - We need the WaitOpenAsync() to be created but we also
             // want to add the document to PdfDocuments before opening it.
@@ -264,7 +295,7 @@ internal sealed partial class PdfDocumentsManagerService : IPdfDocumentsManagerS
             {
                 Debug.WriteExceptionToFile(ex);
                 Dispatcher.UIThread.Post(() => _mainViewModel.PdfDocuments.Remove(documentViewModel));
-                _openedFiles.TryRemove(storageFile.Path.LocalPath, out _);
+                _openedFiles.TryRemove(pdfPath, out _);
             }
 
             if (pageCount > 0)
@@ -275,7 +306,7 @@ internal sealed partial class PdfDocumentsManagerService : IPdfDocumentsManagerS
 
             // Document is not valid
             Dispatcher.UIThread.Post(() => _mainViewModel.PdfDocuments.Remove(documentViewModel));
-            _openedFiles.TryRemove(storageFile.Path.LocalPath, out _);
+            _openedFiles.TryRemove(pdfPath, out _);
         }
 
         // TODO - Log error

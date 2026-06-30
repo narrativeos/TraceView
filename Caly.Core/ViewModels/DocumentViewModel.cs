@@ -62,6 +62,12 @@ public sealed partial class DocumentViewModel : ViewModelBase
 
     internal string? LocalPath { get; private set; }
 
+    /// <summary>
+    /// The project directory path for this document.
+    /// Contains MinerU and Popo output files.
+    /// </summary>
+    internal string? ProjectPath { get; private set; }
+
     public bool IsActive => _pdfService.IsActive;
 
     [ObservableProperty] private ObservableCollection<PageViewModel> _pages = [];
@@ -306,6 +312,14 @@ public sealed partial class DocumentViewModel : ViewModelBase
     public void SetInactive()
     {
         _pdfService.IsActive = false;
+    }
+
+    /// <summary>
+    /// Sets the project path for this document (called by PdfDocumentsManagerService).
+    /// </summary>
+    internal void SetProjectPath(string projectPath)
+    {
+        ProjectPath = projectPath;
     }
 
     /// <summary>

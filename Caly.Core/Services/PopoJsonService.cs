@@ -120,6 +120,71 @@ public static class PopoJsonService
     }
 
     /// <summary>
+    /// Loads a PopoDocument from a project's popo/ directory.
+    /// Looks for popo.json in the project's popo/ subdirectory.
+    /// </summary>
+    public static PopoDocument? LoadPopoDocumentFromProject(string? projectPath)
+    {
+        if (string.IsNullOrEmpty(projectPath))
+            return null;
+
+        var popoDir = Path.Combine(projectPath, "popo");
+        if (!Directory.Exists(popoDir))
+            return null;
+
+        // Try to find popo.json in the popo directory
+        var popoJsonPath = Path.Combine(popoDir, "popo.json");
+        if (File.Exists(popoJsonPath))
+        {
+            try
+            {
+                var json = File.ReadAllText(popoJsonPath);
+                return JsonSerializer.Deserialize<PopoDocument>(json, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        // Also try to find middle.json files in mineru/ directory
+        var minerUDir = Path.Combine(projectPath, "mineru");
+        if (Directory.Exists(minerUDir))
+        {
+            var middleJsonFiles = Directory.GetFiles(minerUDir, "*_middle.json", SearchOption.AllDirectories);
+            if (middleJsonFiles.Length > 0)
+            {
+                return TryParseMinerUMiddleJson(middleJsonFiles[0]);
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Saves a PopoDocument to a project's popo/ directory.
+    /// </summary>
+    public static void SavePopoDocumentToProject(PopoDocument doc, string projectPath)
+    {
+        if (string.IsNullOrEmpty(projectPath))
+            return;
+
+        var popoDir = Path.Combine(projectPath, "popo");
+        Directory.CreateDirectory(popoDir);
+
+        var popoJsonPath = Path.Combine(popoDir, "popo.json");
+        var json = JsonSerializer.Serialize(doc, new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            PropertyNameCaseInsensitive = true
+        });
+        File.WriteAllText(popoJsonPath, json);
+    }
+
+    /// <summary>
     /// Loads a complete PopoDocument from JSON files.
     /// </summary>
     public static PopoDocument? LoadPopoDocument(string pdfPath, string modelName = DefaultModelName)
