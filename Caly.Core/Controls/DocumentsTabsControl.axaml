@@ -190,6 +190,36 @@
 								   VerticalAlignment="Center"
 								   HorizontalAlignment="Center"/>
 
+						<!-- Toggle MinerU Column -->
+						<ToggleButton DockPanel.Dock="Left"
+                                       Margin="5,0,0,0"
+									   HorizontalAlignment="Center"
+									   VerticalAlignment="Stretch"
+									   Background="Transparent"
+									   Command="{Binding ToggleMinerUColumnCommand}"
+									   IsChecked="{Binding ShowMinerUColumn}">
+							<PathIcon Width="17"
+									  Height="17"
+									  Data="{StaticResource mineru_blocks_regular}">
+								<ToolTip.Tip>Toggle MinerU Blocks</ToolTip.Tip>
+							</PathIcon>
+						</ToggleButton>
+
+						<!-- Toggle Popo Column -->
+						<ToggleButton DockPanel.Dock="Left"
+                                       Margin="0,0,0,0"
+									   HorizontalAlignment="Center"
+									   VerticalAlignment="Stretch"
+									   Background="Transparent"
+									   Command="{Binding TogglePopoColumnCommand}"
+									   IsChecked="{Binding ShowPopoColumn}">
+							<PathIcon Width="17"
+									  Height="17"
+									  Data="{StaticResource popo_blocks_regular}">
+								<ToolTip.Tip>Toggle Popo Blocks</ToolTip.Tip>
+							</PathIcon>
+						</ToggleButton>
+
 						<controls:VerticalSeparator/>
 
 						<!-- MinerU AI Parse -->
@@ -206,36 +236,6 @@
 								<ToolTip.Tip>AI Parse with MinerU</ToolTip.Tip>
 							</PathIcon>
 						</Button>
-
-						<!-- Toggle MinerU Column -->
-						<ToggleButton DockPanel.Dock="Right"
-                                       Margin="0,0,5,0"
-									   HorizontalAlignment="Center"
-									   VerticalAlignment="Stretch"
-									   Background="Transparent"
-									   Command="{Binding ToggleMinerUColumnCommand}"
-									   IsChecked="{Binding ShowMinerUColumn}">
-							<PathIcon Width="17"
-									  Height="17"
-									  Data="{StaticResource mineru_blocks_regular}">
-								<ToolTip.Tip>Toggle MinerU Blocks</ToolTip.Tip>
-							</PathIcon>
-						</ToggleButton>
-
-						<!-- Toggle Popo Column -->
-						<ToggleButton DockPanel.Dock="Right"
-                                        Margin="0,0,5,0"
-									   HorizontalAlignment="Center"
-									   VerticalAlignment="Stretch"
-									   Background="Transparent"
-									   Command="{Binding TogglePopoColumnCommand}"
-									   IsChecked="{Binding ShowPopoColumn}">
-							<PathIcon Width="17"
-									  Height="17"
-									  Data="{StaticResource popo_blocks_regular}">
-								<ToolTip.Tip>Toggle Popo Blocks</ToolTip.Tip>
-							</PathIcon>
-						</ToggleButton>
 
 						<!-- Print -->
 						<Button DockPanel.Dock="Right"
