@@ -275,8 +275,7 @@ public sealed class MinerUService : IDisposable
     /// <summary>
     /// Polls the task status until it completes or fails.
     /// Calls onProgress at each status change.
-    /// Note: MinerU v3.4.0 no longer provides a "progress" field,
-    /// so progress is inferred from status transitions.
+    /// If the API returns a "progress" field, uses it for accurate progress reporting.
     /// </summary>
     public async Task PollUntilCompleteAsync(
         string taskId,
@@ -296,10 +295,10 @@ public sealed class MinerUService : IDisposable
                     ? MinerUParseStatus.Queued
                     : MinerUParseStatus.Processing;
 
-                // Infer progress from status (v3.4.0 no longer returns progress)
-                var progress = minerUStatus == MinerUParseStatus.Queued ? 20 : 50;
+                // Use real progress from API if available, otherwise infer from status
+                var progress = status.Progress?.Percent ?? (minerUStatus == MinerUParseStatus.Queued ? 20 : 50);
 
-                // Only update if progress changed significantly
+                // Only update if progress changed
                 if (progress != lastProgress)
                 {
                     lastProgress = progress;
@@ -320,11 +319,96 @@ public sealed class MinerUService : IDisposable
             else
             {
                 // Unknown status, treat as running
-                var progress = 35;
+                var progress = status.Progress?.Percent ?? 35;
                 if (progress != lastProgress)
                 {
                     lastProgress = progress;
                     onProgress?.Invoke(MinerUParseStatus.Processing, progress);
+                }
+            }
+
+            await Task.Delay(DefaultPollInterval, ct);
+        }
+    }
+
+    /// <summary>
+    /// Polls the task status until it completes or fails, with detailed progress info.
+    /// Calls onProgress with the MinerUTaskProgress when available from the API.
+    /// Always updates UI every poll when API returns progress data to ensure
+    /// stage/page changes are reflected even if percent hasn't changed.
+    /// </summary>
+    public async Task PollUntilCompleteAsync(
+        string taskId,
+        Action<MinerUParseStatus, int, MinerUTaskProgress?>? onProgress = null,
+        CancellationToken ct = default)
+    {
+        int lastProgress = 15;
+        int? lastPercent = null;
+        int lastCurrentPage = 0;
+        string? lastStage = null;
+        int pollCount = 0;
+
+        while (!ct.IsCancellationRequested)
+        {
+            var status = await GetTaskStatusAsync(taskId, ct);
+            pollCount++;
+
+            // Debug logging: log every API response to see real return values
+            var progressInfo = status.Progress;
+            var progressStr = progressInfo != null
+                ? $"percent={progressInfo.Percent}, page={progressInfo.CurrentPage}/{progressInfo.TotalPages}, stage={progressInfo.Stage}"
+                : "null";
+            var logMsg = $"[MinerU Poll #{pollCount}] Status={status.Status}, Progress={progressStr}, QueuedAhead={status.QueuedAhead}";
+            System.Diagnostics.Debug.WriteLine(logMsg);
+            System.Console.WriteLine(logMsg);
+
+            if (status.IsRunning)
+            {
+                // Map MinerU status to our progress
+                var minerUStatus = status.Status == "pending"
+                    ? MinerUParseStatus.Queued
+                    : MinerUParseStatus.Processing;
+
+                // Use real progress from API if available, otherwise infer from status
+                var progress = status.Progress?.Percent ?? (minerUStatus == MinerUParseStatus.Queued ? 20 : 50);
+
+                // Check if any progress detail has changed
+                bool percentChanged = status.Progress != null && status.Progress.Percent != lastPercent;
+                bool pageChanged = status.Progress != null && status.Progress.CurrentPage != lastCurrentPage;
+                bool stageChanged = status.Progress != null && status.Progress.Stage != lastStage;
+                bool hasNewProgress = status.Progress != null && lastPercent == null;
+
+                if (progress != lastProgress || hasNewProgress || percentChanged || pageChanged || stageChanged)
+                {
+                    lastProgress = progress;
+                    if (status.Progress != null)
+                    {
+                        lastPercent = status.Progress.Percent;
+                        lastCurrentPage = status.Progress.CurrentPage;
+                        lastStage = status.Progress.Stage;
+                    }
+                    onProgress?.Invoke(minerUStatus, progress, status.Progress);
+                }
+            }
+            else if (status.IsCompleted)
+            {
+                onProgress?.Invoke(MinerUParseStatus.Downloading, 70, null);
+                return;
+            }
+            else if (status.IsFailed)
+            {
+                onProgress?.Invoke(MinerUParseStatus.Failed, -1, null);
+                var errorMessage = status.GetErrorMessage() ?? "Unknown error";
+                throw new MinerUServiceException($"MinerU task failed: {errorMessage}");
+            }
+            else
+            {
+                // Unknown status, treat as running
+                var progress = status.Progress?.Percent ?? 35;
+                if (progress != lastProgress)
+                {
+                    lastProgress = progress;
+                    onProgress?.Invoke(MinerUParseStatus.Processing, progress, status.Progress);
                 }
             }
 

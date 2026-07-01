@@ -50,6 +50,30 @@ public sealed partial class DocumentViewModel
     private bool _isMinerUParsing;
 
     /// <summary>
+    /// Current page being processed (from MinerU progress API).
+    /// </summary>
+    [ObservableProperty]
+    private int _minerUCurrentPage;
+
+    /// <summary>
+    /// Total pages in the document (from MinerU progress API).
+    /// </summary>
+    [ObservableProperty]
+    private int _minerUTotalPages;
+
+    /// <summary>
+    /// Current processing stage name (e.g., "Text Recognition").
+    /// </summary>
+    [ObservableProperty]
+    private string _minerUCurrentStage = string.Empty;
+
+    /// <summary>
+    /// Formatted detail string for progress display (e.g., "Text Recognition | Page 59/114").
+    /// </summary>
+    [ObservableProperty]
+    private string _minerUProgressDetail = string.Empty;
+
+    /// <summary>
     /// Whether MinerU AI parsing is enabled (reads from CalySettings).
     /// </summary>
     public bool MinerUEnabled => CalySettings.Default.MinerUEnabled;
@@ -280,7 +304,7 @@ public sealed partial class DocumentViewModel
             MinerUProgress = 15;
             MinerUStatusText = MinerUParseStatus.Queued.ToDisplayName();
 
-            await service.PollUntilCompleteAsync(taskId, OnMinerUProgress, _minerUCts.Token);
+            await service.PollUntilCompleteAsync(taskId, OnMinerUProgressDetailed, _minerUCts.Token);
 
             // Download result
             MinerUStatus = MinerUParseStatus.Downloading;
@@ -506,7 +530,7 @@ public sealed partial class DocumentViewModel
     #region Progress Callback
 
     /// <summary>
-    /// Called by MinerUService during parsing to report progress updates.
+    /// Called by MinerUService during parsing to report progress updates (simple version).
     /// Ensures all property updates happen on the UI thread.
     /// </summary>
     private void OnMinerUProgress(MinerUParseStatus status, int progress)
@@ -516,6 +540,45 @@ public sealed partial class DocumentViewModel
             MinerUStatus = status;
             MinerUProgress = progress;
             MinerUStatusText = status.ToDisplayName();
+        });
+    }
+
+    /// <summary>
+    /// Called by MinerUService during parsing to report detailed progress updates.
+    /// Includes page info and stage from the MinerU progress API.
+    /// </summary>
+    private void OnMinerUProgressDetailed(MinerUParseStatus status, int progress, MinerUTaskProgress? progressInfo)
+    {
+        Dispatcher.UIThread.Invoke(() =>
+        {
+            MinerUStatus = status;
+            MinerUProgress = progress;
+
+            if (progressInfo != null)
+            {
+                MinerUCurrentPage = progressInfo.CurrentPage;
+                MinerUTotalPages = progressInfo.TotalPages;
+                MinerUCurrentStage = progressInfo.Stage ?? string.Empty;
+                MinerUProgressDetail = progressInfo.ToDisplayString();
+
+                // Build a more descriptive status text
+                if (!string.IsNullOrEmpty(progressInfo.Stage))
+                {
+                    MinerUStatusText = $"{status.ToDisplayName()} {progress}% - {progressInfo.ToDisplayString()}";
+                }
+                else
+                {
+                    MinerUStatusText = $"{status.ToDisplayName()} {progress}%";
+                }
+            }
+            else
+            {
+                MinerUCurrentPage = 0;
+                MinerUTotalPages = 0;
+                MinerUCurrentStage = string.Empty;
+                MinerUProgressDetail = string.Empty;
+                MinerUStatusText = status.ToDisplayName();
+            }
         });
     }
 

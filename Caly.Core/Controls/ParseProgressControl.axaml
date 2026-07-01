@@ -24,7 +24,7 @@
 					        BorderThickness="0,1"
 					        BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
 					        Padding="12,8">
-						<StackPanel Spacing="6"
+						<StackPanel Spacing="8"
 						            Orientation="Horizontal">
 							<!-- Status Icon -->
 							<PathIcon Width="16"
@@ -36,6 +36,24 @@
 							<TextBlock Text="{Binding MinerUStatusText}"
 							           FontSize="12"
 							           VerticalAlignment="Center"/>
+
+							<!-- Progress Detail (Stage | Page X/Y) - shown with separator when available -->
+							<Panel>
+								<StackPanel Spacing="4"
+								            Orientation="Horizontal"
+								            IsVisible="{Binding MinerUProgressDetail, Mode=OneWay}">
+									<!-- Separator dot -->
+									<TextBlock Text="•"
+									           FontSize="10"
+									           VerticalAlignment="Center"
+									           Opacity="0.5"/>
+									<!-- Detail text -->
+									<TextBlock Text="{Binding MinerUProgressDetail}"
+									           FontSize="11"
+									           VerticalAlignment="Center"
+									           Opacity="0.6"/>
+								</StackPanel>
+							</Panel>
 
 							<!-- Progress Bar -->
 							<ProgressBar Width="150"

@@ -121,7 +121,7 @@ public static class PopoJsonService
 
     /// <summary>
     /// Loads a PopoDocument from a project's popo/ directory.
-    /// Looks for popo.json in the project's popo/ subdirectory.
+    /// Looks for popo.json in the project's popo/ subdirectory only.
     /// </summary>
     public static PopoDocument? LoadPopoDocumentFromProject(string? projectPath)
     {
@@ -150,15 +150,27 @@ public static class PopoJsonService
             }
         }
 
-        // Also try to find middle.json files in mineru/ directory
+        return null;
+    }
+
+    /// <summary>
+    /// Loads a MinerU parse result produced in the project's mineru/ directory.
+    /// This is a separate stage from Popo post-processing and may return a
+    /// PopoDocument built from MinerU middle.json output.
+    /// </summary>
+    public static PopoDocument? LoadMinerUResultFromProject(string? projectPath)
+    {
+        if (string.IsNullOrEmpty(projectPath))
+            return null;
+
         var minerUDir = Path.Combine(projectPath, "mineru");
-        if (Directory.Exists(minerUDir))
+        if (!Directory.Exists(minerUDir))
+            return null;
+
+        var minerUMiddleJsonFiles = Directory.GetFiles(minerUDir, "*_middle.json", SearchOption.AllDirectories);
+        if (minerUMiddleJsonFiles.Length > 0)
         {
-            var middleJsonFiles = Directory.GetFiles(minerUDir, "*_middle.json", SearchOption.AllDirectories);
-            if (middleJsonFiles.Length > 0)
-            {
-                return TryParseMinerUMiddleJson(middleJsonFiles[0]);
-            }
+            return TryParseMinerUMiddleJson(minerUMiddleJsonFiles[0]);
         }
 
         return null;
@@ -558,32 +570,106 @@ public static class PopoJsonService
             {
                 foreach (var entry in pageSizeElem.EnumerateObject())
                 {
-                    if (int.TryParse(entry.Name, out var pageNum) && entry.Value.GetArrayLength() >= 2)
+                    if (int.TryParse(entry.Name, out var pageNum) && entry.Value.ValueKind == JsonValueKind.Array && entry.Value.GetArrayLength() >= 2)
                     {
-                        pageSizeMap[pageNum] = (entry.Value[0].GetDouble(), entry.Value[1].GetDouble());
+                        pageSizeMap[pageNum] = (
+                            GetDoubleValue(entry.Value[0]),
+                            GetDoubleValue(entry.Value[1]));
                     }
                 }
             }
 
             // 1. Parse pages -> PagesBlocks
-            if (root.TryGetProperty("pages", out var pagesElem) && pagesElem.ValueKind == JsonValueKind.Object)
+            if (root.TryGetProperty("pages", out var pagesElem))
             {
-                foreach (var pageEntry in pagesElem.EnumerateObject())
+                if (pagesElem.ValueKind == JsonValueKind.Object)
                 {
-                    if (!int.TryParse(pageEntry.Name, out var pageNum))
+                    foreach (var pageEntry in pagesElem.EnumerateObject())
+                    {
+                        if (!int.TryParse(pageEntry.Name, out var pageNum))
+                            continue;
+
+                        var blocks = new List<PopoBlock>();
+                        var pageWidth = pageSizeMap.TryGetValue(pageNum, out var size) ? size.width : 0.0;
+                        var pageHeight = pageSizeMap.TryGetValue(pageNum, out size) ? size.height : 0.0;
+
+                        foreach (var blockElem in pageEntry.Value.EnumerateArray())
+                        {
+                            var block = MapMinerUBlockToPopoBlock(blockElem, pageWidth, pageHeight);
+                            blocks.Add(block);
+                        }
+
+                        popoDoc.PagesBlocks[pageNum] = blocks;
+                    }
+                }
+                else if (pagesElem.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var pageEntry in pagesElem.EnumerateArray())
+                    {
+                        if (!pageEntry.TryGetProperty("page", out var pageElem))
+                            continue;
+
+                        var pageNum = GetIntValue(pageElem);
+                        if (pageNum <= 0)
+                            continue;
+
+                        var blocks = new List<PopoBlock>();
+                        var pageWidth = pageSizeMap.TryGetValue(pageNum, out var size) ? size.width : 0.0;
+                        var pageHeight = pageSizeMap.TryGetValue(pageNum, out size) ? size.height : 0.0;
+
+                        if (pageEntry.TryGetProperty("blocks", out var blocksElem) && blocksElem.ValueKind == JsonValueKind.Array)
+                        {
+                            foreach (var blockElem in blocksElem.EnumerateArray())
+                            {
+                                var block = MapMinerUBlockToPopoBlock(blockElem, pageWidth, pageHeight);
+                                blocks.Add(block);
+                            }
+                        }
+
+                        if (blocks.Count > 0)
+                            popoDoc.PagesBlocks[pageNum] = blocks;
+                    }
+                }
+            }
+
+            // 2. Parse pdf_info -> PagesBlocks (actual MinerU output format seen in the wild)
+            if (root.TryGetProperty("pdf_info", out var pdfInfoElem) && pdfInfoElem.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var pageInfoElem in pdfInfoElem.EnumerateArray())
+                {
+                    var pageNum = pageInfoElem.TryGetProperty("page_idx", out var pageIdxElem)
+                        ? GetIntValue(pageIdxElem)
+                        : 0;
+
+                    if (pageNum <= 0)
                         continue;
 
-                    var blocks = new List<PopoBlock>();
-                    var pageWidth = pageSizeMap.TryGetValue(pageNum, out var size) ? size.width : 0.0;
-                    var pageHeight = pageSizeMap.TryGetValue(pageNum, out size) ? size.height : 0.0;
+                    var pageWidth = pageInfoElem.TryGetProperty("page_size", out var pageSizeElemForPage) && pageSizeElemForPage.ValueKind == JsonValueKind.Array && pageSizeElemForPage.GetArrayLength() >= 2
+                        ? GetDoubleValue(pageSizeElemForPage[0])
+                        : 0.0;
+                    var pageHeight = pageInfoElem.TryGetProperty("page_size", out var pageSizeElemForPage2) && pageSizeElemForPage2.ValueKind == JsonValueKind.Array && pageSizeElemForPage2.GetArrayLength() >= 2
+                        ? GetDoubleValue(pageSizeElemForPage2[1])
+                        : 0.0;
 
-                    foreach (var blockElem in pageEntry.Value.EnumerateArray())
+                    var blocks = new List<PopoBlock>();
+                    foreach (var sectionName in new[] { "preproc_blocks", "para_blocks", "discarded_blocks" })
                     {
-                        var block = MapMinerUBlockToPopoBlock(blockElem, pageWidth, pageHeight);
-                        blocks.Add(block);
+                        if (!pageInfoElem.TryGetProperty(sectionName, out var sectionElem) || sectionElem.ValueKind != JsonValueKind.Array)
+                            continue;
+
+                        foreach (var blockElem in sectionElem.EnumerateArray())
+                        {
+                            blocks.AddRange(MapMinerUPageSectionToBlocks(blockElem, pageNum, pageWidth, pageHeight));
+                        }
                     }
 
-                    popoDoc.PagesBlocks[pageNum] = blocks;
+                    if (blocks.Count > 0)
+                    {
+                        if (!popoDoc.PagesBlocks.ContainsKey(pageNum))
+                            popoDoc.PagesBlocks[pageNum] = new List<PopoBlock>();
+
+                        popoDoc.PagesBlocks[pageNum].AddRange(blocks);
+                    }
                 }
             }
 
@@ -640,11 +726,21 @@ public static class PopoJsonService
         if (!Directory.Exists(extractedDir))
             return null;
 
-        // Only search for *_middle.json
-        var middleJsonFiles = Directory.GetFiles(extractedDir, "*_middle.json", SearchOption.AllDirectories);
-        if (middleJsonFiles.Length > 0)
+        var jsonFiles = Directory.GetFiles(extractedDir, "*.json", SearchOption.AllDirectories);
+        if (jsonFiles.Length == 0)
+            return null;
+
+        // Prefer standard MinerU middle JSON file names, but fall back to any parseable JSON.
+        var preferredFiles = jsonFiles
+            .Where(path => Path.GetFileName(path).EndsWith("_middle.json", StringComparison.OrdinalIgnoreCase)
+                           || Path.GetFileName(path).Equals("middle.json", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        foreach (var jsonFile in preferredFiles.Concat(jsonFiles.Except(preferredFiles)))
         {
-            return TryParseMinerUMiddleJson(middleJsonFiles[0]);
+            var popoDoc = TryParseMinerUMiddleJson(jsonFile);
+            if (popoDoc is not null)
+                return popoDoc;
         }
 
         return null;
@@ -732,10 +828,10 @@ public static class PopoJsonService
         var block = new PopoBlock();
 
         if (elem.TryGetProperty("id", out var idElem))
-            block.Id = idElem.GetInt32();
+            block.Id = GetIntValue(idElem, block.Id);
 
         if (elem.TryGetProperty("page", out var pageElem))
-            block.Page = pageElem.GetInt32();
+            block.Page = GetIntValue(pageElem, block.Page);
 
         block.Content = GetStringProperty(elem, "content") ?? string.Empty;
 
@@ -755,22 +851,85 @@ public static class PopoJsonService
         }
 
         if (elem.TryGetProperty("contd", out var contdElem))
-            block.Contd = contdElem.GetInt32();
+            block.Contd = GetIntValue(contdElem, block.Contd);
 
         if (elem.TryGetProperty("level", out var levelElem))
         {
-            block.Level = levelElem.GetInt32();
+            block.Level = GetIntValue(levelElem, block.Level);
             if (block.Type == "title")
                 block.TitleLevel = block.Level;
         }
 
         if (elem.TryGetProperty("image", out var imageElem))
-            block.Image = imageElem.GetInt32();
+            block.Image = GetIntValue(imageElem, block.Image);
 
         if (elem.TryGetProperty("table_merge", out var mergeElem))
-            block.TableMerge = mergeElem.GetInt32();
+            block.TableMerge = GetIntValue(mergeElem, block.TableMerge);
 
         return block;
+    }
+
+    static IEnumerable<PopoBlock> MapMinerUPageSectionToBlocks(JsonElement sectionElem, int pageNum, double pageWidth, double pageHeight)
+    {
+        var results = new List<PopoBlock>();
+
+        if (sectionElem.ValueKind != JsonValueKind.Object)
+            return results;
+
+        if (sectionElem.TryGetProperty("blocks", out var blocksElem) && blocksElem.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var blockElem in blocksElem.EnumerateArray())
+            {
+                var block = MapMinerUBlockToPopoBlock(blockElem, pageWidth, pageHeight);
+                if (block.Page <= 0)
+                    block.Page = pageNum;
+                results.Add(block);
+            }
+        }
+
+        // Also support a direct content-bearing block object.
+        if (sectionElem.TryGetProperty("lines", out var linesElem) && linesElem.ValueKind == JsonValueKind.Array)
+        {
+            var block = new PopoBlock
+            {
+                Id = results.Count + 1,
+                Page = pageNum,
+                Type = MapMinerUTypeToPopoType(GetStringProperty(sectionElem, "type") ?? string.Empty),
+                SourceLabel = GetStringProperty(sectionElem, "type") ?? string.Empty,
+                Content = ExtractMinerUContent(sectionElem),
+                Bbox = ParseMinerUBbox(sectionElem.TryGetProperty("bbox", out var bboxElem) ? bboxElem : default, pageWidth, pageHeight)
+            };
+            results.Add(block);
+        }
+
+        return results;
+    }
+
+    static string ExtractMinerUContent(JsonElement elem)
+    {
+        if (elem.TryGetProperty("content", out var contentElem) && contentElem.ValueKind == JsonValueKind.String)
+            return contentElem.GetString() ?? string.Empty;
+
+        if (elem.TryGetProperty("lines", out var linesElem) && linesElem.ValueKind == JsonValueKind.Array)
+        {
+            var parts = new List<string>();
+            foreach (var lineElem in linesElem.EnumerateArray())
+            {
+                if (lineElem.TryGetProperty("spans", out var spansElem) && spansElem.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var spanElem in spansElem.EnumerateArray())
+                    {
+                        var content = GetStringProperty(spanElem, "content");
+                        if (!string.IsNullOrEmpty(content))
+                            parts.Add(content);
+                    }
+                }
+            }
+
+            return string.Join("\n", parts);
+        }
+
+        return string.Empty;
     }
 
     /// <summary>
@@ -807,10 +966,10 @@ public static class PopoJsonService
         if (elem.ValueKind != JsonValueKind.Array || elem.GetArrayLength() < 4)
             return new Rect(0, 0, 0, 0);
 
-        var x1 = elem[0].GetDouble();
-        var y1 = elem[1].GetDouble();
-        var x2 = elem[2].GetDouble();
-        var y2 = elem[3].GetDouble();
+        var x1 = GetDoubleValue(elem[0]);
+        var y1 = GetDoubleValue(elem[1]);
+        var x2 = GetDoubleValue(elem[2]);
+        var y2 = GetDoubleValue(elem[3]);
 
         // If page dimensions provided and coordinates look like absolute pixels (> 1000),
         // normalize to 0-1 range
@@ -852,7 +1011,7 @@ public static class PopoJsonService
                 var entry = new LocationEntry();
 
                 if (loc.TryGetProperty("page", out var pageElem))
-                    entry.Page = pageElem.GetInt32();
+                    entry.Page = GetIntValue(pageElem, entry.Page);
 
                 if (loc.TryGetProperty("bbox", out var bboxElem))
                 {
@@ -870,7 +1029,7 @@ public static class PopoJsonService
         {
             foreach (var id in idsElem.EnumerateArray())
             {
-                node.BlockIds.Add(id.GetInt32());
+                node.BlockIds.Add(GetIntValue(id));
             }
         }
 
@@ -894,6 +1053,26 @@ public static class PopoJsonService
         if (elem.TryGetProperty(propertyName, out var value) && value.ValueKind == JsonValueKind.String)
             return value.GetString();
         return null;
+    }
+
+    static int GetIntValue(JsonElement elem, int defaultValue = 0)
+    {
+        return elem.ValueKind switch
+        {
+            JsonValueKind.Number => elem.GetInt32(),
+            JsonValueKind.String when int.TryParse(elem.GetString(), out var value) => value,
+            _ => defaultValue
+        };
+    }
+
+    static double GetDoubleValue(JsonElement elem, double defaultValue = 0.0)
+    {
+        return elem.ValueKind switch
+        {
+            JsonValueKind.Number => elem.GetDouble(),
+            JsonValueKind.String when double.TryParse(elem.GetString(), out var value) => value,
+            _ => defaultValue
+        };
     }
 
     #endregion

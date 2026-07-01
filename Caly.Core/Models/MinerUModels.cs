@@ -18,7 +18,10 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Text;
 using System.Text.Json.Serialization;
 
 namespace Caly.Core.Models;
@@ -66,9 +69,62 @@ public class MinerUTaskSubmitResponse
 }
 
 /// <summary>
+/// Progress information returned by MinerU during task processing.
+/// </summary>
+public class MinerUTaskProgress
+{
+    /// <summary>
+    /// Progress percentage (0-100).
+    /// </summary>
+    [JsonPropertyName("percent")]
+    public int Percent { get; set; }
+
+    /// <summary>
+    /// Current page being processed (1-based).
+    /// </summary>
+    [JsonPropertyName("current_page")]
+    public int CurrentPage { get; set; }
+
+    /// <summary>
+    /// Total number of pages in the document.
+    /// </summary>
+    [JsonPropertyName("total_pages")]
+    public int TotalPages { get; set; }
+
+    /// <summary>
+    /// Current processing stage (e.g., "text_recognition", "layout_analysis").
+    /// </summary>
+    [JsonPropertyName("stage")]
+    public string? Stage { get; set; }
+
+    /// <summary>
+    /// Gets a user-friendly display string for the progress.
+    /// </summary>
+    public string ToDisplayString()
+    {
+        var parts = new List<string>();
+
+        if (!string.IsNullOrEmpty(Stage))
+        {
+            // Convert snake_case to Title Case
+            var stageDisplay = string.Join(" ",
+                Stage.Split(new[] { '_' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(w => char.ToUpper(w[0]) + w.Substring(1).ToLower()));
+            parts.Add(stageDisplay);
+        }
+
+        if (TotalPages > 0)
+        {
+            parts.Add($"Page {CurrentPage}/{TotalPages}");
+        }
+
+        return string.Join(" | ", parts);
+    }
+}
+
+/// <summary>
 /// Response from GET /tasks/{task_id} endpoint (MinerU v3.4.0+).
-/// Note: MinerU v3.4.0 no longer returns "progress" field.
-/// Progress is now inferred from status transitions.
+/// May include a "progress" field with detailed progress information.
 /// </summary>
 public class MinerUTaskStatusResponse
 {
@@ -98,6 +154,9 @@ public class MinerUTaskStatusResponse
 
     [JsonPropertyName("error")]
     public string? Error { get; set; }
+
+    [JsonPropertyName("progress")]
+    public MinerUTaskProgress? Progress { get; set; }
 
     [JsonPropertyName("status_url")]
     public string? StatusUrl { get; set; }
