@@ -366,6 +366,142 @@ public sealed class MinerUService : IDisposable
         return Path.Combine(_cacheDirectory, $"extract_{docId}");
     }
 
+    #region Task ID Persistence
+
+    /// <summary>
+    /// Gets the path to the task_id.json file for a given PDF.
+    /// </summary>
+    private string GetTaskIdFilePath(string pdfPath)
+    {
+        var docId = Path.GetFileNameWithoutExtension(pdfPath);
+        return Path.Combine(_cacheDirectory, $"{docId}_task_id.json");
+    }
+
+    /// <summary>
+    /// Saves the current task ID to disk so it can be recovered on a subsequent launch.
+    /// </summary>
+    public void SaveTaskId(string pdfPath, string taskId)
+    {
+        try
+        {
+            var path = GetTaskIdFilePath(pdfPath);
+            var data = new
+            {
+                taskId = taskId,
+                pdfPath = pdfPath,
+                createdAt = DateTimeOffset.UtcNow.ToString("O")
+            };
+            var json = JsonSerializer.Serialize(data, new JsonSerializerOptions
+            {
+                WriteIndented = true
+            });
+            File.WriteAllText(path, json);
+        }
+        catch
+        {
+            // Non-critical: task ID persistence failure is tolerable
+        }
+    }
+
+    /// <summary>
+    /// Loads a previously saved task ID for the given PDF.
+    /// Returns null if no pending task exists.
+    /// </summary>
+    public string? LoadTaskId(string pdfPath)
+    {
+        try
+        {
+            var path = GetTaskIdFilePath(pdfPath);
+            if (!File.Exists(path))
+                return null;
+
+            var json = File.ReadAllText(path);
+            using var doc = JsonDocument.Parse(json);
+            return doc.RootElement.TryGetProperty("taskId", out var idElem)
+                ? idElem.GetString()
+                : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Clears the saved task ID after the task completes or fails.
+    /// </summary>
+    public void ClearTaskId(string pdfPath)
+    {
+        try
+        {
+            var path = GetTaskIdFilePath(pdfPath);
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+        catch
+        {
+            // Non-critical
+        }
+    }
+
+    /// <summary>
+    /// Resumes a previously submitted task: checks status, polls if still running,
+    /// downloads the result when complete, and builds the parse result.
+    /// </summary>
+    public async Task<MinerUParseResult> ResumeTaskAsync(
+        string taskId,
+        string pdfPath,
+        Action<MinerUParseStatus, int>? onProgress = null,
+        CancellationToken ct = default)
+    {
+        // Check current status
+        var status = await GetTaskStatusAsync(taskId, ct);
+
+        string resultZip;
+
+        if (status.IsCompleted)
+        {
+            // Task already completed, just download
+            onProgress?.Invoke(MinerUParseStatus.Downloading, 70);
+            resultZip = await DownloadResultAsync(taskId, pdfPath, ct);
+        }
+        else if (status.IsFailed)
+        {
+            onProgress?.Invoke(MinerUParseStatus.Failed, -1);
+            var errorMessage = status.GetErrorMessage() ?? "Unknown error";
+            throw new MinerUServiceException($"MinerU task failed: {errorMessage}");
+        }
+        else
+        {
+            // Task is still running, continue polling
+            onProgress?.Invoke(MinerUParseStatus.Processing, 50);
+            await PollUntilCompleteAsync(taskId, onProgress, ct);
+
+            // Download result
+            onProgress?.Invoke(MinerUParseStatus.Downloading, 70);
+            resultZip = await DownloadResultAsync(taskId, pdfPath, ct);
+        }
+
+        onProgress?.Invoke(MinerUParseStatus.Caching, 80);
+        return await BuildParseResultAsync(resultZip, pdfPath, onProgress, ct);
+    }
+
+    /// <summary>
+    /// Builds a parse result from an already-downloaded ZIP file.
+    /// This is a public wrapper around the private BuildParseResultAsync for use by the ViewModel
+    /// when orchestrating the parse flow step-by-step.
+    /// </summary>
+    public Task<MinerUParseResult> BuildParseResultFromZipAsync(
+        string zipPath,
+        string sourcePdfPath,
+        Action<MinerUParseStatus, int>? onProgress,
+        CancellationToken ct)
+    {
+        return BuildParseResultAsync(zipPath, sourcePdfPath, onProgress, ct);
+    }
+
+    #endregion
+
     #region Cache Operations
 
     /// <summary>

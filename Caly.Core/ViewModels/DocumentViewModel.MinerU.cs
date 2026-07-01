@@ -129,8 +129,7 @@ public sealed partial class DocumentViewModel
 
     /// <summary>
     /// Parses the current document using MinerU AI service.
-    /// First checks for cached results, then uploads the PDF, waits for parsing,
-    /// downloads the result, and loads the PopoDocument.
+    /// Flow: 1) Check cache → 2) Check pending task ID → 3) Submit new task.
     /// If called while already parsing, cancels the current operation.
     /// </summary>
     [RelayCommand]
@@ -154,7 +153,7 @@ public sealed partial class DocumentViewModel
 
         var service = GetMinerUService();
 
-        // Try to load from cache first (avoids unnecessary network requests)
+        // Step 1: Try to load from cache first (avoids unnecessary network requests)
         var cachedResult = service.TryLoadFromCache(LocalPath);
         if (cachedResult?.PopoDocument is not null)
         {
@@ -166,13 +165,90 @@ public sealed partial class DocumentViewModel
             return;
         }
 
-        // Clean up old extracted directories before starting a new parse
+        // Step 2: Check for a pending task ID from a previous session
+        var pendingTaskId = service.LoadTaskId(LocalPath);
+        if (pendingTaskId is not null)
+        {
+            _minerUCts = new CancellationTokenSource();
+            IsMinerUParsing = true;
+            ShowMinerUColumn = true;
+            MinerUStatus = MinerUParseStatus.Processing;
+            MinerUProgress = 50;
+            MinerUStatusText = "Resuming previous task...";
+
+            try
+            {
+                // Health check before resuming
+                if (!await service.HealthCheckAsync(_minerUCts.Token))
+                {
+                    // Service unavailable, clear stale task ID and let user retry
+                    service.ClearTaskId(LocalPath);
+                    MinerUStatus = MinerUParseStatus.Failed;
+                    MinerUStatusText = "MinerU service unavailable";
+                    MinerUProgress = 0;
+                    return;
+                }
+
+                var result = await service.ResumeTaskAsync(
+                    pendingTaskId,
+                    LocalPath,
+                    OnMinerUProgress,
+                    _minerUCts.Token);
+
+                // Load result
+                LoadParseResult(result);
+                await SaveParseResultAsync(result);
+
+                // Clear the task ID on success
+                service.ClearTaskId(LocalPath);
+
+                MinerUStatus = MinerUParseStatus.Completed;
+                MinerUProgress = 100;
+                MinerUStatusText = "Parse completed (resumed)";
+                return;
+            }
+            catch (OperationCanceledException)
+            {
+                MinerUStatus = MinerUParseStatus.Idle;
+                MinerUProgress = 0;
+                MinerUStatusText = "Parse cancelled";
+                return;
+            }
+            catch (MinerUServiceException ex)
+            {
+                // Task failed on server side - clear task ID so user can retry
+                service.ClearTaskId(LocalPath);
+                MinerUStatus = MinerUParseStatus.Failed;
+                MinerUProgress = 0;
+                MinerUStatusText = $"Resume failed: {ex.Message}";
+
+                // Fall through to submit a new task below
+            }
+            catch (Exception ex)
+            {
+                service.ClearTaskId(LocalPath);
+                MinerUStatus = MinerUParseStatus.Failed;
+                MinerUProgress = 0;
+                MinerUStatusText = $"Error: {ex.Message}";
+                return;
+            }
+            finally
+            {
+                IsMinerUParsing = false;
+                _minerUCts?.Dispose();
+                _minerUCts = null;
+            }
+
+            // If resume failed, fall through to submit a new task
+        }
+
+        // Step 3: Submit a new parse task
         var docId = Path.GetFileNameWithoutExtension(LocalPath);
         service.ClearOldExtractedDirs(docId);
 
         _minerUCts = new CancellationTokenSource();
         IsMinerUParsing = true;
-        ShowMinerUColumn = true; // Auto-open MinerU column to show progress in-place
+        ShowMinerUColumn = true;
         MinerUStatus = MinerUParseStatus.Submitting;
         MinerUProgress = 0;
         MinerUStatusText = MinerUParseStatus.Submitting.ToDisplayName();
@@ -190,43 +266,46 @@ public sealed partial class DocumentViewModel
                 return;
             }
 
-            // Full parse flow: submit → poll → download → parse → load
-            var result = await service.ParseAsync(
+            // Submit the task and immediately persist the task ID
+            var taskId = await service.SubmitTaskAsync(
                 LocalPath,
                 settings.MinerUBackend,
-                OnMinerUProgress,
                 _minerUCts.Token);
 
-            System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] ParseAsync returned: PopoDocument={result.PopoDocument != null}, ZipPath={result.ZipPath}, ArtifactsDir={result.ArtifactsDirectory}");
+            // Save task ID so it can be recovered if the app closes
+            service.SaveTaskId(LocalPath, taskId);
+
+            // Poll until complete
+            MinerUStatus = MinerUParseStatus.Queued;
+            MinerUProgress = 15;
+            MinerUStatusText = MinerUParseStatus.Queued.ToDisplayName();
+
+            await service.PollUntilCompleteAsync(taskId, OnMinerUProgress, _minerUCts.Token);
+
+            // Download result
+            MinerUStatus = MinerUParseStatus.Downloading;
+            MinerUProgress = 70;
+            MinerUStatusText = MinerUParseStatus.Downloading.ToDisplayName();
+
+            var zipPath = await service.DownloadResultAsync(taskId, LocalPath, _minerUCts.Token);
+
+            // Build result
+            MinerUStatus = MinerUParseStatus.Caching;
+            MinerUProgress = 80;
+            MinerUStatusText = MinerUParseStatus.Caching.ToDisplayName();
+
+            var result = await service.BuildParseResultFromZipAsync(zipPath, LocalPath, OnMinerUProgress, _minerUCts.Token);
+
+            System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] Parse completed: PopoDocument={result.PopoDocument != null}, ZipPath={result.ZipPath}, ArtifactsDir={result.ArtifactsDirectory}");
 
             // Load result into Popo properties
             LoadParseResult(result);
 
             // Save result to project for persistence
-            if (result.PopoDocument is not null && ProjectPath is not null)
-            {
-                try
-                {
-                    PopoJsonService.SavePopoDocumentToProject(result.PopoDocument, ProjectPath);
-                }
-                catch
-                {
-                    // Non-critical: ignore save errors
-                }
-            }
+            await SaveParseResultAsync(result);
 
-            // Save the MinerU ZIP to the project folder for Popo upload
-            if (!string.IsNullOrEmpty(result.ZipPath) && ProjectPath is not null)
-            {
-                try
-                {
-                    PopoJsonService.SaveMinerUZipToProject(result.ZipPath, ProjectPath, docId);
-                }
-                catch
-                {
-                    // Non-critical: ignore ZIP save errors
-                }
-            }
+            // Clear task ID on success
+            service.ClearTaskId(LocalPath);
 
             MinerUStatus = MinerUParseStatus.Completed;
             MinerUProgress = 100;
@@ -234,18 +313,22 @@ public sealed partial class DocumentViewModel
         }
         catch (OperationCanceledException)
         {
+            // On cancel, keep the task ID so user can resume later
             MinerUStatus = MinerUParseStatus.Idle;
             MinerUProgress = 0;
             MinerUStatusText = "Parse cancelled";
         }
         catch (MinerUServiceException ex)
         {
+            // On failure, clear task ID so user can retry
+            service.ClearTaskId(LocalPath);
             MinerUStatus = MinerUParseStatus.Failed;
             MinerUProgress = 0;
             MinerUStatusText = $"Parse failed: {ex.Message}";
         }
         catch (Exception ex)
         {
+            service.ClearTaskId(LocalPath);
             MinerUStatus = MinerUParseStatus.Failed;
             MinerUProgress = 0;
             MinerUStatusText = $"Error: {ex.Message}";
@@ -255,6 +338,39 @@ public sealed partial class DocumentViewModel
             IsMinerUParsing = false;
             _minerUCts?.Dispose();
             _minerUCts = null;
+        }
+    }
+
+    /// <summary>
+    /// Saves the parse result to the project for persistence.
+    /// </summary>
+    private async Task SaveParseResultAsync(MinerUParseResult result)
+    {
+        // Save result to project for persistence
+        if (result.PopoDocument is not null && ProjectPath is not null)
+        {
+            try
+            {
+                PopoJsonService.SavePopoDocumentToProject(result.PopoDocument, ProjectPath);
+            }
+            catch
+            {
+                // Non-critical: ignore save errors
+            }
+        }
+
+        // Save the MinerU ZIP to the project folder for Popo upload
+        if (!string.IsNullOrEmpty(result.ZipPath) && ProjectPath is not null)
+        {
+            try
+            {
+                var docId = Path.GetFileNameWithoutExtension(LocalPath!);
+                PopoJsonService.SaveMinerUZipToProject(result.ZipPath, ProjectPath, docId);
+            }
+            catch
+            {
+                // Non-critical: ignore ZIP save errors
+            }
         }
     }
 
