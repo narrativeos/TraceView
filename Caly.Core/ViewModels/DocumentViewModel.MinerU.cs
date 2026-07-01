@@ -337,6 +337,56 @@ public sealed partial class DocumentViewModel
 
     #endregion
 
+    #region Auto-Load from Cache
+
+    /// <summary>
+    /// Tries to load MinerU data from the project's mineru/ directory.
+    /// Called silently when opening an existing project.
+    /// </summary>
+    internal void TryLoadMinerUData()
+    {
+        if (ProjectPath is null)
+            return;
+
+        var minerUDir = Path.Combine(ProjectPath, "mineru");
+        if (!Directory.Exists(minerUDir))
+            return;
+
+        // Look for *_middle.json files
+        var middleJsonFiles = Directory.GetFiles(minerUDir, "*_middle.json", SearchOption.AllDirectories);
+        if (middleJsonFiles.Length == 0)
+            return;
+
+        var popoDoc = PopoJsonService.TryParseMinerUMiddleJson(middleJsonFiles[0]);
+        if (popoDoc is null)
+            return;
+
+        // Populate MinerUBlocks
+        MinerUBlocks.Clear();
+        foreach (var block in popoDoc.GetAllBlocks())
+        {
+            MinerUBlocks.Add(new MinerUBlockViewModel(
+                new MinerUMiddlePageBlock
+                {
+                    Id = block.Id,
+                    Page = block.Page,
+                    Type = block.Type,
+                    Content = block.Content,
+                    SourceLabel = block.SourceLabel,
+                    Contd = block.Contd,
+                    Level = block.Level,
+                    Image = block.Image,
+                    Bbox = new double[] { block.Bbox.X, block.Bbox.Y, block.Bbox.Right, block.Bbox.Bottom }
+                }));
+        }
+
+        MinerUStatus = MinerUParseStatus.Completed;
+        MinerUProgress = 100;
+        MinerUStatusText = $"Loaded ({MinerUBlocks.Count} blocks)";
+    }
+
+    #endregion
+
     #region Progress Callback
 
     /// <summary>

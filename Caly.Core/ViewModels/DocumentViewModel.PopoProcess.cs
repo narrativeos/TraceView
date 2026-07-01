@@ -55,12 +55,17 @@ public sealed partial class DocumentViewModel
 
     /// <summary>
     /// Whether there is a MinerU ZIP available for Popo processing.
+    /// Returns false if Popo results already exist (no need to re-process).
     /// </summary>
     public bool HasMinerUZip
     {
         get
         {
             if (ProjectPath is null)
+                return false;
+
+            // Don't show button if Popo result already exists
+            if (HasPopoDocument)
                 return false;
 
             var docId = LocalPath is not null ? Path.GetFileNameWithoutExtension(LocalPath) : null;

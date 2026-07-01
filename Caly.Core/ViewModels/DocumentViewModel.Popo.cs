@@ -23,6 +23,7 @@ using Caly.Core.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System.Collections.ObjectModel;
+using System.IO;
 
 namespace Caly.Core.ViewModels;
 
@@ -66,16 +67,49 @@ public sealed partial class DocumentViewModel
 
     /// <summary>
     /// Attempts to load Popo analysis data for the currently opened document.
-    /// Called after the document is successfully opened.
+    /// Only checks the project's popo/ directory - does NOT fallback to mineru/ data.
+    /// Called silently after the document is successfully opened.
     /// </summary>
     internal void TryLoadPopoData()
     {
-        if (LocalPath is null)
+        if (ProjectPath is null)
             return;
 
-        // Try to load from project's popo directory first, then fallback to default location
-        var popoDoc = PopoJsonService.LoadPopoDocumentFromProject(ProjectPath)
-                    ?? PopoJsonService.LoadPopoDocument(LocalPath);
+        // Only check popo/ directory - no fallback to mineru/
+        var popoDir = Path.Combine(ProjectPath, "popo");
+        if (!Directory.Exists(popoDir))
+            return;
+
+        PopoDocument? popoDoc = null;
+
+        // Try popo.json first
+        var popoJsonPath = Path.Combine(popoDir, "popo.json");
+        if (File.Exists(popoJsonPath))
+        {
+            try
+            {
+                var json = File.ReadAllText(popoJsonPath);
+                popoDoc = System.Text.Json.JsonSerializer.Deserialize<PopoDocument>(json, new System.Text.Json.JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+            }
+            catch
+            {
+                // Ignore parse errors
+            }
+        }
+
+        // Try extract subdirectory
+        if (popoDoc is null)
+        {
+            var extractDir = Path.Combine(popoDir, "extract");
+            if (Directory.Exists(extractDir))
+            {
+                popoDoc = PopoJsonService.TryParsePopoResultDir(extractDir);
+            }
+        }
+
         if (popoDoc is null)
             return;
 

@@ -364,10 +364,14 @@ public sealed partial class DocumentViewModel : ViewModelBase
             _pdfPageService.Initialise();
         }
 
-        // Load Popo analysis data if available
+        // Load cached MinerU and Popo data if available (silent, no progress UI)
         if (pageCount > 0)
         {
-            Dispatcher.UIThread.Invoke(() => TryLoadPopoData());
+            Dispatcher.UIThread.Invoke(() =>
+            {
+                TryLoadMinerUData();  // Load MinerU from mineru/
+                TryLoadPopoData();    // Load Popo from popo/
+            });
         }
 
         return pageCount;
