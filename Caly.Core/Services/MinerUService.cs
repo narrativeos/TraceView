@@ -483,40 +483,12 @@ public sealed class MinerUService : IDisposable
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[MinerU] Failed to extract zip: {ex.Message}");
             throw new MinerUServiceException($"Failed to extract parse result: {ex.Message}", ex);
         }
 
-        // DEBUG: List all extracted files
-        var allFiles = Directory.GetFiles(extractedDir, "*.*", SearchOption.AllDirectories);
-        System.Diagnostics.Debug.WriteLine($"[MinerU DEBUG] Extracted {allFiles.Length} files from zip to {extractedDir}:");
-        foreach (var f in allFiles)
-        {
-            System.Diagnostics.Debug.WriteLine($"  [MinerU DEBUG]   - {Path.GetRelativePath(extractedDir, f)}");
-        }
-
-        // Use the already-extracted directory (no redundant extraction)
+        // Parse the extracted directory
         var popoDoc = await Task.Run(() =>
             PopoJsonService.TryParseMinerUFromExtractedDir(extractedDir), ct);
-
-        // DEBUG: Report parsing result
-        if (popoDoc is null)
-        {
-            System.Diagnostics.Debug.WriteLine($"[MinerU DEBUG] PopoJsonService.TryParseMinerUFromExtractedDir returned NULL!");
-            var jsonFiles = Directory.GetFiles(extractedDir, "*.json", SearchOption.AllDirectories);
-            System.Diagnostics.Debug.WriteLine($"[MinerU DEBUG] JSON files found: {jsonFiles.Length}");
-            foreach (var jf in jsonFiles)
-            {
-                var content = File.ReadAllText(jf);
-                var preview = content.Length > 500 ? content.Substring(0, 500) + "..." : content;
-                System.Diagnostics.Debug.WriteLine($"[MinerU DEBUG]   JSON: {Path.GetRelativePath(extractedDir, jf)} ({content.Length} chars)");
-                System.Diagnostics.Debug.WriteLine($"[MinerU DEBUG]     Preview: {preview}");
-            }
-        }
-        else
-        {
-            System.Diagnostics.Debug.WriteLine($"[MinerU DEBUG] PopoDocument parsed successfully: {popoDoc.GetAllBlocks().Count} blocks, TreeRoot={popoDoc.TreeRoot != null}");
-        }
 
         // Extract markdown files
         var markdownInfo = ExtractMarkdownFromDir(extractedDir);
