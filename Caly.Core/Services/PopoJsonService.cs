@@ -185,6 +185,72 @@ public static class PopoJsonService
     }
 
     /// <summary>
+    /// Saves the MinerU result ZIP file to the project's mineru/ directory.
+    /// This allows the ZIP to be directly uploaded when calling Popo.
+    /// </summary>
+    /// <param name="zipPath">Path to the source ZIP file.</param>
+    /// <param name="projectPath">The project directory path.</param>
+    /// <param name="docId">Optional document ID for the filename. If null, uses the ZIP's filename.</param>
+    /// <returns>The path to the saved ZIP file in the project directory.</returns>
+    public static string SaveMinerUZipToProject(string zipPath, string projectPath, string? docId = null)
+    {
+        if (string.IsNullOrEmpty(projectPath) || !File.Exists(zipPath))
+            return zipPath;
+
+        var minerUDir = Path.Combine(projectPath, "mineru");
+        Directory.CreateDirectory(minerUDir);
+
+        var fileName = docId is not null
+            ? $"{docId}_mineru.zip"
+            : Path.GetFileName(zipPath);
+
+        var destPath = Path.Combine(minerUDir, fileName);
+
+        // Only copy if the destination doesn't exist or is different
+        if (!File.Exists(destPath) || zipPath != destPath)
+        {
+            try
+            {
+                File.Copy(zipPath, destPath, overwrite: true);
+            }
+            catch
+            {
+                // If copy fails, return the original path
+                return zipPath;
+            }
+        }
+
+        return destPath;
+    }
+
+    /// <summary>
+    /// Finds the MinerU result ZIP file in the project's mineru/ directory.
+    /// </summary>
+    /// <param name="projectPath">The project directory path.</param>
+    /// <param name="docId">Optional document ID to find a specific ZIP.</param>
+    /// <returns>The path to the ZIP file, or null if not found.</returns>
+    public static string? FindMinerUZipInProject(string projectPath, string? docId = null)
+    {
+        if (string.IsNullOrEmpty(projectPath))
+            return null;
+
+        var minerUDir = Path.Combine(projectPath, "mineru");
+        if (!Directory.Exists(minerUDir))
+            return null;
+
+        if (docId is not null)
+        {
+            var specificPath = Path.Combine(minerUDir, $"{docId}_mineru.zip");
+            if (File.Exists(specificPath))
+                return specificPath;
+        }
+
+        // Find any .zip file in the mineru directory
+        var zipFiles = Directory.GetFiles(minerUDir, "*.zip");
+        return zipFiles.Length > 0 ? zipFiles[0] : null;
+    }
+
+    /// <summary>
     /// Loads a complete PopoDocument from JSON files.
     /// </summary>
     public static PopoDocument? LoadPopoDocument(string pdfPath, string modelName = DefaultModelName)
@@ -573,48 +639,163 @@ public static class PopoJsonService
     public static PopoDocument? TryParseMinerUFromExtractedDir(string extractedDir)
     {
         if (!Directory.Exists(extractedDir))
+        {
+            System.Diagnostics.Debug.WriteLine($"[PopoJson DEBUG] Directory does not exist: {extractedDir}");
             return null;
+        }
+
+        // DEBUG: List all files in the directory
+        var allFiles = Directory.GetFiles(extractedDir, "*.*", SearchOption.AllDirectories);
+        System.Diagnostics.Debug.WriteLine($"[PopoJson DEBUG] Searching in {extractedDir} ({allFiles.Length} files)");
 
         // Priority 1: Find *_middle.json
         var middleJsonFiles = Directory.GetFiles(extractedDir, "*_middle.json", SearchOption.AllDirectories);
+        System.Diagnostics.Debug.WriteLine($"[PopoJson DEBUG] *_middle.json files: {middleJsonFiles.Length}");
         if (middleJsonFiles.Length > 0)
         {
+            System.Diagnostics.Debug.WriteLine($"[PopoJson DEBUG] Trying: {middleJsonFiles[0]}");
             var result = TryParseMinerUMiddleJson(middleJsonFiles[0]);
             if (result is not null)
+            {
+                System.Diagnostics.Debug.WriteLine($"[PopoJson DEBUG] Success from *_middle.json: {result.GetAllBlocks().Count} blocks");
                 return result;
+            }
+            System.Diagnostics.Debug.WriteLine($"[PopoJson DEBUG] Failed to parse *_middle.json");
         }
 
         // Priority 2: Find middle.json
         var middleJson = Directory.GetFiles(extractedDir, "middle.json", SearchOption.AllDirectories);
+        System.Diagnostics.Debug.WriteLine($"[PopoJson DEBUG] middle.json files: {middleJson.Length}");
         if (middleJson.Length > 0)
         {
+            System.Diagnostics.Debug.WriteLine($"[PopoJson DEBUG] Trying: {middleJson[0]}");
             var result = TryParseMinerUMiddleJson(middleJson[0]);
             if (result is not null)
+            {
+                System.Diagnostics.Debug.WriteLine($"[PopoJson DEBUG] Success from middle.json: {result.GetAllBlocks().Count} blocks");
                 return result;
+            }
+            System.Diagnostics.Debug.WriteLine($"[PopoJson DEBUG] Failed to parse middle.json");
         }
 
         // Priority 3: Find *_content_list.json (alternative MinerU format)
         var contentListFiles = Directory.GetFiles(extractedDir, "*_content_list.json", SearchOption.AllDirectories);
+        System.Diagnostics.Debug.WriteLine($"[PopoJson DEBUG] *_content_list.json files: {contentListFiles.Length}");
         if (contentListFiles.Length > 0)
         {
+            System.Diagnostics.Debug.WriteLine($"[PopoJson DEBUG] Trying: {contentListFiles[0]}");
             var result = TryParseMinerUContentList(contentListFiles[0]);
             if (result is not null)
+            {
+                System.Diagnostics.Debug.WriteLine($"[PopoJson DEBUG] Success from *_content_list.json: {result.GetAllBlocks().Count} blocks");
                 return result;
+            }
+            System.Diagnostics.Debug.WriteLine($"[PopoJson DEBUG] Failed to parse *_content_list.json");
         }
 
         // Priority 4: Try any .json file as a fallback
         var allJson = Directory.GetFiles(extractedDir, "*.json", SearchOption.AllDirectories);
+        System.Diagnostics.Debug.WriteLine($"[PopoJson DEBUG] All JSON files: {allJson.Length} (fallback attempt)");
         foreach (var jsonFile in allJson)
         {
+            System.Diagnostics.Debug.WriteLine($"[PopoJson DEBUG] Trying fallback: {jsonFile}");
             var result = TryParseMinerUMiddleJson(jsonFile);
             if (result is not null && (result.InferenceBlocks.Count > 0 || result.TreeRoot is not null))
+            {
+                System.Diagnostics.Debug.WriteLine($"[PopoJson DEBUG] Success from fallback: {result.GetAllBlocks().Count} blocks");
                 return result;
+            }
         }
 
+        // Last resort: try to parse Markdown files as a fallback
+        var mdFiles = Directory.GetFiles(extractedDir, "*.md", SearchOption.AllDirectories);
+        if (mdFiles.Length > 0)
+        {
+            System.Diagnostics.Debug.WriteLine($"[PopoJson DEBUG] Trying Markdown fallback: {mdFiles.Length} .md files found");
+            var result = TryParseMarkdownAsBlocks(mdFiles, extractedDir);
+            if (result is not null)
+            {
+                System.Diagnostics.Debug.WriteLine($"[PopoJson DEBUG] Success from Markdown fallback: {result.GetAllBlocks().Count} blocks");
+                return result;
+            }
+        }
+
+        System.Diagnostics.Debug.WriteLine($"[PopoJson DEBUG] All parsing attempts failed, returning null");
         return null;
     }
 
     #endregion
+
+    /// <summary>
+    /// Parses Markdown files into a simple PopoDocument as a fallback when no structured JSON is available.
+    /// This creates basic text blocks from Markdown content.
+    /// </summary>
+    static PopoDocument? TryParseMarkdownAsBlocks(string[] mdFiles, string extractedDir)
+    {
+        try
+        {
+            var popoDoc = new PopoDocument
+            {
+                ModelName = "mineru-markdown-fallback"
+            };
+
+            var blocksByPage = new Dictionary<int, List<PopoBlock>>();
+            int blockId = 0;
+            int currentPage = 1;
+
+            foreach (var mdFile in mdFiles)
+            {
+                var content = File.ReadAllText(mdFile);
+                var lines = content.Split('\n');
+
+                foreach (var line in lines)
+                {
+                    var trimmed = line.Trim();
+                    if (string.IsNullOrEmpty(trimmed))
+                    {
+                        // Empty line might indicate a new section, but continue with same page
+                        continue;
+                    }
+
+                    // Detect page changes from headings like "# Page 2" or similar patterns
+                    if (trimmed.StartsWith("# ") && System.Text.RegularExpressions.Regex.IsMatch(trimmed.Substring(2), @"^Page\s+\d+"))
+                    {
+                        if (int.TryParse(trimmed.Substring(2).Trim().Split(' ').Last(), out var pageNum))
+                            currentPage = pageNum;
+                    }
+
+                    var block = new PopoBlock
+                    {
+                        Id = blockId++,
+                        Page = currentPage,
+                        Content = trimmed,
+                        Type = trimmed.StartsWith("#") ? "title" : "text",
+                        SourceLabel = "markdown"
+                    };
+
+                    if (!blocksByPage.TryGetValue(currentPage, out var pageBlocks))
+                    {
+                        pageBlocks = new List<PopoBlock>();
+                        blocksByPage[currentPage] = pageBlocks;
+                    }
+                    pageBlocks.Add(block);
+                }
+            }
+
+            if (blocksByPage.Count > 0)
+            {
+                popoDoc.PagesBlocks = blocksByPage;
+                popoDoc.InferenceBlocks = popoDoc.GetAllBlocks();
+                return popoDoc;
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[PopoJson DEBUG] Markdown parsing failed: {ex.Message}");
+        }
+
+        return null;
+    }
 
     #region MinerU Content List Parsing
 

@@ -197,6 +197,8 @@ public sealed partial class DocumentViewModel
                 OnMinerUProgress,
                 _minerUCts.Token);
 
+            System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] ParseAsync returned: PopoDocument={result.PopoDocument != null}, ZipPath={result.ZipPath}, ArtifactsDir={result.ArtifactsDirectory}");
+
             // Load result into Popo properties
             LoadParseResult(result);
 
@@ -210,6 +212,19 @@ public sealed partial class DocumentViewModel
                 catch
                 {
                     // Non-critical: ignore save errors
+                }
+            }
+
+            // Save the MinerU ZIP to the project folder for Popo upload
+            if (!string.IsNullOrEmpty(result.ZipPath) && ProjectPath is not null)
+            {
+                try
+                {
+                    PopoJsonService.SaveMinerUZipToProject(result.ZipPath, ProjectPath, docId);
+                }
+                catch
+                {
+                    // Non-critical: ignore ZIP save errors
                 }
             }
 
@@ -249,17 +264,28 @@ public sealed partial class DocumentViewModel
     /// </summary>
     private void LoadParseResult(MinerUParseResult result)
     {
+        System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] LoadParseResult called, PopoDocument={result.PopoDocument != null}");
+
         if (result.PopoDocument is null)
+        {
+            System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] LoadParseResult: PopoDocument is NULL, returning early!");
             return;
+        }
+
+        System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] PopoDocument has {result.PopoDocument.GetAllBlocks().Count} blocks, TreeRoot={result.PopoDocument.TreeRoot != null}");
 
         PopoDocument = result.PopoDocument;
         PopoAnalysisViewModel = new PopoAnalysisViewModel(result.PopoDocument);
+
+        System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] PopoDocument and PopoAnalysisViewModel set");
 
         // Assign blocks to each page view model
         foreach (var page in Pages)
         {
             page.PopoBlocks = result.PopoDocument.GetBlocksForPage(page.PageNumber);
         }
+
+        System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] Blocks assigned to {Pages.Count} page view models");
 
         // Build block collections in memory first, then replace
         if (result.PopoDocument.PagesBlocks is not null)
@@ -290,10 +316,14 @@ public sealed partial class DocumentViewModel
             PopoBlocksFlat.Clear();
             foreach (var b in newPopoBlocks)
                 PopoBlocksFlat.Add(b);
+
+            System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] Collections populated: MinerUBlocks={MinerUBlocks.Count}, PopoBlocksFlat={PopoBlocksFlat.Count}");
         }
 
         // Auto-open the Popo analysis pane
         IsPopoPaneOpen = true;
+
+        System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] LoadParseResult completed: HasPopoDocument={HasPopoDocument}, MinerUBlocks={MinerUBlocks.Count}, PopoBlocksFlat={PopoBlocksFlat.Count}");
     }
 
     /// <summary>
