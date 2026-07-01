@@ -30,17 +30,17 @@ namespace Caly.Core.ViewModels;
 public sealed partial class DocumentViewModel
 {
     [ObservableProperty]
-    private AnalysisDocument? _analysisDocument;
+    private PopoDocument? _popoDocument;
 
-    partial void OnAnalysisDocumentChanged(AnalysisDocument? value)
+    partial void OnPopoDocumentChanged(PopoDocument? value)
     {
-        OnPropertyChanged(nameof(HasAnalysisDocument));
+        OnPropertyChanged(nameof(HasPopoDocument));
     }
 
     /// <summary>
-    /// Gets whether a AnalysisDocument has been loaded (for UI visibility binding).
+    /// Gets whether a PopoDocument has been loaded (for UI visibility binding).
     /// </summary>
-    public bool HasAnalysisDocument => AnalysisDocument is not null;
+    public bool HasPopoDocument => PopoDocument is not null;
 
     [ObservableProperty]
     private AnalysisViewModel? _analysisViewModel;
@@ -80,7 +80,7 @@ public sealed partial class DocumentViewModel
         if (!Directory.Exists(popoDir))
             return;
 
-        AnalysisDocument? popoDoc = null;
+        PopoDocument? popoDoc = null;
 
         // Try popo.json first
         var popoJsonPath = Path.Combine(popoDir, "popo.json");
@@ -89,7 +89,7 @@ public sealed partial class DocumentViewModel
             try
             {
                 var json = File.ReadAllText(popoJsonPath);
-                popoDoc = System.Text.Json.JsonSerializer.Deserialize<AnalysisDocument>(json, new System.Text.Json.JsonSerializerOptions
+                popoDoc = System.Text.Json.JsonSerializer.Deserialize<PopoDocument>(json, new System.Text.Json.JsonSerializerOptions
                 {
                     PropertyNameCaseInsensitive = true
                 });
@@ -113,7 +113,7 @@ public sealed partial class DocumentViewModel
         if (popoDoc is null)
             return;
 
-        AnalysisDocument = popoDoc;
+        PopoDocument = popoDoc;
         AnalysisViewModel = new AnalysisViewModel(popoDoc);
 
         // Assign blocks to each page view model

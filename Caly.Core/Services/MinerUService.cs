@@ -156,7 +156,7 @@ public sealed class MinerUService : IDisposable
 
     /// <summary>
     /// Asynchronously parses a PDF file using MinerU.
-    /// Submits the task, polls for completion, downloads the result, and builds the AnalysisDocument.
+    /// Submits the task, polls for completion, downloads the result, and builds the PopoDocument.
     /// </summary>
     public async Task<MinerUParseResult> ParseAsync(
         string pdfPath,
@@ -636,7 +636,7 @@ public sealed class MinerUService : IDisposable
 
         return new MinerUParseResult
         {
-            AnalysisDocument = popoDoc,
+            PopoDocument = popoDoc,
             ZipPath = zipPath,
             Markdown = markdownInfo.markdown,
             PopoMarkdown = markdownInfo.popoMarkdown,
@@ -730,7 +730,7 @@ public sealed class MinerUService : IDisposable
 
         return new MinerUParseResult
         {
-            AnalysisDocument = popoDoc,
+            PopoDocument = popoDoc,
             ZipPath = zipPath,
             Markdown = markdownInfo.markdown,
             PopoMarkdown = markdownInfo.popoMarkdown,

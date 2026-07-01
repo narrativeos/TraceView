@@ -119,10 +119,10 @@ public static class PopoJsonService
     }
 
     /// <summary>
-    /// Loads a AnalysisDocument from a project's popo/ directory.
+    /// Loads a PopoDocument from a project's popo/ directory.
     /// Looks for popo.json in the project's popo/ subdirectory only.
     /// </summary>
-    public static AnalysisDocument? LoadAnalysisDocumentFromProject(string? projectPath)
+    public static PopoDocument? LoadPopoDocumentFromProject(string? projectPath)
     {
         if (string.IsNullOrEmpty(projectPath))
             return null;
@@ -138,7 +138,7 @@ public static class PopoJsonService
             try
             {
                 var json = File.ReadAllText(popoJsonPath);
-                return JsonSerializer.Deserialize<AnalysisDocument>(json, new JsonSerializerOptions
+                return JsonSerializer.Deserialize<PopoDocument>(json, new JsonSerializerOptions
                 {
                     PropertyNameCaseInsensitive = true
                 });
@@ -153,9 +153,9 @@ public static class PopoJsonService
     }
 
     /// <summary>
-    /// Saves a AnalysisDocument to a project's popo/ directory.
+    /// Saves a PopoDocument to a project's popo/ directory.
     /// </summary>
-    public static void SaveAnalysisDocumentToProject(AnalysisDocument doc, string projectPath)
+    public static void SavePopoDocumentToProject(PopoDocument doc, string projectPath)
     {
         if (string.IsNullOrEmpty(projectPath))
             return;
@@ -173,13 +173,13 @@ public static class PopoJsonService
     }
 
     /// <summary>
-    /// Loads a complete AnalysisDocument from JSON files.
+    /// Loads a complete PopoDocument from JSON files.
     /// </summary>
-    public static AnalysisDocument? LoadAnalysisDocument(string pdfPath, string modelName = DefaultModelName)
+    public static PopoDocument? LoadPopoDocument(string pdfPath, string modelName = DefaultModelName)
     {
         var (normalizedJson, inferenceJson, treeJson) = FindPopoJsonPaths(pdfPath, modelName);
 
-        var doc = new AnalysisDocument();
+        var doc = new PopoDocument();
         var loaded = false;
 
         // Load normalized JSON (pages-based structure)
@@ -223,9 +223,9 @@ public static class PopoJsonService
     /// Loads normalization JSON (label_normalization.py output).
     /// Format: { "model": "...", "doc_id": "...", "pages": { "1": [ {...}, ... ], ... } }
     /// </summary>
-    internal static AnalysisDocument LoadNormalizationJson(string jsonPath)
+    internal static PopoDocument LoadNormalizationJson(string jsonPath)
     {
-        var doc = new AnalysisDocument();
+        var doc = new PopoDocument();
         var json = File.ReadAllText(jsonPath);
         var root = JsonDocument.Parse(json);
         var elem = root.RootElement;
@@ -433,8 +433,8 @@ public static class PopoJsonService
         return new Rect(0, 0, 0, 0);
     }
 
-    // Extension method for AnalysisDocument to populate PagesBlocks from InferenceBlocks
-    private static void PopulatePagesBlocksFromInference(this AnalysisDocument doc)
+    // Extension method for PopoDocument to populate PagesBlocks from InferenceBlocks
+    private static void PopulatePagesBlocksFromInference(this PopoDocument doc)
     {
         var pages = new Dictionary<int, List<MinerUBlock>>();
 
@@ -455,9 +455,9 @@ public static class PopoJsonService
 
     /// <summary>
     /// Tries to parse a Popo result directory (from Popo service).
-    /// Searches for popo_result.json or any JSON file that contains a AnalysisDocument structure.
+    /// Searches for popo_result.json or any JSON file that contains a PopoDocument structure.
     /// </summary>
-    public static AnalysisDocument? TryParsePopoResultDir(string resultDir)
+    public static PopoDocument? TryParsePopoResultDir(string resultDir)
     {
         if (!Directory.Exists(resultDir))
             return null;
@@ -488,9 +488,9 @@ public static class PopoJsonService
     }
 
     /// <summary>
-    /// Tries to parse a single JSON file as a AnalysisDocument result.
+    /// Tries to parse a single JSON file as a PopoDocument result.
     /// </summary>
-    static AnalysisDocument? TryParsePopoResultJson(string jsonPath)
+    static PopoDocument? TryParsePopoResultJson(string jsonPath)
     {
         if (!File.Exists(jsonPath))
             return null;
@@ -501,8 +501,8 @@ public static class PopoJsonService
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
-            // Try to deserialize directly as AnalysisDocument
-            var popoDoc = JsonSerializer.Deserialize<AnalysisDocument>(json, new JsonSerializerOptions
+            // Try to deserialize directly as PopoDocument
+            var popoDoc = JsonSerializer.Deserialize<PopoDocument>(json, new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true
             });

@@ -34,11 +34,11 @@ namespace Caly.Core.ViewModels;
 /// </summary>
 public partial class AnalysisViewModel : ViewModelBase
 {
-    private readonly AnalysisDocument _analysisDocument;
+    private readonly PopoDocument _popoDocument;
 
-    public AnalysisViewModel(AnalysisDocument popoDocument)
+    public AnalysisViewModel(PopoDocument popoDocument)
     {
-        _analysisDocument = popoDocument;
+        _popoDocument = popoDocument;
 
         // Build block view models
         foreach (var block in popoDocument.GetAllBlocks())
@@ -65,12 +65,12 @@ public partial class AnalysisViewModel : ViewModelBase
         ApplyFilters();
     }
 
-    public AnalysisDocument AnalysisDocument => _analysisDocument;
+    public PopoDocument PopoDocument => _popoDocument;
 
     // === Data availability indicators ===
-    public bool HasNormalization => _analysisDocument.PagesBlocks.Count > 0;
-    public bool HasInference => _analysisDocument.InferenceBlocks.Count > 0;
-    public bool HasTree => _analysisDocument.TreeRoot is not null;
+    public bool HasNormalization => _popoDocument.PagesBlocks.Count > 0;
+    public bool HasInference => _popoDocument.InferenceBlocks.Count > 0;
+    public bool HasTree => _popoDocument.TreeRoot is not null;
 
     /// <summary>
     /// Human-readable status text showing which stages are available.
@@ -115,8 +115,8 @@ public partial class AnalysisViewModel : ViewModelBase
 
     partial void OnTreeRootChanged(TreeNodeViewModel? value)
     {
-        // Reload aggregations from AnalysisDocument
-        Aggregations = _analysisDocument.Aggregations;
+        // Reload aggregations from PopoDocument
+        Aggregations = _popoDocument.Aggregations;
     }
 
     // === Selection/Highlight ===

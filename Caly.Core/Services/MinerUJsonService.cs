@@ -31,16 +31,16 @@ namespace Caly.Core.Services;
 
 /// <summary>
 /// Service for parsing MinerU JSON output files (middle.json, ZIP results).
-/// Converts MinerU's raw output into AnalysisDocument structures for visualization.
+/// Converts MinerU's raw output into PopoDocument structures for visualization.
 /// </summary>
 public static class MinerUJsonService
 {
     /// <summary>
     /// Loads a MinerU parse result produced in the project's mineru/ directory.
     /// This is a separate stage from Popo post-processing and may return a
-    /// AnalysisDocument built from MinerU middle.json output.
+    /// PopoDocument built from MinerU middle.json output.
     /// </summary>
-    public static AnalysisDocument? LoadMinerUResultFromProject(string? projectPath)
+    public static PopoDocument? LoadMinerUResultFromProject(string? projectPath)
     {
         if (string.IsNullOrEmpty(projectPath))
             return null;
@@ -127,10 +127,10 @@ public static class MinerUJsonService
     #region MinerU Output Parsing
 
     /// <summary>
-    /// Parses MinerU middle.json output into a AnalysisDocument.
+    /// Parses MinerU middle.json output into a PopoDocument.
     /// Supports both the "pages" flat block list and optional "tree" hierarchical structure.
     /// </summary>
-    public static AnalysisDocument? TryParseMinerUMiddleJson(string jsonPath)
+    public static PopoDocument? TryParseMinerUMiddleJson(string jsonPath)
     {
         if (!File.Exists(jsonPath))
             return null;
@@ -141,7 +141,7 @@ public static class MinerUJsonService
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
-            var popoDoc = new AnalysisDocument
+            var popoDoc = new PopoDocument
             {
                 DocId = GetStringProperty(root, "doc_id") ?? string.Empty,
                 ModelName = GetStringProperty(root, "model_name") ?? "mineru"
@@ -277,10 +277,10 @@ public static class MinerUJsonService
     }
 
     /// <summary>
-    /// Parses a MinerU result zip file and extracts AnalysisDocument.
+    /// Parses a MinerU result zip file and extracts PopoDocument.
     /// Searches for *_middle.json in the extracted files.
     /// </summary>
-    public static AnalysisDocument? TryParseMinerUZip(string zipPath)
+    public static PopoDocument? TryParseMinerUZip(string zipPath)
     {
         if (!File.Exists(zipPath))
             return null;
@@ -299,12 +299,12 @@ public static class MinerUJsonService
     }
 
     /// <summary>
-    /// Parses an already-extracted MinerU output directory and builds a AnalysisDocument.
+    /// Parses an already-extracted MinerU output directory and builds a PopoDocument.
     /// Searches only for *_middle.json in the directory.
     /// </summary>
     /// <param name="extractedDir">Path to the extracted directory containing MinerU output files.</param>
-    /// <returns>A AnalysisDocument if parsing succeeds, otherwise null.</returns>
-    public static AnalysisDocument? TryParseMinerUFromExtractedDir(string extractedDir)
+    /// <returns>A PopoDocument if parsing succeeds, otherwise null.</returns>
+    public static PopoDocument? TryParseMinerUFromExtractedDir(string extractedDir)
     {
         if (!Directory.Exists(extractedDir))
             return null;

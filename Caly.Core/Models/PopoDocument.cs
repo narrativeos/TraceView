@@ -27,7 +27,7 @@ namespace Caly.Core.Models;
 /// Complete Popo document model that holds normalized blocks, inference results,
 /// tree structure, and aggregation relationships.
 /// </summary>
-public partial class AnalysisDocument : ObservableObject
+public partial class PopoDocument : ObservableObject
 {
     /// <summary>
     /// Document ID.
