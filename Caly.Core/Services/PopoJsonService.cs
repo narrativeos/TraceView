@@ -652,6 +652,76 @@ public static class PopoJsonService
 
     #endregion
 
+    #region Popo Result Parsing
+
+    /// <summary>
+    /// Tries to parse a Popo result directory (from Popo service).
+    /// Searches for popo_result.json or any JSON file that contains a PopoDocument structure.
+    /// </summary>
+    public static PopoDocument? TryParsePopoResultDir(string resultDir)
+    {
+        if (!Directory.Exists(resultDir))
+            return null;
+
+        // Try popo_result.json first
+        var popoResultJson = Path.Combine(resultDir, "popo_result.json");
+        if (File.Exists(popoResultJson))
+        {
+            return TryParsePopoResultJson(popoResultJson);
+        }
+
+        // Try in extract subdirectory
+        var extractDir = Path.Combine(resultDir, "extract");
+        if (Directory.Exists(extractDir))
+        {
+            // Look for any JSON file in the extract directory
+            var jsonFiles = Directory.GetFiles(extractDir, "*.json", SearchOption.AllDirectories);
+            foreach (var jsonFile in jsonFiles)
+            {
+                var result = TryParsePopoResultJson(jsonFile);
+                if (result is not null)
+                    return result;
+            }
+        }
+
+        // Fallback: try to parse as middle.json format
+        return TryParseMinerUFromExtractedDir(resultDir);
+    }
+
+    /// <summary>
+    /// Tries to parse a single JSON file as a PopoDocument result.
+    /// </summary>
+    static PopoDocument? TryParsePopoResultJson(string jsonPath)
+    {
+        if (!File.Exists(jsonPath))
+            return null;
+
+        try
+        {
+            var json = File.ReadAllText(jsonPath);
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            // Try to deserialize directly as PopoDocument
+            var popoDoc = JsonSerializer.Deserialize<PopoDocument>(json, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+
+            if (popoDoc is not null && (popoDoc.GetAllBlocks().Count > 0 || popoDoc.TreeRoot is not null))
+                return popoDoc;
+
+            // Try as middle.json format
+            return TryParseMinerUMiddleJson(jsonPath);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    #endregion
+
     #region MinerU Mapping Helpers
 
     /// <summary>

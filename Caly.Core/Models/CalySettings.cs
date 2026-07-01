@@ -34,7 +34,7 @@ public sealed class CalySettings
         MinerUBaseUrl = "http://localhost:8401",
         MinerUBackend = "hybrid-engine",
         MinerUEnabled = true,
-        PopoBaseUrl = "http://localhost:8080"
+        PopoBaseUrl = "http://localhost:8440"
     };
 
     // TODO - Add version for compatibility checks
@@ -73,7 +73,7 @@ public sealed class CalySettings
     /// <summary>
     /// Popo service base URL (e.g., "http://localhost:8080")
     /// </summary>
-    public string PopoBaseUrl { get; set; } = "http://localhost:8080";
+    public string PopoBaseUrl { get; set; } = "http://localhost:8440";
 
     // ========== Project Configuration ==========
 
