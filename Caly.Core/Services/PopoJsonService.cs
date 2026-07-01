@@ -554,52 +554,69 @@ public static class PopoJsonService
         try
         {
             ZipFile.ExtractToDirectory(zipPath, tempDir);
-
-            // Priority 1: Find *_middle.json
-            var middleJsonFiles = Directory.GetFiles(tempDir, "*_middle.json", SearchOption.AllDirectories);
-            if (middleJsonFiles.Length > 0)
-            {
-                var result = TryParseMinerUMiddleJson(middleJsonFiles[0]);
-                if (result is not null)
-                    return result;
-            }
-
-            // Priority 2: Find middle.json
-            var middleJson = Directory.GetFiles(tempDir, "middle.json", SearchOption.AllDirectories);
-            if (middleJson.Length > 0)
-            {
-                var result = TryParseMinerUMiddleJson(middleJson[0]);
-                if (result is not null)
-                    return result;
-            }
-
-            // Priority 3: Find *_content_list.json (alternative MinerU format)
-            var contentListFiles = Directory.GetFiles(tempDir, "*_content_list.json", SearchOption.AllDirectories);
-            if (contentListFiles.Length > 0)
-            {
-                return TryParseMinerUContentList(contentListFiles[0]);
-            }
-
-            // Priority 4: Try any .json file as a fallback
-            var allJson = Directory.GetFiles(tempDir, "*.json", SearchOption.AllDirectories);
-            foreach (var jsonFile in allJson)
-            {
-                var result = TryParseMinerUMiddleJson(jsonFile);
-                if (result is not null && (result.InferenceBlocks.Count > 0 || result.TreeRoot is not null))
-                    return result;
-            }
-
-            return null;
+            return TryParseMinerUFromExtractedDir(tempDir);
         }
-        catch
+        catch (Exception ex)
         {
-            return null;
-        }
-        finally
-        {
-            // Keep extracted directory for images/artifacts access
+            System.Diagnostics.Debug.WriteLine($"[PopoJson] Failed to parse MinerU zip: {ex.Message}");
+            throw new MinerUServiceException($"Failed to parse MinerU output: {ex.Message}", ex);
         }
     }
+
+    /// <summary>
+    /// Parses an already-extracted MinerU output directory and builds a PopoDocument.
+    /// Searches for *_middle.json, middle.json, or *_content_list.json in the directory.
+    /// This avoids redundant ZIP extraction when the directory is already available.
+    /// </summary>
+    /// <param name="extractedDir">Path to the extracted directory containing MinerU output files.</param>
+    /// <returns>A PopoDocument if parsing succeeds, otherwise null.</returns>
+    public static PopoDocument? TryParseMinerUFromExtractedDir(string extractedDir)
+    {
+        if (!Directory.Exists(extractedDir))
+            return null;
+
+        // Priority 1: Find *_middle.json
+        var middleJsonFiles = Directory.GetFiles(extractedDir, "*_middle.json", SearchOption.AllDirectories);
+        if (middleJsonFiles.Length > 0)
+        {
+            var result = TryParseMinerUMiddleJson(middleJsonFiles[0]);
+            if (result is not null)
+                return result;
+        }
+
+        // Priority 2: Find middle.json
+        var middleJson = Directory.GetFiles(extractedDir, "middle.json", SearchOption.AllDirectories);
+        if (middleJson.Length > 0)
+        {
+            var result = TryParseMinerUMiddleJson(middleJson[0]);
+            if (result is not null)
+                return result;
+        }
+
+        // Priority 3: Find *_content_list.json (alternative MinerU format)
+        var contentListFiles = Directory.GetFiles(extractedDir, "*_content_list.json", SearchOption.AllDirectories);
+        if (contentListFiles.Length > 0)
+        {
+            var result = TryParseMinerUContentList(contentListFiles[0]);
+            if (result is not null)
+                return result;
+        }
+
+        // Priority 4: Try any .json file as a fallback
+        var allJson = Directory.GetFiles(extractedDir, "*.json", SearchOption.AllDirectories);
+        foreach (var jsonFile in allJson)
+        {
+            var result = TryParseMinerUMiddleJson(jsonFile);
+            if (result is not null && (result.InferenceBlocks.Count > 0 || result.TreeRoot is not null))
+                return result;
+        }
+
+        return null;
+    }
+
+    #endregion
+
+    #region MinerU Content List Parsing
 
     /// <summary>
     /// Tries to parse MinerU content_list.json format (alternative output format).

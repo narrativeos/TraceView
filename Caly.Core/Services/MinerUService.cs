@@ -123,7 +123,7 @@ public sealed class MinerUService : IDisposable
 
         onProgress?.Invoke(MinerUParseStatus.Caching, 80);
 
-        return await BuildParseResultAsync(zipPath, onProgress, ct);
+        return await BuildParseResultAsync(zipPath, pdfPath, onProgress, ct);
     }
 
     private async Task<byte[]> UploadAndParseSyncAsync(string pdfPath, string backend, CancellationToken ct)
@@ -135,6 +135,9 @@ public sealed class MinerUService : IDisposable
         fileContent.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
         content.Add(fileContent, "files", Path.GetFileName(pdfPath));
         content.Add(new StringContent(backend), "backend");
+        content.Add(new StringContent("auto"), "parse_method");
+        content.Add(new StringContent("true"), "return_md");
+        content.Add(new StringContent("true"), "response_format_zip");
 
         using var response = await _httpClient.PostAsync($"{_baseUrl}/file_parse", content, ct);
         response.EnsureSuccessStatusCode();
@@ -176,7 +179,7 @@ public sealed class MinerUService : IDisposable
         onProgress?.Invoke(MinerUParseStatus.Caching, 80);
 
         // Step 5: Build result
-        return await BuildParseResultAsync(zipPath, onProgress, ct);
+        return await BuildParseResultAsync(zipPath, pdfPath, onProgress, ct);
     }
 
     /// <summary>
@@ -192,12 +195,15 @@ public sealed class MinerUService : IDisposable
         fileContent.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
         content.Add(fileContent, "files", Path.GetFileName(pdfPath));
         content.Add(new StringContent(backend), "backend");
+        content.Add(new StringContent("auto"), "parse_method");
+        content.Add(new StringContent("true"), "return_md");
+        content.Add(new StringContent("true"), "response_format_zip");
 
         using var response = await _httpClient.PostAsync($"{_baseUrl}/tasks", content, ct);
         response.EnsureSuccessStatusCode();
 
         var json = await response.Content.ReadAsStringAsync(ct);
-        
+
         if (string.IsNullOrEmpty(json) || !json.TrimStart().StartsWith("{"))
         {
             var preview = json?.Length > 200 ? json.Substring(0, 200) + "..." : json;
@@ -290,7 +296,7 @@ public sealed class MinerUService : IDisposable
 
                 // Infer progress from status (v3.4.0 no longer returns progress)
                 var progress = minerUStatus == MinerUParseStatus.Queued ? 20 : 50;
-                
+
                 // Only update if progress changed significantly
                 if (progress != lastProgress)
                 {
@@ -338,6 +344,101 @@ public sealed class MinerUService : IDisposable
 
     #endregion
 
+    /// <summary>
+    /// Gets the cached ZIP file path for a given PDF.
+    /// </summary>
+    private string GetCacheZipPath(string pdfPath)
+    {
+        var docId = Path.GetFileNameWithoutExtension(pdfPath);
+        var zipFileName = $"{docId}_mineru.zip";
+        return Path.Combine(_cacheDirectory, zipFileName);
+    }
+
+    /// <summary>
+    /// Gets the extracted artifacts directory path for a given PDF.
+    /// Uses a consistent naming scheme for easy cleanup.
+    /// </summary>
+    private string GetExtractedDirPath(string pdfPath)
+    {
+        var docId = Path.GetFileNameWithoutExtension(pdfPath);
+        return Path.Combine(_cacheDirectory, $"extract_{docId}");
+    }
+
+    #region Cache Operations
+
+    /// <summary>
+    /// Tries to load a previously cached parse result without making network requests.
+    /// Returns the result if a valid cached ZIP and extracted files exist.
+    /// </summary>
+    public MinerUParseResult? TryLoadFromCache(string pdfPath)
+    {
+        var zipPath = GetCacheZipPath(pdfPath);
+        if (!File.Exists(zipPath))
+            return null;
+
+        var extractedDir = GetExtractedDirPath(pdfPath);
+        // If extracted dir doesn't exist, extract from zip
+        if (!Directory.Exists(extractedDir))
+        {
+            try
+            {
+                Directory.CreateDirectory(extractedDir);
+                ZipFile.ExtractToDirectory(zipPath, extractedDir, overwriteFiles: true);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        var popoDoc = PopoJsonService.TryParseMinerUFromExtractedDir(extractedDir);
+        if (popoDoc is null)
+            return null;
+
+        var markdownInfo = ExtractMarkdownFromDir(extractedDir);
+
+        return new MinerUParseResult
+        {
+            PopoDocument = popoDoc,
+            ZipPath = zipPath,
+            Markdown = markdownInfo.markdown,
+            PopoMarkdown = markdownInfo.popoMarkdown,
+            ArtifactsDirectory = extractedDir
+        };
+    }
+
+    /// <summary>
+    /// Cleans up old extracted directories, keeping only the one for the current document.
+    /// This prevents disk space from growing unbounded.
+    /// </summary>
+    public void ClearOldExtractedDirs(string currentDocId)
+    {
+        try
+        {
+            foreach (var dir in Directory.GetDirectories(_cacheDirectory))
+            {
+                var dirName = Path.GetFileName(dir);
+                if (dirName.StartsWith("extract_") && !dirName.Contains(currentDocId))
+                {
+                    try
+                    {
+                        Directory.Delete(dir, recursive: true);
+                    }
+                    catch
+                    {
+                        // Ignore cleanup errors (directory might be in use)
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Ignore cleanup errors
+        }
+    }
+
+    #endregion
+
     #region Result Processing
 
     /// <summary>
@@ -345,80 +446,92 @@ public sealed class MinerUService : IDisposable
     /// </summary>
     private string CacheResultZip(string sourcePdfPath, byte[] zipBytes)
     {
-        var docId = Path.GetFileNameWithoutExtension(sourcePdfPath);
-        var zipFileName = $"{docId}_mineru.zip";
-        var zipPath = Path.Combine(_cacheDirectory, zipFileName);
-
+        var zipPath = GetCacheZipPath(sourcePdfPath);
         File.WriteAllBytes(zipPath, zipBytes);
         return zipPath;
     }
 
     /// <summary>
-    /// Extracts the zip, parses the MinerU output, and builds a MinerUParseResult.
+    /// Extracts the zip to a consistent cache directory, parses the MinerU output,
+    /// and builds a MinerUParseResult. Uses the already-extracted directory to avoid
+    /// redundant extraction in PopoJsonService.
     /// </summary>
     private async Task<MinerUParseResult> BuildParseResultAsync(
         string zipPath,
+        string sourcePdfPath,
         Action<MinerUParseStatus, int>? onProgress,
         CancellationToken ct)
     {
-        // Extract zip to a temp directory
-        var tempDir = Path.Combine(_cacheDirectory, Path.GetRandomFileName());
-        Directory.CreateDirectory(tempDir);
+        onProgress?.Invoke(MinerUParseStatus.ParsingResult, 85);
+
+        // Extract to a consistent directory (not random) for cache reuse
+        var extractedDir = GetExtractedDirPath(sourcePdfPath);
+
+        // Clean old extracted dir if exists
+        if (Directory.Exists(extractedDir))
+        {
+            try { Directory.Delete(extractedDir, recursive: true); }
+            catch { }
+        }
+        Directory.CreateDirectory(extractedDir);
 
         try
         {
-            ZipFile.ExtractToDirectory(zipPath, tempDir, overwriteFiles: true);
+            ZipFile.ExtractToDirectory(zipPath, extractedDir, overwriteFiles: true);
         }
-        catch
+        catch (Exception ex)
         {
-            // If zip extraction fails, try to use the zip directly
-            // (some MinerU versions return non-standard zip format)
+            System.Diagnostics.Debug.WriteLine($"[MinerU] Failed to extract zip: {ex.Message}");
+            throw new MinerUServiceException($"Failed to extract parse result: {ex.Message}", ex);
         }
 
-        onProgress?.Invoke(MinerUParseStatus.ParsingResult, 85);
-
-        // Find and parse middle.json
-        // TODO(Phase 2): Implement PopoJsonService.ParseMinerUMiddleJson and ParseMinerUZip
+        // Use the already-extracted directory (no redundant extraction)
         var popoDoc = await Task.Run(() =>
-        {
-            // Search for *_middle.json in the extracted directory
-            var middleJsonFiles = Directory.GetFiles(tempDir, "*_middle.json", SearchOption.AllDirectories);
-            if (middleJsonFiles.Length > 0)
-            {
-                return PopoJsonService.TryParseMinerUMiddleJson(middleJsonFiles[0]);
-            }
+            PopoJsonService.TryParseMinerUFromExtractedDir(extractedDir), ct);
 
-            // Fallback: try to parse from the zip directly
-            return PopoJsonService.TryParseMinerUZip(zipPath);
-        }, ct);
-
-        // Find markdown files
-        string? markdown = null;
-        string? popoMarkdown = null;
-
-        var mdFiles = Directory.GetFiles(tempDir, "*.md", SearchOption.AllDirectories);
-        foreach (var mdFile in mdFiles)
-        {
-            var fileName = Path.GetFileNameWithoutExtension(mdFile).ToLowerInvariant();
-            if (fileName.Contains("_popo"))
-            {
-                popoMarkdown = File.ReadAllText(mdFile);
-            }
-            else if (popoMarkdown is null)
-            {
-                // Use the first non-popo markdown as the main markdown
-                markdown ??= File.ReadAllText(mdFile);
-            }
-        }
+        // Extract markdown files
+        var markdownInfo = ExtractMarkdownFromDir(extractedDir);
 
         return new MinerUParseResult
         {
             PopoDocument = popoDoc,
             ZipPath = zipPath,
-            Markdown = markdown,
-            PopoMarkdown = popoMarkdown,
-            ArtifactsDirectory = tempDir
+            Markdown = markdownInfo.markdown,
+            PopoMarkdown = markdownInfo.popoMarkdown,
+            ArtifactsDirectory = extractedDir
         };
+    }
+
+    /// <summary>
+    /// Extracts markdown content from a directory.
+    /// </summary>
+    private (string? markdown, string? popoMarkdown) ExtractMarkdownFromDir(string dirPath)
+    {
+        string? markdown = null;
+        string? popoMarkdown = null;
+
+        try
+        {
+            var mdFiles = Directory.GetFiles(dirPath, "*.md", SearchOption.AllDirectories);
+            foreach (var mdFile in mdFiles)
+            {
+                var fileName = Path.GetFileNameWithoutExtension(mdFile).ToLowerInvariant();
+                if (fileName.Contains("_popo"))
+                {
+                    popoMarkdown = File.ReadAllText(mdFile);
+                }
+                else if (popoMarkdown is null)
+                {
+                    markdown ??= File.ReadAllText(mdFile);
+                }
+            }
+        }
+        catch
+        {
+            // Ignore errors reading markdown files
+        }
+
+        return (markdown, popoMarkdown);
     }
 
     #endregion

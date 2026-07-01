@@ -267,7 +267,7 @@
 							   CompactPaneLength="0"
 							   DisplayMode="CompactInline">
 
-                    <!-- Three-column layout: PDF | MinerU Blocks | Popo Blocks (dynamic width based on visibility) -->
+                    <!-- Three-column layout: PDF | MinerU Blocks | Popo Blocks -->
                     <SplitView.Content>
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -286,7 +286,7 @@
                                           Background="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
                                           IsVisible="{Binding ShowMinerUColumn}"/>
 
-                            <!-- Column 2: MinerU Raw Blocks -->
+                            <!-- Column 2: MinerU Blocks with In-Place Progress -->
                             <Border Grid.Column="1"
                                     Padding="8"
                                     Background="{DynamicResource SystemChromeLowColor}"
@@ -294,6 +294,7 @@
                                     BorderThickness="1"
                                     IsVisible="{Binding ShowMinerUColumn}">
                                 <DockPanel>
+                                    <!-- Header -->
                                     <StackPanel DockPanel.Dock="Top"
                                                 Orientation="Horizontal"
                                                 Spacing="4"
@@ -303,9 +304,53 @@
                                                    FontSize="12"/>
                                         <TextBlock Text="{Binding MinerUBlocks.Count, StringFormat='({0} blocks)'}"
                                                    FontSize="11"
-                                                   Opacity="0.6"/>
+                                                   Opacity="0.6"
+                                                   IsVisible="{Binding !IsMinerUParsing}"/>
                                     </StackPanel>
-                                    <ScrollViewer>
+
+                                    <!-- Progress State: shown during parsing -->
+                                    <Border IsVisible="{Binding IsMinerUParsing}"
+                                            VerticalAlignment="Center"
+                                            HorizontalAlignment="Stretch">
+                                        <StackPanel VerticalAlignment="Center"
+                                                    HorizontalAlignment="Center"
+                                                    Spacing="12">
+                                            <!-- Spinner -->
+                                            <PathIcon Width="32"
+                                                      Height="32"
+                                                      Data="{StaticResource spinner_regular}"
+                                                      Foreground="{DynamicResource SystemAccentColor}"
+                                                      HorizontalAlignment="Center"/>
+
+                                            <!-- Status Text -->
+                                            <TextBlock Text="{Binding MinerUStatusText}"
+                                                       FontSize="13"
+                                                       HorizontalAlignment="Center"
+                                                       TextAlignment="Center"/>
+
+                                            <!-- Progress Bar -->
+                                            <ProgressBar Width="200"
+                                                         Minimum="0"
+                                                         Maximum="100"
+                                                         Value="{Binding MinerUProgress}"
+                                                         HorizontalAlignment="Center"/>
+
+                                            <!-- Progress Percentage -->
+                                            <TextBlock Text="{Binding MinerUProgress, StringFormat='{}{0}%'}"
+                                                       FontSize="11"
+                                                       HorizontalAlignment="Center"
+                                                       Opacity="0.7"/>
+
+                                            <!-- Cancel Button -->
+                                            <Button Content="Cancel"
+                                                    Command="{Binding CancelMinerUParseCommand}"
+                                                    HorizontalAlignment="Center"
+                                                    Padding="20,4"/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- Blocks List: shown when not parsing -->
+                                    <ScrollViewer IsVisible="{Binding !IsMinerUParsing}">
                                         <ItemsControl ItemsSource="{Binding MinerUBlocks}">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate x:DataType="vm:MinerUBlockViewModel">

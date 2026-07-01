@@ -26,6 +26,8 @@ using CommunityToolkit.Mvvm.Input;
 using System;
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -53,6 +55,12 @@ public sealed partial class DocumentViewModel
     public bool MinerUEnabled => CalySettings.Default.MinerUEnabled;
 
     private CancellationTokenSource? _minerUCts;
+
+    /// <summary>
+    /// Cached MinerUService instance per configuration key.
+    /// Reuses HttpClient connections across parse operations.
+    /// </summary>
+    private static readonly ConditionalWeakTable<string, MinerUService> _minerUServiceCache = new();
 
     /// <summary>
     /// Raw MinerU blocks for the middle column of the three-column layout.
@@ -86,6 +94,25 @@ public sealed partial class DocumentViewModel
 
     #endregion
 
+    #region MinerU Service Factory
+
+    /// <summary>
+    /// Gets or creates a cached MinerUService instance for the current configuration.
+    /// This ensures HttpClient reuse across parse operations.
+    /// </summary>
+    private MinerUService GetMinerUService()
+    {
+        var settings = CalySettings.Default;
+        var minerUDir = ProjectPath is not null
+            ? Path.Combine(ProjectPath, "mineru")
+            : null;
+        // Cache key includes both URL and cache directory for proper isolation
+        var cacheKey = $"{settings.MinerUBaseUrl}|{minerUDir}";
+        return _minerUServiceCache.GetValue(cacheKey, _ => new MinerUService(settings.MinerUBaseUrl, minerUDir));
+    }
+
+    #endregion
+
     #region MinerU Commands
 
     [RelayCommand]
@@ -102,7 +129,8 @@ public sealed partial class DocumentViewModel
 
     /// <summary>
     /// Parses the current document using MinerU AI service.
-    /// Uploads the PDF, waits for parsing, downloads the result, and loads the PopoDocument.
+    /// First checks for cached results, then uploads the PDF, waits for parsing,
+    /// downloads the result, and loads the PopoDocument.
     /// If called while already parsing, cancels the current operation.
     /// </summary>
     [RelayCommand]
@@ -124,20 +152,34 @@ public sealed partial class DocumentViewModel
             return;
         }
 
+        var service = GetMinerUService();
+
+        // Try to load from cache first (avoids unnecessary network requests)
+        var cachedResult = service.TryLoadFromCache(LocalPath);
+        if (cachedResult?.PopoDocument is not null)
+        {
+            LoadParseResult(cachedResult);
+            MinerUStatus = MinerUParseStatus.Completed;
+            MinerUProgress = 100;
+            MinerUStatusText = "Loaded from cache";
+            IsMinerUParsing = false;
+            return;
+        }
+
+        // Clean up old extracted directories before starting a new parse
+        var docId = Path.GetFileNameWithoutExtension(LocalPath);
+        service.ClearOldExtractedDirs(docId);
+
         _minerUCts = new CancellationTokenSource();
         IsMinerUParsing = true;
+        ShowMinerUColumn = true; // Auto-open MinerU column to show progress in-place
         MinerUStatus = MinerUParseStatus.Submitting;
         MinerUProgress = 0;
         MinerUStatusText = MinerUParseStatus.Submitting.ToDisplayName();
 
         try
-            {
-                var settings = CalySettings.Default;
-                // Use project's mineru directory as cache if project path is available
-                var minerUDir = ProjectPath is not null
-                    ? Path.Combine(ProjectPath, "mineru")
-                    : null;
-                var service = new MinerUService(settings.MinerUBaseUrl, minerUDir);
+        {
+            var settings = CalySettings.Default;
 
             // Health check
             if (!await service.HealthCheckAsync(_minerUCts.Token))
@@ -156,45 +198,19 @@ public sealed partial class DocumentViewModel
                 _minerUCts.Token);
 
             // Load result into Popo properties
-            if (result.PopoDocument is not null)
+            LoadParseResult(result);
+
+            // Save result to project for persistence
+            if (result.PopoDocument is not null && ProjectPath is not null)
             {
-                PopoDocument = result.PopoDocument;
-                PopoAnalysisViewModel = new PopoAnalysisViewModel(result.PopoDocument);
-
-                // Assign blocks to each page view model
-                foreach (var page in Pages)
+                try
                 {
-                    page.PopoBlocks = result.PopoDocument.GetBlocksForPage(page.PageNumber);
+                    PopoJsonService.SavePopoDocumentToProject(result.PopoDocument, ProjectPath);
                 }
-
-                // Populate raw MinerU blocks for the middle column
-                // Populate flat Popo blocks for the right column
-                if (result.PopoDocument.PagesBlocks is not null)
+                catch
                 {
-                    var allBlocks = result.PopoDocument.GetAllBlocks();
-                    MinerUBlocks.Clear();
-                    PopoBlocksFlat.Clear();
-                    foreach (var block in allBlocks)
-                    {
-                        MinerUBlocks.Add(new MinerUBlockViewModel(
-                            new MinerUMiddlePageBlock
-                            {
-                                Id = block.Id,
-                                Page = block.Page,
-                                Type = block.Type,
-                                Content = block.Content,
-                                SourceLabel = block.SourceLabel,
-                                Contd = block.Contd,
-                                Level = block.Level,
-                                Image = block.Image,
-                                Bbox = new double[] { block.Bbox.X, block.Bbox.Y, block.Bbox.Right, block.Bbox.Bottom }
-                            }));
-                        PopoBlocksFlat.Add(new BlockViewModel(block));
-                    }
+                    // Non-critical: ignore save errors
                 }
-
-                // Auto-open the Popo analysis pane
-                IsPopoPaneOpen = true;
             }
 
             MinerUStatus = MinerUParseStatus.Completed;
@@ -225,6 +241,59 @@ public sealed partial class DocumentViewModel
             _minerUCts?.Dispose();
             _minerUCts = null;
         }
+    }
+
+    /// <summary>
+    /// Loads a parse result into the ViewModel properties.
+    /// Populates PopoDocument, page blocks, MinerU blocks, and flat Popo blocks.
+    /// </summary>
+    private void LoadParseResult(MinerUParseResult result)
+    {
+        if (result.PopoDocument is null)
+            return;
+
+        PopoDocument = result.PopoDocument;
+        PopoAnalysisViewModel = new PopoAnalysisViewModel(result.PopoDocument);
+
+        // Assign blocks to each page view model
+        foreach (var page in Pages)
+        {
+            page.PopoBlocks = result.PopoDocument.GetBlocksForPage(page.PageNumber);
+        }
+
+        // Build block collections in memory first, then replace
+        if (result.PopoDocument.PagesBlocks is not null)
+        {
+            var allBlocks = result.PopoDocument.GetAllBlocks();
+
+            var newMinerUBlocks = allBlocks.Select(block => new MinerUBlockViewModel(
+                new MinerUMiddlePageBlock
+                {
+                    Id = block.Id,
+                    Page = block.Page,
+                    Type = block.Type,
+                    Content = block.Content,
+                    SourceLabel = block.SourceLabel,
+                    Contd = block.Contd,
+                    Level = block.Level,
+                    Image = block.Image,
+                    Bbox = new double[] { block.Bbox.X, block.Bbox.Y, block.Bbox.Right, block.Bbox.Bottom }
+                })).ToList();
+
+            var newPopoBlocks = allBlocks.Select(block => new BlockViewModel(block)).ToList();
+
+            // Replace collections in bulk
+            MinerUBlocks.Clear();
+            foreach (var b in newMinerUBlocks)
+                MinerUBlocks.Add(b);
+
+            PopoBlocksFlat.Clear();
+            foreach (var b in newPopoBlocks)
+                PopoBlocksFlat.Add(b);
+        }
+
+        // Auto-open the Popo analysis pane
+        IsPopoPaneOpen = true;
     }
 
     /// <summary>
