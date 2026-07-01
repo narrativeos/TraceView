@@ -369,22 +369,33 @@ public sealed class MinerUService : IDisposable
     #region Task ID Persistence
 
     /// <summary>
-    /// Gets the path to the task_id.json file for a given PDF.
+    /// Gets the path to the task_id.json file within the project's mineru directory.
+    /// Always uses the project path to ensure consistency across service instances.
     /// </summary>
-    private string GetTaskIdFilePath(string pdfPath)
+    private string GetTaskIdFilePath(string pdfPath, string? projectPath)
     {
         var docId = Path.GetFileNameWithoutExtension(pdfPath);
-        return Path.Combine(_cacheDirectory, $"{docId}_task_id.json");
+        // Always save to project's mineru directory for consistency
+        var baseDir = !string.IsNullOrEmpty(projectPath)
+            ? Path.Combine(projectPath, "mineru")
+            : _cacheDirectory;
+        return Path.Combine(baseDir, $"{docId}_task_id.json");
     }
 
     /// <summary>
     /// Saves the current task ID to disk so it can be recovered on a subsequent launch.
+    /// The task ID is saved to the project's mineru/ directory for consistency.
     /// </summary>
-    public void SaveTaskId(string pdfPath, string taskId)
+    /// <param name="pdfPath">Path to the PDF file.</param>
+    /// <param name="taskId">The MinerU task ID to persist.</param>
+    /// <param name="projectPath">The project directory path. Task ID is saved under {projectPath}/mineru/.</param>
+    public void SaveTaskId(string pdfPath, string taskId, string? projectPath = null)
     {
         try
         {
-            var path = GetTaskIdFilePath(pdfPath);
+            var path = GetTaskIdFilePath(pdfPath, projectPath);
+            var dir = Path.GetDirectoryName(path);
+            Directory.CreateDirectory(dir);
             var data = new
             {
                 taskId = taskId,
@@ -407,11 +418,13 @@ public sealed class MinerUService : IDisposable
     /// Loads a previously saved task ID for the given PDF.
     /// Returns null if no pending task exists.
     /// </summary>
-    public string? LoadTaskId(string pdfPath)
+    /// <param name="pdfPath">Path to the PDF file.</param>
+    /// <param name="projectPath">The project directory path. Looks for task ID under {projectPath}/mineru/.</param>
+    public string? LoadTaskId(string pdfPath, string? projectPath = null)
     {
         try
         {
-            var path = GetTaskIdFilePath(pdfPath);
+            var path = GetTaskIdFilePath(pdfPath, projectPath);
             if (!File.Exists(path))
                 return null;
 
@@ -430,11 +443,13 @@ public sealed class MinerUService : IDisposable
     /// <summary>
     /// Clears the saved task ID after the task completes or fails.
     /// </summary>
-    public void ClearTaskId(string pdfPath)
+    /// <param name="pdfPath">Path to the PDF file.</param>
+    /// <param name="projectPath">The project directory path. Removes task ID from {projectPath}/mineru/.</param>
+    public void ClearTaskId(string pdfPath, string? projectPath = null)
     {
         try
         {
-            var path = GetTaskIdFilePath(pdfPath);
+            var path = GetTaskIdFilePath(pdfPath, projectPath);
             if (File.Exists(path))
                 File.Delete(path);
         }

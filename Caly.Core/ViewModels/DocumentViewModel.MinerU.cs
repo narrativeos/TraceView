@@ -166,7 +166,7 @@ public sealed partial class DocumentViewModel
         }
 
         // Step 2: Check for a pending task ID from a previous session
-        var pendingTaskId = service.LoadTaskId(LocalPath);
+        var pendingTaskId = service.LoadTaskId(LocalPath, ProjectPath);
         if (pendingTaskId is not null)
         {
             _minerUCts = new CancellationTokenSource();
@@ -182,7 +182,7 @@ public sealed partial class DocumentViewModel
                 if (!await service.HealthCheckAsync(_minerUCts.Token))
                 {
                     // Service unavailable, clear stale task ID and let user retry
-                    service.ClearTaskId(LocalPath);
+                    service.ClearTaskId(LocalPath, ProjectPath);
                     MinerUStatus = MinerUParseStatus.Failed;
                     MinerUStatusText = "MinerU service unavailable";
                     MinerUProgress = 0;
@@ -200,7 +200,7 @@ public sealed partial class DocumentViewModel
                 await SaveParseResultAsync(result);
 
                 // Clear the task ID on success
-                service.ClearTaskId(LocalPath);
+                service.ClearTaskId(LocalPath, ProjectPath);
 
                 MinerUStatus = MinerUParseStatus.Completed;
                 MinerUProgress = 100;
@@ -217,7 +217,7 @@ public sealed partial class DocumentViewModel
             catch (MinerUServiceException ex)
             {
                 // Task failed on server side - clear task ID so user can retry
-                service.ClearTaskId(LocalPath);
+                service.ClearTaskId(LocalPath, ProjectPath);
                 MinerUStatus = MinerUParseStatus.Failed;
                 MinerUProgress = 0;
                 MinerUStatusText = $"Resume failed: {ex.Message}";
@@ -226,7 +226,7 @@ public sealed partial class DocumentViewModel
             }
             catch (Exception ex)
             {
-                service.ClearTaskId(LocalPath);
+                service.ClearTaskId(LocalPath, ProjectPath);
                 MinerUStatus = MinerUParseStatus.Failed;
                 MinerUProgress = 0;
                 MinerUStatusText = $"Error: {ex.Message}";
@@ -273,7 +273,7 @@ public sealed partial class DocumentViewModel
                 _minerUCts.Token);
 
             // Save task ID so it can be recovered if the app closes
-            service.SaveTaskId(LocalPath, taskId);
+            service.SaveTaskId(LocalPath, taskId, ProjectPath);
 
             // Poll until complete
             MinerUStatus = MinerUParseStatus.Queued;
@@ -305,7 +305,7 @@ public sealed partial class DocumentViewModel
             await SaveParseResultAsync(result);
 
             // Clear task ID on success
-            service.ClearTaskId(LocalPath);
+            service.ClearTaskId(LocalPath, ProjectPath);
 
             MinerUStatus = MinerUParseStatus.Completed;
             MinerUProgress = 100;
@@ -321,14 +321,14 @@ public sealed partial class DocumentViewModel
         catch (MinerUServiceException ex)
         {
             // On failure, clear task ID so user can retry
-            service.ClearTaskId(LocalPath);
+            service.ClearTaskId(LocalPath, ProjectPath);
             MinerUStatus = MinerUParseStatus.Failed;
             MinerUProgress = 0;
             MinerUStatusText = $"Parse failed: {ex.Message}";
         }
         catch (Exception ex)
         {
-            service.ClearTaskId(LocalPath);
+            service.ClearTaskId(LocalPath, ProjectPath);
             MinerUStatus = MinerUParseStatus.Failed;
             MinerUProgress = 0;
             MinerUStatusText = $"Error: {ex.Message}";
