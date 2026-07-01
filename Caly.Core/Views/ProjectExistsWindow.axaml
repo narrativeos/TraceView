@@ -1,0 +1,83 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="480" d:DesignHeight="240"
+        x:Class="Caly.Core.Views.ProjectExistsWindow"
+        Width="480" Height="240"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        WindowDecorations="BorderOnly"
+        ExtendClientAreaToDecorationsHint="True"
+        ShowActivated="True"
+        Title="项目已存在">
+    <StackPanel Margin="20" Spacing="15">
+        <!-- Header with message -->
+        <StackPanel Spacing="10">
+            <TextBlock Text="项目已存在，请选择操作方式"
+                       FontWeight="Bold"
+                       FontSize="14"/>
+            <TextBlock x:Name="PART_MessageText"
+                       TextWrapping="Wrap"
+                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+        </StackPanel>
+
+        <!-- Divider -->
+        <Rectangle Height="1" 
+                   Fill="{DynamicResource SystemControlForegroundBaseLowBrush}"/>
+
+        <!-- Two button cards -->
+        <Grid ColumnDefinitions="*,*" Margin="0,0,6,0">
+            <!-- Open Existing Project Button (Recommended) -->
+            <Border Grid.Column="0"
+                    Background="{DynamicResource SystemControlBackgroundChromeLowBrush}"
+                    BorderBrush="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    Padding="12">
+                <StackPanel Spacing="8" VerticalAlignment="Center">
+                    <TextBlock Text="打开已有项目"
+                               FontWeight="SemiBold"
+                               FontSize="14"
+                               HorizontalAlignment="Center"/>
+                    <TextBlock Text="继续使用已有的分析结果"
+                               FontSize="11"
+                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                               TextAlignment="Center"
+                               TextWrapping="Wrap"/>
+                    <Button x:Name="PART_ButtonOpenExisting"
+                            Content="打开已有项目"
+                            IsDefault="True"
+                            Click="OpenExistingButton_OnClick"
+                            HorizontalAlignment="Stretch"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Create New Project Button -->
+            <Border Grid.Column="1"
+                    Margin="6,0,0,0"
+                    Background="{DynamicResource SystemControlBackgroundChromeLowBrush}"
+                    BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    Padding="12">
+                <StackPanel Spacing="8" VerticalAlignment="Center">
+                    <TextBlock Text="创建新项目"
+                               FontWeight="SemiBold"
+                               FontSize="14"
+                               HorizontalAlignment="Center"/>
+                    <TextBlock Text="创建新的项目目录 (例: name_2)"
+                               FontSize="11"
+                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                               TextAlignment="Center"
+                               TextWrapping="Wrap"/>
+                    <Button x:Name="PART_ButtonCreateNew"
+                            Content="创建新项目"
+                            Click="CreateNewButton_OnClick"
+                            HorizontalAlignment="Stretch"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </StackPanel>
+</Window>

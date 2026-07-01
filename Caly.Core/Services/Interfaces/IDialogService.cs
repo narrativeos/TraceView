@@ -72,5 +72,11 @@ namespace Caly.Core.Services.Interfaces
             IPdfDocumentService documentService,
             int currentPage,
             CancellationToken token);
+
+        /// <summary>
+        /// Shows a dialog asking whether to create a new project or open the existing one.
+        /// Returns true for "Create New Project", false for "Open Existing Project".
+        /// </summary>
+        Task<bool> ShowProjectExistsDialogAsync(string projectName);
     }
 }

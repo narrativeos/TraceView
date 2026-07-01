@@ -200,4 +200,21 @@ internal sealed class DialogService : IDialogService
             await window.ShowDialog(w);
         }, DispatcherPriority.Loaded);
     }
+
+    public async Task<bool> ShowProjectExistsDialogAsync(string projectName)
+    {
+        return await Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            Debug.ThrowNotOnUiThread();
+
+            if (_target is not Window w)
+            {
+                return false;
+            }
+
+            var window = new ProjectExistsWindow(projectName);
+            var result = await window.ShowDialog<bool?>(w);
+            return result ?? false;
+        }, DispatcherPriority.Loaded);
+    }
 }

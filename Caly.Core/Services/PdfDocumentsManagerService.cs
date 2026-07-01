@@ -245,17 +245,23 @@ internal sealed partial class PdfDocumentsManagerService : IPdfDocumentsManagerS
         bool projectExists = _projectService.ProjectExists(pdfPath);
 
         if (projectExists)
-            {
-                // Show notification that project exists, default to creating new project
-                var projectName = Path.GetFileName(_projectService.GetDefaultProjectPath(pdfPath));
-                _dialogService.ShowNotification(
-                    "项目已存在",
-                    $"项目 '{projectName}' 已存在，将创建为新项目。",
-                    Avalonia.Controls.Notifications.NotificationType.Warning);
+        {
+            // Show dialog asking user to choose: create new project or open existing
+            var projectName = Path.GetFileName(_projectService.GetDefaultProjectPath(pdfPath));
+            bool createNew = await _dialogService.ShowProjectExistsDialogAsync(projectName);
 
+            if (createNew)
+            {
+                // Create a new project with unique name
                 projectPath = _projectService.GetUniqueProjectPath(pdfPath);
                 _projectService.CreateProject(pdfPath, projectPath);
             }
+            else
+            {
+                // Open the existing project
+                projectPath = _projectService.GetDefaultProjectPath(pdfPath);
+            }
+        }
         else
         {
             // No existing project - create one automatically
