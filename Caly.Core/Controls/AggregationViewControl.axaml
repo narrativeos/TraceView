@@ -4,12 +4,12 @@
                     xmlns:vm="using:Caly.Core.ViewModels"
                     xmlns:models="using:Caly.Core.Models"
                     x:Class="Caly.Core.Controls.AggregationViewControl"
-                    x:DataType="vm:PopoAnalysisViewModel">
+                    x:DataType="vm:AnalysisViewModel">
 
     <ScrollViewer>
         <ItemsControl ItemsSource="{Binding Aggregations}">
             <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="models:PopoAggregation">
+                <DataTemplate x:DataType="models:AnalysisAggregation">
                     <Border BorderBrush="#DDD"
                             BorderThickness="1"
                             Margin="4,2"

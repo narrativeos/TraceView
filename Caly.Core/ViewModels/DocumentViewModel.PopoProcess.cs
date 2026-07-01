@@ -65,7 +65,7 @@ public sealed partial class DocumentViewModel
                 return false;
 
             // Don't show button if Popo result already exists
-            if (HasPopoDocument)
+            if (HasAnalysisDocument)
                 return false;
 
             var docId = LocalPath is not null ? Path.GetFileNameWithoutExtension(LocalPath) : null;
@@ -78,7 +78,7 @@ public sealed partial class DocumentViewModel
     /// <summary>
     /// Cached PopoService instance per configuration key.
     /// </summary>
-    private static readonly ConditionalWeakTable<string, PopoService> _popoServiceCache = new();
+    private static readonly ConditionalWeakTable<string, PopoService> _analysisServiceCache = new();
 
     #endregion
 
@@ -91,7 +91,7 @@ public sealed partial class DocumentViewModel
             ? Path.Combine(ProjectPath, "popo")
             : null;
         var cacheKey = $"{settings.PopoBaseUrl}|{cacheDir}";
-        return _popoServiceCache.GetValue(cacheKey, _ => new PopoService(settings.PopoBaseUrl, cacheDir));
+        return _analysisServiceCache.GetValue(cacheKey, _ => new PopoService(settings.PopoBaseUrl, cacheDir));
     }
 
     #endregion
@@ -100,7 +100,7 @@ public sealed partial class DocumentViewModel
 
     /// <summary>
     /// Processes the current document with Popo service.
-    /// Submits the MinerU ZIP, waits for processing, downloads the result, and loads the PopoDocument.
+    /// Submits the MinerU ZIP, waits for processing, downloads the result, and loads the AnalysisDocument.
     /// </summary>
     [RelayCommand]
     private async Task ProcessWithPopoAsync()
@@ -145,7 +145,7 @@ public sealed partial class DocumentViewModel
 
         _popoCts = new CancellationTokenSource();
         IsPopoProcessing = true;
-        ShowPopoColumn = true;
+        ShowAnalysisColumn = true;
         PopoStatus = PopoProcessStatus.Submitting;
         PopoProgress = 0;
         PopoStatusText = PopoProcessStatus.Submitting.ToDisplayName();
@@ -159,23 +159,23 @@ public sealed partial class DocumentViewModel
                 _popoCts.Token);
 
             // Load result
-            if (result.PopoDocument is not null)
+            if (result.AnalysisDocument is not null)
             {
-                // Update PopoDocument with the processed result
-                PopoDocument = result.PopoDocument;
-                PopoAnalysisViewModel = new PopoAnalysisViewModel(result.PopoDocument);
+                // Update AnalysisDocument with the processed result
+                AnalysisDocument = result.AnalysisDocument;
+                AnalysisViewModel = new AnalysisViewModel(result.AnalysisDocument);
 
                 // Assign blocks to each page
                 foreach (var page in Pages)
                 {
-                    page.PopoBlocks = result.PopoDocument.GetBlocksForPage(page.PageNumber);
+                    page.MinerUBlocks = result.AnalysisDocument.GetBlocksForPage(page.PageNumber);
                 }
 
                 // Update flat block collection
-                PopoBlocksFlat.Clear();
-                foreach (var block in result.PopoDocument.GetAllBlocks())
+                MinerUBlocksFlat.Clear();
+                foreach (var block in result.AnalysisDocument.GetAllBlocks())
                 {
-                    PopoBlocksFlat.Add(new BlockViewModel(block));
+                    MinerUBlocksFlat.Add(new BlockViewModel(block));
                 }
 
                 // Save to project
@@ -183,7 +183,7 @@ public sealed partial class DocumentViewModel
                 {
                     try
                     {
-                        PopoJsonService.SavePopoDocumentToProject(result.PopoDocument, ProjectPath);
+                        PopoJsonService.SaveAnalysisDocumentToProject(result.AnalysisDocument, ProjectPath);
                     }
                     catch
                     {

@@ -35,8 +35,8 @@ namespace Caly.Core.Controls;
 /// </summary>
 public sealed class BlockOverlayControl : Control
 {
-    public static readonly StyledProperty<IReadOnlyList<PopoBlock>?> BlocksProperty =
-        AvaloniaProperty.Register<BlockOverlayControl, IReadOnlyList<PopoBlock>?>(nameof(Blocks));
+    public static readonly StyledProperty<IReadOnlyList<MinerUBlock>?> BlocksProperty =
+        AvaloniaProperty.Register<BlockOverlayControl, IReadOnlyList<MinerUBlock>?>(nameof(Blocks));
 
     public static readonly StyledProperty<Rect?> VisibleAreaProperty =
         AvaloniaProperty.Register<BlockOverlayControl, Rect?>(nameof(VisibleArea));
@@ -47,13 +47,20 @@ public sealed class BlockOverlayControl : Control
     public static readonly StyledProperty<bool> ShowLabelsProperty =
         AvaloniaProperty.Register<BlockOverlayControl, bool>(nameof(ShowLabels), true);
 
+    /// <summary>
+    /// PDF page size for coordinate conversion.
+    /// Required to convert normalized (0-1) block coordinates to PDF pixel coordinates.
+    /// </summary>
+    public static readonly StyledProperty<Size> PageSizeProperty =
+        AvaloniaProperty.Register<BlockOverlayControl, Size>(nameof(PageSize));
+
     static BlockOverlayControl()
     {
         AffectsRender<BlockOverlayControl>(BlocksProperty, VisibleAreaProperty,
-            HighlightBlockIdProperty, ShowLabelsProperty);
+            HighlightBlockIdProperty, ShowLabelsProperty, PageSizeProperty);
     }
 
-    public IReadOnlyList<PopoBlock>? Blocks
+    public IReadOnlyList<MinerUBlock>? Blocks
     {
         get => GetValue(BlocksProperty);
         set => SetValue(BlocksProperty, value);
@@ -75,6 +82,12 @@ public sealed class BlockOverlayControl : Control
     {
         get => GetValue(ShowLabelsProperty);
         set => SetValue(ShowLabelsProperty, value);
+    }
+
+    public Size PageSize
+    {
+        get => GetValue(PageSizeProperty);
+        set => SetValue(PageSizeProperty, value);
     }
 
     // Cache for geometries
@@ -107,7 +120,7 @@ public sealed class BlockOverlayControl : Control
     {
         base.OnPropertyChanged(change);
 
-        if (change.Property == BlocksProperty)
+        if (change.Property == BlocksProperty || change.Property == PageSizeProperty)
         {
             _geometriesDirty = true;
         }
@@ -126,12 +139,13 @@ public sealed class BlockOverlayControl : Control
             return _blockGeometries;
         }
 
+        var pageSize = PageSize;
         var geometries = new StreamGeometry[blocks.Count];
         for (int i = 0; i < blocks.Count; i++)
         {
             var bbox = blocks[i].Bbox;
-            // Convert Avalonia Rect to PdfRectangle for PdfWordHelpers.GetGeometry
-            var pdfRect = new PdfRectangle(bbox.X, bbox.Y, bbox.Right, bbox.Bottom);
+            // Convert block bbox (may be normalized 0-1 or absolute pixels) to PdfRectangle
+            var pdfRect = BboxToPdfRectangle(bbox, pageSize);
             geometries[i] = PdfWordHelpers.GetGeometry(pdfRect, false);
         }
 
@@ -140,7 +154,46 @@ public sealed class BlockOverlayControl : Control
         return geometries;
     }
 
-    private (ImmutableSolidColorBrush fill, ImmutablePen pen) GetBlockStyle(PopoBlock block, bool isHighlighted)
+    /// <summary>
+    /// Converts a MinerUBlock bbox to PdfRectangle coordinates.
+    /// Handles both normalized (0-1) and absolute pixel coordinates,
+    /// and performs Y-axis flip from Avalonia (top-left origin) to PDF (bottom-left origin).
+    /// </summary>
+    private static PdfRectangle BboxToPdfRectangle(Rect bbox, Size pageSize)
+    {
+        // Determine if coordinates are normalized (0-1 range)
+        // MinerUBlock.Bbox from MinerUJsonService is normalized when page_size is available in middle.json
+        bool isNormalized = bbox.X <= 1.0 && bbox.Y <= 1.0 && bbox.Width <= 1.0 && bbox.Height <= 1.0;
+
+        double x0, y0, x1, y1;
+
+        if (isNormalized && pageSize.Width > 0 && pageSize.Height > 0)
+        {
+            // Convert normalized coordinates to pixel coordinates
+            double pixelX0 = bbox.X * pageSize.Width;
+            double pixelY0 = bbox.Y * pageSize.Height; // Avalonia Y (down)
+            double pixelX1 = (bbox.X + bbox.Width) * pageSize.Width;
+            double pixelY1 = (bbox.Y + bbox.Height) * pageSize.Height; // Avalonia Y (down)
+
+            // Flip Y-axis: Avalonia (top-left origin, Y down) -> PDF (bottom-left origin, Y up)
+            x0 = pixelX0;
+            y0 = pageSize.Height - pixelY1; // Bottom in Avalonia becomes bottom in PDF (smaller Y)
+            x1 = pixelX1;
+            y1 = pageSize.Height - pixelY0; // Top in Avalonia becomes top in PDF (larger Y)
+        }
+        else
+        {
+            // Already in pixel coordinates, just flip Y-axis
+            x0 = bbox.X;
+            y0 = pageSize.Height - bbox.Bottom;
+            x1 = bbox.Right;
+            y1 = pageSize.Height - bbox.Y;
+        }
+
+        return new PdfRectangle(x0, y0, x1, y1);
+    }
+
+    private (ImmutableSolidColorBrush fill, ImmutablePen pen) GetBlockStyle(MinerUBlock block, bool isHighlighted)
     {
         if (isHighlighted)
         {

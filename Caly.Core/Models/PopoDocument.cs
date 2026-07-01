@@ -27,7 +27,7 @@ namespace Caly.Core.Models;
 /// Complete Popo document model that holds normalized blocks, inference results,
 /// tree structure, and aggregation relationships.
 /// </summary>
-public partial class PopoDocument : ObservableObject
+public partial class AnalysisDocument : ObservableObject
 {
     /// <summary>
     /// Document ID.
@@ -45,38 +45,38 @@ public partial class PopoDocument : ObservableObject
     /// Normalized blocks grouped by page number.
     /// </summary>
     [ObservableProperty]
-    private Dictionary<int, List<PopoBlock>> _pagesBlocks = new();
+    private Dictionary<int, List<MinerUBlock>> _pagesBlocks = new();
 
     /// <summary>
     /// Inference blocks (flat list with contd/level/image fields).
     /// </summary>
     [ObservableProperty]
-    private List<PopoBlock> _inferenceBlocks = new();
+    private List<MinerUBlock> _inferenceBlocks = new();
 
     /// <summary>
     /// Final tree structure root node.
     /// </summary>
     [ObservableProperty]
-    private PopoTreeNode? _treeRoot;
+    private AnalysisTreeNode? _treeRoot;
 
     /// <summary>
     /// Aggregation map: tree node -> source blocks mapping.
     /// </summary>
     [ObservableProperty]
-    private Dictionary<int, List<PopoBlock>> _aggregationMap = new();
+    private Dictionary<int, List<MinerUBlock>> _aggregationMap = new();
 
     /// <summary>
     /// List of aggregation relationships for visualization.
     /// </summary>
     [ObservableProperty]
-    private List<PopoAggregation> _aggregations = new();
+    private List<AnalysisAggregation> _aggregations = new();
 
     /// <summary>
     /// Gets all blocks across all pages as a flat list.
     /// </summary>
-    public List<PopoBlock> GetAllBlocks()
+    public List<MinerUBlock> GetAllBlocks()
     {
-        var allBlocks = new List<PopoBlock>();
+        var allBlocks = new List<MinerUBlock>();
         foreach (var pageBlocks in PagesBlocks.Values)
         {
             allBlocks.AddRange(pageBlocks);
@@ -87,15 +87,15 @@ public partial class PopoDocument : ObservableObject
     /// <summary>
     /// Gets blocks for a specific page.
     /// </summary>
-    public List<PopoBlock> GetBlocksForPage(int pageNumber)
+    public List<MinerUBlock> GetBlocksForPage(int pageNumber)
     {
-        return PagesBlocks.TryGetValue(pageNumber, out var blocks) ? blocks : new List<PopoBlock>();
+        return PagesBlocks.TryGetValue(pageNumber, out var blocks) ? blocks : new List<MinerUBlock>();
     }
 
     /// <summary>
     /// Finds a block by its ID.
     /// </summary>
-    public PopoBlock? FindBlockById(int id)
+    public MinerUBlock? FindBlockById(int id)
     {
         foreach (var block in InferenceBlocks)
         {
@@ -117,11 +117,11 @@ public partial class PopoDocument : ObservableObject
         BuildAggregationMapRecursive(TreeRoot);
     }
 
-    private void BuildAggregationMapRecursive(PopoTreeNode node)
+    private void BuildAggregationMapRecursive(AnalysisTreeNode node)
     {
         if (node.BlockIds.Count > 0)
         {
-            var blocks = new List<PopoBlock>();
+            var blocks = new List<MinerUBlock>();
             foreach (var blockId in node.BlockIds)
             {
                 var block = FindBlockById(blockId);

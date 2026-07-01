@@ -119,10 +119,10 @@ public static class PopoJsonService
     }
 
     /// <summary>
-    /// Loads a PopoDocument from a project's popo/ directory.
+    /// Loads a AnalysisDocument from a project's popo/ directory.
     /// Looks for popo.json in the project's popo/ subdirectory only.
     /// </summary>
-    public static PopoDocument? LoadPopoDocumentFromProject(string? projectPath)
+    public static AnalysisDocument? LoadAnalysisDocumentFromProject(string? projectPath)
     {
         if (string.IsNullOrEmpty(projectPath))
             return null;
@@ -138,7 +138,7 @@ public static class PopoJsonService
             try
             {
                 var json = File.ReadAllText(popoJsonPath);
-                return JsonSerializer.Deserialize<PopoDocument>(json, new JsonSerializerOptions
+                return JsonSerializer.Deserialize<AnalysisDocument>(json, new JsonSerializerOptions
                 {
                     PropertyNameCaseInsensitive = true
                 });
@@ -153,9 +153,9 @@ public static class PopoJsonService
     }
 
     /// <summary>
-    /// Saves a PopoDocument to a project's popo/ directory.
+    /// Saves a AnalysisDocument to a project's popo/ directory.
     /// </summary>
-    public static void SavePopoDocumentToProject(PopoDocument doc, string projectPath)
+    public static void SaveAnalysisDocumentToProject(AnalysisDocument doc, string projectPath)
     {
         if (string.IsNullOrEmpty(projectPath))
             return;
@@ -173,13 +173,13 @@ public static class PopoJsonService
     }
 
     /// <summary>
-    /// Loads a complete PopoDocument from JSON files.
+    /// Loads a complete AnalysisDocument from JSON files.
     /// </summary>
-    public static PopoDocument? LoadPopoDocument(string pdfPath, string modelName = DefaultModelName)
+    public static AnalysisDocument? LoadAnalysisDocument(string pdfPath, string modelName = DefaultModelName)
     {
         var (normalizedJson, inferenceJson, treeJson) = FindPopoJsonPaths(pdfPath, modelName);
 
-        var doc = new PopoDocument();
+        var doc = new AnalysisDocument();
         var loaded = false;
 
         // Load normalized JSON (pages-based structure)
@@ -223,9 +223,9 @@ public static class PopoJsonService
     /// Loads normalization JSON (label_normalization.py output).
     /// Format: { "model": "...", "doc_id": "...", "pages": { "1": [ {...}, ... ], ... } }
     /// </summary>
-    internal static PopoDocument LoadNormalizationJson(string jsonPath)
+    internal static AnalysisDocument LoadNormalizationJson(string jsonPath)
     {
-        var doc = new PopoDocument();
+        var doc = new AnalysisDocument();
         var json = File.ReadAllText(jsonPath);
         var root = JsonDocument.Parse(json);
         var elem = root.RootElement;
@@ -243,13 +243,13 @@ public static class PopoJsonService
                 if (!int.TryParse(pageEntry.Name, out var pageNum))
                     continue;
 
-                var blocks = new List<PopoBlock>();
+                var blocks = new List<MinerUBlock>();
                 var blockList = pageEntry.Value;
 
                 int order = 0;
                 foreach (var blockElem in blockList.EnumerateArray())
                 {
-                    var block = new PopoBlock
+                    var block = new MinerUBlock
                     {
                         Id = order,
                         Page = pageNum
@@ -300,7 +300,7 @@ public static class PopoJsonService
     /// Loads inference JSON (inference.py output).
     /// Format: [ { "id": 1, "page": 1, "type": "title", ... }, ... ]
     /// </summary>
-    internal static List<PopoBlock>? LoadInferenceJson(string jsonPath)
+    internal static List<MinerUBlock>? LoadInferenceJson(string jsonPath)
     {
         var json = File.ReadAllText(jsonPath);
         var doc = JsonDocument.Parse(json);
@@ -308,11 +308,11 @@ public static class PopoJsonService
         if (doc.RootElement.ValueKind != JsonValueKind.Array)
             return null;
 
-        var blocks = new List<PopoBlock>();
+        var blocks = new List<MinerUBlock>();
 
         foreach (var elem in doc.RootElement.EnumerateArray())
         {
-            var block = new PopoBlock();
+            var block = new MinerUBlock();
 
             if (elem.TryGetProperty("id", out var idElem))
                 block.Id = idElem.GetInt32();
@@ -354,7 +354,7 @@ public static class PopoJsonService
     /// Loads tree JSON (get_json_tree.py output).
     /// Format: { "type": "root", "children": [ ... ], ... }
     /// </summary>
-    internal static PopoTreeNode? LoadTreeJson(string jsonPath)
+    internal static AnalysisTreeNode? LoadTreeJson(string jsonPath)
     {
         var json = File.ReadAllText(jsonPath);
         var doc = JsonDocument.Parse(json);
@@ -362,9 +362,9 @@ public static class PopoJsonService
         return ParseTreeNode(doc.RootElement);
     }
 
-    private static PopoTreeNode ParseTreeNode(JsonElement elem)
+    private static AnalysisTreeNode ParseTreeNode(JsonElement elem)
     {
-        var node = new PopoTreeNode();
+        var node = new AnalysisTreeNode();
 
         if (elem.TryGetProperty("type", out var typeElem))
             node.Type = typeElem.GetString() ?? string.Empty;
@@ -433,16 +433,16 @@ public static class PopoJsonService
         return new Rect(0, 0, 0, 0);
     }
 
-    // Extension method for PopoDocument to populate PagesBlocks from InferenceBlocks
-    private static void PopulatePagesBlocksFromInference(this PopoDocument doc)
+    // Extension method for AnalysisDocument to populate PagesBlocks from InferenceBlocks
+    private static void PopulatePagesBlocksFromInference(this AnalysisDocument doc)
     {
-        var pages = new Dictionary<int, List<PopoBlock>>();
+        var pages = new Dictionary<int, List<MinerUBlock>>();
 
         foreach (var block in doc.InferenceBlocks)
         {
             if (!pages.TryGetValue(block.Page, out var pageBlocks))
             {
-                pageBlocks = new List<PopoBlock>();
+                pageBlocks = new List<MinerUBlock>();
                 pages[block.Page] = pageBlocks;
             }
             pageBlocks.Add(block);
@@ -455,9 +455,9 @@ public static class PopoJsonService
 
     /// <summary>
     /// Tries to parse a Popo result directory (from Popo service).
-    /// Searches for popo_result.json or any JSON file that contains a PopoDocument structure.
+    /// Searches for popo_result.json or any JSON file that contains a AnalysisDocument structure.
     /// </summary>
-    public static PopoDocument? TryParsePopoResultDir(string resultDir)
+    public static AnalysisDocument? TryParsePopoResultDir(string resultDir)
     {
         if (!Directory.Exists(resultDir))
             return null;
@@ -488,9 +488,9 @@ public static class PopoJsonService
     }
 
     /// <summary>
-    /// Tries to parse a single JSON file as a PopoDocument result.
+    /// Tries to parse a single JSON file as a AnalysisDocument result.
     /// </summary>
-    static PopoDocument? TryParsePopoResultJson(string jsonPath)
+    static AnalysisDocument? TryParsePopoResultJson(string jsonPath)
     {
         if (!File.Exists(jsonPath))
             return null;
@@ -501,8 +501,8 @@ public static class PopoJsonService
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
-            // Try to deserialize directly as PopoDocument
-            var popoDoc = JsonSerializer.Deserialize<PopoDocument>(json, new JsonSerializerOptions
+            // Try to deserialize directly as AnalysisDocument
+            var popoDoc = JsonSerializer.Deserialize<AnalysisDocument>(json, new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true
             });

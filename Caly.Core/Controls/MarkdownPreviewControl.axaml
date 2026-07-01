@@ -3,7 +3,7 @@
                     xmlns:controls="using:Caly.Core.Controls"
                     xmlns:vm="using:Caly.Core.ViewModels"
                     x:Class="Caly.Core.Controls.MarkdownPreviewControl"
-                    x:DataType="vm:PopoAnalysisViewModel">
+                    x:DataType="vm:AnalysisViewModel">
 
     <ScrollViewer>
         <TextBlock Text="{Binding MarkdownText}"

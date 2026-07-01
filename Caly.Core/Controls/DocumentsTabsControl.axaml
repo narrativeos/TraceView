@@ -217,7 +217,7 @@
 									   HorizontalAlignment="Center"
 									   VerticalAlignment="Stretch"
 									   Background="Transparent"
-									   IsChecked="{Binding ShowPopoColumn}">
+									   IsChecked="{Binding ShowAnalysisColumn}">
 							<PathIcon Width="17"
 									  Height="17"
 									  Data="{StaticResource popo_blocks_regular}">
@@ -288,7 +288,7 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="{Binding ShowMinerUColumn, Converter={StaticResource BoolToGridLengthConverter}}"/>
-                                <ColumnDefinition Width="{Binding ShowPopoColumn, Converter={StaticResource BoolToGridLengthConverter}}"/>
+                                <ColumnDefinition Width="{Binding ShowAnalysisColumn, Converter={StaticResource BoolToGridLengthConverter}}"/>
                             </Grid.ColumnDefinitions>
 
                             <!-- Column 1: PDF Document -->
@@ -403,7 +403,7 @@
                                           HorizontalAlignment="Right"
                                           Width="4"
                                           Background="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
-                                          IsVisible="{Binding ShowPopoColumn}"/>
+                                          IsVisible="{Binding ShowAnalysisColumn}"/>
 
                             <!-- Column 3: Popo Blocks -->
                             <Border Grid.Column="2"
@@ -411,7 +411,7 @@
                                     Background="{DynamicResource SystemChromeLowColor}"
                                     BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
                                     BorderThickness="1"
-                                    IsVisible="{Binding ShowPopoColumn}">
+                                    IsVisible="{Binding ShowAnalysisColumn}">
                                 <DockPanel>
                                     <StackPanel DockPanel.Dock="Top"
                                                 Orientation="Horizontal"
@@ -420,12 +420,12 @@
                                         <TextBlock Text="Popo"
                                                    FontWeight="Bold"
                                                    FontSize="12"/>
-                                        <TextBlock Text="{Binding PopoBlocksFlat.Count, StringFormat='({0} blocks)'}"
+                                        <TextBlock Text="{Binding MinerUBlocksFlat.Count, StringFormat='({0} blocks)'}"
                                                    FontSize="11"
                                                    Opacity="0.6"/>
                                     </StackPanel>
                                     <ScrollViewer>
-                                        <ItemsControl ItemsSource="{Binding PopoBlocksFlat}">
+                                        <ItemsControl ItemsSource="{Binding MinerUBlocksFlat}">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate x:DataType="vm:BlockViewModel">
                                                     <Border Padding="6"
@@ -649,8 +649,8 @@
 
                                         <!-- AI Analysis tab -->
                                         <TabItem MinHeight="40"
-                                                 IsVisible="{Binding HasPopoDocument}"
-                                                 IsEnabled="{Binding HasPopoDocument}">
+                                                 IsVisible="{Binding HasAnalysisDocument}"
+                                                 IsEnabled="{Binding HasAnalysisDocument}">
                                             <TabItem.Header>
                                                 <PathIcon Width="17"
                                                           Height="17"
@@ -659,7 +659,7 @@
                                                 </PathIcon>
                                             </TabItem.Header>
 
-                                            <controls:PopoAnalysisView DataContext="{Binding PopoAnalysisViewModel}"/>
+                                            <controls:AnalysisView DataContext="{Binding AnalysisViewModel}"/>
                                         </TabItem>
 
 									</TabControl>

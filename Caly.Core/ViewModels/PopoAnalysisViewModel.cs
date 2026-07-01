@@ -32,13 +32,13 @@ namespace Caly.Core.ViewModels;
 /// Main view model for the Popo Analysis panel.
 /// Manages block list, tree view, aggregation, and markdown preview.
 /// </summary>
-public partial class PopoAnalysisViewModel : ViewModelBase
+public partial class AnalysisViewModel : ViewModelBase
 {
-    private readonly PopoDocument _popoDocument;
+    private readonly AnalysisDocument _analysisDocument;
 
-    public PopoAnalysisViewModel(PopoDocument popoDocument)
+    public AnalysisViewModel(AnalysisDocument popoDocument)
     {
-        _popoDocument = popoDocument;
+        _analysisDocument = popoDocument;
 
         // Build block view models
         foreach (var block in popoDocument.GetAllBlocks())
@@ -65,12 +65,12 @@ public partial class PopoAnalysisViewModel : ViewModelBase
         ApplyFilters();
     }
 
-    public PopoDocument PopoDocument => _popoDocument;
+    public AnalysisDocument AnalysisDocument => _analysisDocument;
 
     // === Data availability indicators ===
-    public bool HasNormalization => _popoDocument.PagesBlocks.Count > 0;
-    public bool HasInference => _popoDocument.InferenceBlocks.Count > 0;
-    public bool HasTree => _popoDocument.TreeRoot is not null;
+    public bool HasNormalization => _analysisDocument.PagesBlocks.Count > 0;
+    public bool HasInference => _analysisDocument.InferenceBlocks.Count > 0;
+    public bool HasTree => _analysisDocument.TreeRoot is not null;
 
     /// <summary>
     /// Human-readable status text showing which stages are available.
@@ -111,12 +111,12 @@ public partial class PopoAnalysisViewModel : ViewModelBase
 
     // === Aggregation ===
     [ObservableProperty]
-    private IReadOnlyList<PopoAggregation>? _aggregations;
+    private IReadOnlyList<AnalysisAggregation>? _aggregations;
 
     partial void OnTreeRootChanged(TreeNodeViewModel? value)
     {
-        // Reload aggregations from PopoDocument
-        Aggregations = _popoDocument.Aggregations;
+        // Reload aggregations from AnalysisDocument
+        Aggregations = _analysisDocument.Aggregations;
     }
 
     // === Selection/Highlight ===

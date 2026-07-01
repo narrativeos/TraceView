@@ -27,14 +27,14 @@ namespace Caly.Core.ViewModels;
 public sealed partial class PageViewModel
 {
     [ObservableProperty]
-    private IReadOnlyList<PopoBlock>? _popoBlocks;
+    private IReadOnlyList<MinerUBlock>? _minerUBlocks;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(PopoBlocks))]
-    private bool _hasPopoBlocks;
+    [NotifyPropertyChangedFor(nameof(MinerUBlocks))]
+    private bool _hasMinerUBlocks;
 
-    partial void OnPopoBlocksChanged(IReadOnlyList<PopoBlock>? value)
+    partial void OnMinerUBlocksChanged(IReadOnlyList<MinerUBlock>? value)
     {
-        HasPopoBlocks = value is not null && value.Count > 0;
+        HasMinerUBlocks = value is not null && value.Count > 0;
     }
 }

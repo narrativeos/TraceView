@@ -31,16 +31,16 @@ namespace Caly.Core.Services;
 
 /// <summary>
 /// Service for parsing MinerU JSON output files (middle.json, ZIP results).
-/// Converts MinerU's raw output into PopoDocument structures for visualization.
+/// Converts MinerU's raw output into AnalysisDocument structures for visualization.
 /// </summary>
 public static class MinerUJsonService
 {
     /// <summary>
     /// Loads a MinerU parse result produced in the project's mineru/ directory.
     /// This is a separate stage from Popo post-processing and may return a
-    /// PopoDocument built from MinerU middle.json output.
+    /// AnalysisDocument built from MinerU middle.json output.
     /// </summary>
-    public static PopoDocument? LoadMinerUResultFromProject(string? projectPath)
+    public static AnalysisDocument? LoadMinerUResultFromProject(string? projectPath)
     {
         if (string.IsNullOrEmpty(projectPath))
             return null;
@@ -127,10 +127,10 @@ public static class MinerUJsonService
     #region MinerU Output Parsing
 
     /// <summary>
-    /// Parses MinerU middle.json output into a PopoDocument.
+    /// Parses MinerU middle.json output into a AnalysisDocument.
     /// Supports both the "pages" flat block list and optional "tree" hierarchical structure.
     /// </summary>
-    public static PopoDocument? TryParseMinerUMiddleJson(string jsonPath)
+    public static AnalysisDocument? TryParseMinerUMiddleJson(string jsonPath)
     {
         if (!File.Exists(jsonPath))
             return null;
@@ -141,7 +141,7 @@ public static class MinerUJsonService
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
-            var popoDoc = new PopoDocument
+            var popoDoc = new AnalysisDocument
             {
                 DocId = GetStringProperty(root, "doc_id") ?? string.Empty,
                 ModelName = GetStringProperty(root, "model_name") ?? "mineru"
@@ -172,13 +172,13 @@ public static class MinerUJsonService
                         if (!int.TryParse(pageEntry.Name, out var pageNum))
                             continue;
 
-                        var blocks = new List<PopoBlock>();
+                        var blocks = new List<MinerUBlock>();
                         var pageWidth = pageSizeMap.TryGetValue(pageNum, out var size) ? size.width : 0.0;
                         var pageHeight = pageSizeMap.TryGetValue(pageNum, out size) ? size.height : 0.0;
 
                         foreach (var blockElem in pageEntry.Value.EnumerateArray())
                         {
-                            var block = MapMinerUBlockToPopoBlock(blockElem, pageWidth, pageHeight);
+                            var block = MapMinerUBlockToMinerUBlock(blockElem, pageWidth, pageHeight);
                             blocks.Add(block);
                         }
 
@@ -196,7 +196,7 @@ public static class MinerUJsonService
                         if (pageNum <= 0)
                             continue;
 
-                        var blocks = new List<PopoBlock>();
+                        var blocks = new List<MinerUBlock>();
                         var pageWidth = pageSizeMap.TryGetValue(pageNum, out var size) ? size.width : 0.0;
                         var pageHeight = pageSizeMap.TryGetValue(pageNum, out size) ? size.height : 0.0;
 
@@ -204,7 +204,7 @@ public static class MinerUJsonService
                         {
                             foreach (var blockElem in blocksElem.EnumerateArray())
                             {
-                                var block = MapMinerUBlockToPopoBlock(blockElem, pageWidth, pageHeight);
+                                var block = MapMinerUBlockToMinerUBlock(blockElem, pageWidth, pageHeight);
                                 blocks.Add(block);
                             }
                         }
@@ -234,7 +234,7 @@ public static class MinerUJsonService
                         ? GetDoubleValue(pageSizeElemForPage2[1])
                         : 0.0;
 
-                    var blocks = new List<PopoBlock>();
+                    var blocks = new List<MinerUBlock>();
                     foreach (var sectionName in new[] { "preproc_blocks", "para_blocks", "discarded_blocks" })
                     {
                         if (!pageInfoElem.TryGetProperty(sectionName, out var sectionElem) || sectionElem.ValueKind != JsonValueKind.Array)
@@ -249,7 +249,7 @@ public static class MinerUJsonService
                     if (blocks.Count > 0)
                     {
                         if (!popoDoc.PagesBlocks.ContainsKey(pageNum))
-                            popoDoc.PagesBlocks[pageNum] = new List<PopoBlock>();
+                            popoDoc.PagesBlocks[pageNum] = new List<MinerUBlock>();
 
                         popoDoc.PagesBlocks[pageNum].AddRange(blocks);
                     }
@@ -277,10 +277,10 @@ public static class MinerUJsonService
     }
 
     /// <summary>
-    /// Parses a MinerU result zip file and extracts PopoDocument.
+    /// Parses a MinerU result zip file and extracts AnalysisDocument.
     /// Searches for *_middle.json in the extracted files.
     /// </summary>
-    public static PopoDocument? TryParseMinerUZip(string zipPath)
+    public static AnalysisDocument? TryParseMinerUZip(string zipPath)
     {
         if (!File.Exists(zipPath))
             return null;
@@ -299,12 +299,12 @@ public static class MinerUJsonService
     }
 
     /// <summary>
-    /// Parses an already-extracted MinerU output directory and builds a PopoDocument.
+    /// Parses an already-extracted MinerU output directory and builds a AnalysisDocument.
     /// Searches only for *_middle.json in the directory.
     /// </summary>
     /// <param name="extractedDir">Path to the extracted directory containing MinerU output files.</param>
-    /// <returns>A PopoDocument if parsing succeeds, otherwise null.</returns>
-    public static PopoDocument? TryParseMinerUFromExtractedDir(string extractedDir)
+    /// <returns>A AnalysisDocument if parsing succeeds, otherwise null.</returns>
+    public static AnalysisDocument? TryParseMinerUFromExtractedDir(string extractedDir)
     {
         if (!Directory.Exists(extractedDir))
             return null;
@@ -334,11 +334,11 @@ public static class MinerUJsonService
     #region MinerU Mapping Helpers
 
     /// <summary>
-    /// Maps a MinerU block JsonElement to a PopoBlock.
+    /// Maps a MinerU block JsonElement to a MinerUBlock.
     /// </summary>
-    static PopoBlock MapMinerUBlockToPopoBlock(JsonElement elem, double pageWidth, double pageHeight)
+    static MinerUBlock MapMinerUBlockToMinerUBlock(JsonElement elem, double pageWidth, double pageHeight)
     {
-        var block = new PopoBlock();
+        var block = new MinerUBlock();
 
         if (elem.TryGetProperty("id", out var idElem))
             block.Id = GetIntValue(idElem, block.Id);
@@ -355,7 +355,7 @@ public static class MinerUJsonService
                         ?? string.Empty;
 
         block.SourceLabel = minerUType;
-        block.Type = MapMinerUTypeToPopoType(minerUType);
+        block.Type = MapMinerUTypeToBlockType(minerUType);
 
         // Parse bbox
         if (elem.TryGetProperty("bbox", out var bboxElem) || elem.TryGetProperty("box", out bboxElem))
@@ -382,9 +382,9 @@ public static class MinerUJsonService
         return block;
     }
 
-    static IEnumerable<PopoBlock> MapMinerUPageSectionToBlocks(JsonElement sectionElem, int pageNum, double pageWidth, double pageHeight)
+    static IEnumerable<MinerUBlock> MapMinerUPageSectionToBlocks(JsonElement sectionElem, int pageNum, double pageWidth, double pageHeight)
     {
-        var results = new List<PopoBlock>();
+        var results = new List<MinerUBlock>();
 
         if (sectionElem.ValueKind != JsonValueKind.Object)
             return results;
@@ -393,7 +393,7 @@ public static class MinerUJsonService
         {
             foreach (var blockElem in blocksElem.EnumerateArray())
             {
-                var block = MapMinerUBlockToPopoBlock(blockElem, pageWidth, pageHeight);
+                var block = MapMinerUBlockToMinerUBlock(blockElem, pageWidth, pageHeight);
                 if (block.Page <= 0)
                     block.Page = pageNum;
                 results.Add(block);
@@ -403,11 +403,11 @@ public static class MinerUJsonService
         // Also support a direct content-bearing block object.
         if (sectionElem.TryGetProperty("lines", out var linesElem) && linesElem.ValueKind == JsonValueKind.Array)
         {
-            var block = new PopoBlock
+            var block = new MinerUBlock
             {
                 Id = results.Count + 1,
                 Page = pageNum,
-                Type = MapMinerUTypeToPopoType(GetStringProperty(sectionElem, "type") ?? string.Empty),
+                Type = MapMinerUTypeToBlockType(GetStringProperty(sectionElem, "type") ?? string.Empty),
                 SourceLabel = GetStringProperty(sectionElem, "type") ?? string.Empty,
                 Content = ExtractMinerUContent(sectionElem),
                 Bbox = ParseMinerUBbox(sectionElem.TryGetProperty("bbox", out var bboxElem) ? bboxElem : default, pageWidth, pageHeight)
@@ -446,9 +446,9 @@ public static class MinerUJsonService
     }
 
     /// <summary>
-    /// Maps MinerU source_label/type to PopoBlock.Type.
+    /// Maps MinerU source_label/type to MinerUBlock.Type.
     /// </summary>
-    static string MapMinerUTypeToPopoType(string minerUType)
+    static string MapMinerUTypeToBlockType(string minerUType)
     {
         if (string.IsNullOrEmpty(minerUType))
             return "text";
@@ -502,11 +502,11 @@ public static class MinerUJsonService
     }
 
     /// <summary>
-    /// Recursively maps a MinerU tree node JsonElement to a PopoTreeNode.
+    /// Recursively maps a MinerU tree node JsonElement to a AnalysisTreeNode.
     /// </summary>
-    static PopoTreeNode MapMinerUTreeNode(JsonElement elem, Dictionary<int, (double width, double height)> pageSizeMap)
+    static AnalysisTreeNode MapMinerUTreeNode(JsonElement elem, Dictionary<int, (double width, double height)> pageSizeMap)
     {
-        var node = new PopoTreeNode();
+        var node = new AnalysisTreeNode();
 
         node.Type = GetStringProperty(elem, "type") ?? string.Empty;
         node.Title = GetStringProperty(elem, "title") ?? string.Empty;

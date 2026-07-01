@@ -2,8 +2,8 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:controls="using:Caly.Core.Controls"
                     xmlns:vm="using:Caly.Core.ViewModels"
-                    x:Class="Caly.Core.Controls.PopoAnalysisView"
-                    x:DataType="vm:PopoAnalysisViewModel">
+                    x:Class="Caly.Core.Controls.AnalysisView"
+                    x:DataType="vm:AnalysisViewModel">
 
     <DockPanel>
         <!-- Top toolbar -->

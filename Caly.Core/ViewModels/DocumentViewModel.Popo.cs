@@ -30,34 +30,34 @@ namespace Caly.Core.ViewModels;
 public sealed partial class DocumentViewModel
 {
     [ObservableProperty]
-    private PopoDocument? _popoDocument;
+    private AnalysisDocument? _analysisDocument;
 
-    partial void OnPopoDocumentChanged(PopoDocument? value)
+    partial void OnAnalysisDocumentChanged(AnalysisDocument? value)
     {
-        OnPropertyChanged(nameof(HasPopoDocument));
+        OnPropertyChanged(nameof(HasAnalysisDocument));
     }
 
     /// <summary>
-    /// Gets whether a PopoDocument has been loaded (for UI visibility binding).
+    /// Gets whether a AnalysisDocument has been loaded (for UI visibility binding).
     /// </summary>
-    public bool HasPopoDocument => PopoDocument is not null;
+    public bool HasAnalysisDocument => AnalysisDocument is not null;
 
     [ObservableProperty]
-    private PopoAnalysisViewModel? _popoAnalysisViewModel;
+    private AnalysisViewModel? _analysisViewModel;
 
     [ObservableProperty]
     private bool _isPopoPaneOpen;
 
     /// <summary>
-    /// Flat list of Popo blocks for the right column of the three-column layout.
+    /// Flat list of MinerU blocks for the right column of the three-column layout.
     /// </summary>
     [ObservableProperty]
-    private ObservableCollection<BlockViewModel> _popoBlocksFlat = new();
+    private ObservableCollection<BlockViewModel> _minerUBlocksFlat = new();
 
     /// <summary>
-    /// Gets whether Popo blocks are available for display.
+    /// Gets whether MinerU blocks are available for display.
     /// </summary>
-    public bool HasPopoBlocksFlat => PopoBlocksFlat.Count > 0;
+    public bool HasMinerUBlocksFlat => MinerUBlocksFlat.Count > 0;
 
     [RelayCommand]
     private void TogglePopoPane()
@@ -80,7 +80,7 @@ public sealed partial class DocumentViewModel
         if (!Directory.Exists(popoDir))
             return;
 
-        PopoDocument? popoDoc = null;
+        AnalysisDocument? popoDoc = null;
 
         // Try popo.json first
         var popoJsonPath = Path.Combine(popoDir, "popo.json");
@@ -89,7 +89,7 @@ public sealed partial class DocumentViewModel
             try
             {
                 var json = File.ReadAllText(popoJsonPath);
-                popoDoc = System.Text.Json.JsonSerializer.Deserialize<PopoDocument>(json, new System.Text.Json.JsonSerializerOptions
+                popoDoc = System.Text.Json.JsonSerializer.Deserialize<AnalysisDocument>(json, new System.Text.Json.JsonSerializerOptions
                 {
                     PropertyNameCaseInsensitive = true
                 });
@@ -113,20 +113,20 @@ public sealed partial class DocumentViewModel
         if (popoDoc is null)
             return;
 
-        PopoDocument = popoDoc;
-        PopoAnalysisViewModel = new PopoAnalysisViewModel(popoDoc);
+        AnalysisDocument = popoDoc;
+        AnalysisViewModel = new AnalysisViewModel(popoDoc);
 
         // Assign blocks to each page view model
         foreach (var page in Pages)
         {
-            page.PopoBlocks = popoDoc.GetBlocksForPage(page.PageNumber);
+            page.MinerUBlocks = popoDoc.GetBlocksForPage(page.PageNumber);
         }
 
         // Populate flat Popo blocks for the right column
-        PopoBlocksFlat.Clear();
+        MinerUBlocksFlat.Clear();
         foreach (var block in popoDoc.GetAllBlocks())
         {
-            PopoBlocksFlat.Add(new BlockViewModel(block));
+            MinerUBlocksFlat.Add(new BlockViewModel(block));
         }
     }
 }

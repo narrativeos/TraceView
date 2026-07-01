@@ -25,9 +25,9 @@ namespace Caly.Core.Controls;
 /// <summary>
 /// Main Popo Analysis view that integrates all sub-controls.
 /// </summary>
-public partial class PopoAnalysisView : UserControl
+public partial class AnalysisView : UserControl
 {
-    public PopoAnalysisView()
+    public AnalysisView()
     {
         InitializeComponent();
     }

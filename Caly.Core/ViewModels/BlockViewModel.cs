@@ -30,9 +30,9 @@ namespace Caly.Core.ViewModels;
 /// </summary>
 public partial class BlockViewModel : ObservableObject
 {
-    private readonly PopoBlock _block;
+    private readonly MinerUBlock _block;
 
-    public BlockViewModel(PopoBlock block)
+    public BlockViewModel(MinerUBlock block)
     {
         _block = block;
     }

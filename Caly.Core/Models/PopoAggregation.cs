@@ -61,7 +61,7 @@ public enum AggregationType
 /// <summary>
 /// Represents an aggregation relationship between source blocks and a target tree node.
 /// </summary>
-public sealed class PopoAggregation
+public sealed class AnalysisAggregation
 {
     /// <summary>
     /// Type of aggregation relationship.
@@ -76,7 +76,7 @@ public sealed class PopoAggregation
     /// <summary>
     /// Target tree node reference (optional, for display purposes).
     /// </summary>
-    public PopoTreeNode? TargetNode { get; set; }
+    public AnalysisTreeNode? TargetNode { get; set; }
 
     /// <summary>
     /// Label text for the aggregation line annotation.

@@ -3,7 +3,7 @@
                     xmlns:controls="using:Caly.Core.Controls"
                     xmlns:vm="using:Caly.Core.ViewModels"
                     x:Class="Caly.Core.Controls.BlockListControl"
-                    x:DataType="vm:PopoAnalysisViewModel">
+                    x:DataType="vm:AnalysisViewModel">
 
     <Design.PreviewWith>
         <StackPanel Width="400" Height="300">

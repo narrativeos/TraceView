@@ -25,7 +25,7 @@ namespace Caly.Core.Models;
 
 /// <summary>
 /// Represents a single block from MinerU middle.json pages section.
-/// This is the raw format before mapping to PopoBlock.
+/// This is the raw format before mapping to MinerUBlock.
 /// </summary>
 public class MinerUMiddlePageBlock
 {
@@ -36,7 +36,7 @@ public class MinerUMiddlePageBlock
     public int Page { get; set; }
 
     /// <summary>
-    /// Block type from MinerU (may differ from PopoBlock.Type).
+    /// Block type from MinerU (may differ from MinerUBlock.Type).
     /// </summary>
     [JsonPropertyName("type")]
     public string Type { get; set; } = string.Empty;

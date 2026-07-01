@@ -32,9 +32,9 @@ namespace Caly.Core.ViewModels;
 /// </summary>
 public partial class TreeNodeViewModel : ObservableObject
 {
-    private readonly PopoTreeNode _node;
+    private readonly AnalysisTreeNode _node;
 
-    public TreeNodeViewModel(PopoTreeNode node)
+    public TreeNodeViewModel(AnalysisTreeNode node)
     {
         _node = node;
         foreach (var child in node.Children)

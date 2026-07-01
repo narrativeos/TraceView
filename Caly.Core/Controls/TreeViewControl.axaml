@@ -3,7 +3,7 @@
                     xmlns:controls="using:Caly.Core.Controls"
                     xmlns:vm="using:Caly.Core.ViewModels"
                     x:Class="Caly.Core.Controls.TreeViewControl"
-                    x:DataType="vm:PopoAnalysisViewModel">
+                    x:DataType="vm:AnalysisViewModel">
 
     <TreeView ItemsSource="{Binding TreeRootChildren}">
         <TreeView.ItemTemplate>

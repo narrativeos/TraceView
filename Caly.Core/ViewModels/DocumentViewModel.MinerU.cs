@@ -113,7 +113,7 @@ public sealed partial class DocumentViewModel
     /// Whether the Popo column is visible (user toggle).
     /// </summary>
     [ObservableProperty]
-    private bool _showPopoColumn = true;
+    private bool _showAnalysisColumn = true;
 
 
     #endregion
@@ -146,9 +146,9 @@ public sealed partial class DocumentViewModel
     }
 
     [RelayCommand]
-    private void TogglePopoColumn()
+    private void ToggleAnalysisColumn()
     {
-        ShowPopoColumn = !ShowPopoColumn;
+        ShowAnalysisColumn = !ShowAnalysisColumn;
     }
 
     /// <summary>
@@ -179,7 +179,7 @@ public sealed partial class DocumentViewModel
 
         // Step 1: Try to load from cache first (avoids unnecessary network requests)
         var cachedResult = service.TryLoadFromCache(LocalPath);
-        if (cachedResult?.PopoDocument is not null)
+        if (cachedResult?.AnalysisDocument is not null)
         {
             LoadParseResult(cachedResult);
             MinerUStatus = MinerUParseStatus.Completed;
@@ -320,7 +320,7 @@ public sealed partial class DocumentViewModel
 
             var result = await service.BuildParseResultFromZipAsync(zipPath, LocalPath, OnMinerUProgress, _minerUCts.Token);
 
-            System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] Parse completed: PopoDocument={result.PopoDocument != null}, ZipPath={result.ZipPath}, ArtifactsDir={result.ArtifactsDirectory}");
+            System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] Parse completed: AnalysisDocument={result.AnalysisDocument != null}, ZipPath={result.ZipPath}, ArtifactsDir={result.ArtifactsDirectory}");
 
             // Load result into Popo properties
             LoadParseResult(result);
@@ -371,11 +371,11 @@ public sealed partial class DocumentViewModel
     private async Task SaveParseResultAsync(MinerUParseResult result)
     {
         // Save result to project for persistence
-        if (result.PopoDocument is not null && ProjectPath is not null)
+        if (result.AnalysisDocument is not null && ProjectPath is not null)
         {
             try
             {
-                PopoJsonService.SavePopoDocumentToProject(result.PopoDocument, ProjectPath);
+                PopoJsonService.SaveAnalysisDocumentToProject(result.AnalysisDocument, ProjectPath);
             }
             catch
             {
@@ -400,39 +400,41 @@ public sealed partial class DocumentViewModel
 
     /// <summary>
     /// Loads a parse result into the ViewModel properties.
-    /// Populates PopoDocument, page blocks, MinerU blocks, and flat Popo blocks.
+    /// Populates AnalysisDocument, page blocks, MinerU blocks, and flat Popo blocks.
     /// </summary>
     private void LoadParseResult(MinerUParseResult result)
     {
-        System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] LoadParseResult called, PopoDocument={result.PopoDocument != null}");
+        System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] LoadParseResult called, AnalysisDocument={result.AnalysisDocument != null}");
 
-        if (result.PopoDocument is null)
+        if (result.AnalysisDocument is null)
         {
-            System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] LoadParseResult: PopoDocument is NULL, returning early!");
+            System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] LoadParseResult: AnalysisDocument is NULL, returning early!");
             return;
         }
 
-        System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] PopoDocument has {result.PopoDocument.GetAllBlocks().Count} blocks, TreeRoot={result.PopoDocument.TreeRoot != null}");
+        System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] AnalysisDocument has {result.AnalysisDocument.GetAllBlocks().Count} blocks, TreeRoot={result.AnalysisDocument.TreeRoot != null}");
 
-        PopoDocument = result.PopoDocument;
-        PopoAnalysisViewModel = new PopoAnalysisViewModel(result.PopoDocument);
+        AnalysisDocument = result.AnalysisDocument;
+        AnalysisViewModel = new AnalysisViewModel(result.AnalysisDocument);
 
-        System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] PopoDocument and PopoAnalysisViewModel set");
+        System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] AnalysisDocument and AnalysisViewModel set");
 
         // Assign blocks to each page view model
         foreach (var page in Pages)
         {
-            page.PopoBlocks = result.PopoDocument.GetBlocksForPage(page.PageNumber);
+            page.MinerUBlocks = result.AnalysisDocument.GetBlocksForPage(page.PageNumber);
         }
 
         System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] Blocks assigned to {Pages.Count} page view models");
 
-        // Build block collections in memory first, then replace
-        if (result.PopoDocument.PagesBlocks is not null)
-        {
-            var allBlocks = result.PopoDocument.GetAllBlocks();
 
-            var newMinerUBlocks = allBlocks.Select(block => new MinerUBlockViewModel(
+        // Build block collections in memory first, then replace
+        if (result.AnalysisDocument.PagesBlocks is not null)
+        {
+            var allBlocks = result.AnalysisDocument.GetAllBlocks();
+
+            // MinerUBlocks: MinerUBlockViewModel for middle column (raw MinerU data)
+            var newMinerUViewModels = allBlocks.Select(block => new MinerUBlockViewModel(
                 new MinerUMiddlePageBlock
                 {
                     Id = block.Id,
@@ -446,24 +448,25 @@ public sealed partial class DocumentViewModel
                     Bbox = new double[] { block.Bbox.X, block.Bbox.Y, block.Bbox.Right, block.Bbox.Bottom }
                 })).ToList();
 
-            var newPopoBlocks = allBlocks.Select(block => new BlockViewModel(block)).ToList();
+            // MinerUBlocksFlat: BlockViewModel for right column (Popo processed data)
+            var newBlockViewModels = allBlocks.Select(block => new BlockViewModel(block)).ToList();
 
             // Replace collections in bulk
             MinerUBlocks.Clear();
-            foreach (var b in newMinerUBlocks)
+            foreach (var b in newMinerUViewModels)
                 MinerUBlocks.Add(b);
 
-            PopoBlocksFlat.Clear();
-            foreach (var b in newPopoBlocks)
-                PopoBlocksFlat.Add(b);
+            MinerUBlocksFlat.Clear();
+            foreach (var b in newBlockViewModels)
+                MinerUBlocksFlat.Add(b);
 
-            System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] Collections populated: MinerUBlocks={MinerUBlocks.Count}, PopoBlocksFlat={PopoBlocksFlat.Count}");
+            System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] Collections populated: MinerUBlocks={MinerUBlocks.Count}, MinerUBlocksFlat={MinerUBlocksFlat.Count}");
         }
 
         // Auto-open the Popo analysis pane
         IsPopoPaneOpen = true;
 
-        System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] LoadParseResult completed: HasPopoDocument={HasPopoDocument}, MinerUBlocks={MinerUBlocks.Count}, PopoBlocksFlat={PopoBlocksFlat.Count}");
+        System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] LoadParseResult completed: HasAnalysisDocument={HasAnalysisDocument}, MinerUBlocks={MinerUBlocks.Count}, MinerUBlocksFlat={MinerUBlocksFlat.Count}");
     }
 
     /// <summary>

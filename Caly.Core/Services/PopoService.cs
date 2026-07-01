@@ -289,7 +289,7 @@ public sealed class PopoService : IDisposable
 
         return new PopoProcessResult
         {
-            PopoDocument = popoDoc,
+            AnalysisDocument = popoDoc,
             ResultDirectory = resultDir
         };
     }
@@ -375,7 +375,7 @@ public static class PopoProcessStatusExtensions
 /// </summary>
 public class PopoProcessResult
 {
-    public PopoDocument? PopoDocument { get; init; }
+    public AnalysisDocument? AnalysisDocument { get; init; }
     public string ResultDirectory { get; init; } = string.Empty;
 }
 

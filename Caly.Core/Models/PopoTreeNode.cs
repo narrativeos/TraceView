@@ -30,7 +30,7 @@ namespace Caly.Core.Models;
 /// Represents a node in the hierarchical tree structure from MinerU-Popo processing.
 /// Corresponds to the output of get_json_tree.py.
 /// </summary>
-public partial class PopoTreeNode : ObservableObject
+public partial class AnalysisTreeNode : ObservableObject
 {
     /// <summary>
     /// Node type: root, text, image, table, etc.
@@ -78,7 +78,7 @@ public partial class PopoTreeNode : ObservableObject
     /// Child nodes list (recursive).
     /// </summary>
     [ObservableProperty]
-    private ObservableCollection<PopoTreeNode> _children = new();
+    private ObservableCollection<AnalysisTreeNode> _children = new();
 
     /// <summary>
     /// Whether the node is expanded (for UI collapse).

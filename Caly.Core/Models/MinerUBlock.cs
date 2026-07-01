@@ -25,10 +25,10 @@ using CommunityToolkit.Mvvm.ComponentModel;
 namespace Caly.Core.Models;
 
 /// <summary>
-/// Represents a normalized block from MinerU-Popo processing.
-/// Corresponds to the output of label_normalization.py / inference.py.
+/// Represents a normalized block from MinerU parsing (via MinerUJsonService).
+/// Corresponds to the output of MinerU middle.json after coordinate normalization.
 /// </summary>
-public partial class PopoBlock : ObservableObject
+public partial class MinerUBlock : ObservableObject
 {
     /// <summary>
     /// Block unique ID, format: integer order.
@@ -76,7 +76,7 @@ public partial class PopoBlock : ObservableObject
     /// Popo type (for downstream processing).
     /// </summary>
     [ObservableProperty]
-    private string _popoType = string.Empty;
+    private string _blockType = string.Empty;
 
     /// <summary>
     /// Inference field: continuation target block ID.
