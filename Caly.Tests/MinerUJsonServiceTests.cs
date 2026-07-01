@@ -3,7 +3,7 @@ using System.IO;
 
 namespace Caly.Tests;
 
-public class PopoJsonServiceMinerUTests
+public class MinerUJsonServiceTests
 {
     [Fact]
     public void TryParseMinerUMiddleJson_ParsesPdfInfoBlocks()
@@ -53,7 +53,7 @@ public class PopoJsonServiceMinerUTests
 
         try
         {
-            var result = PopoJsonService.TryParseMinerUMiddleJson(jsonPath);
+            var result = MinerUJsonService.TryParseMinerUMiddleJson(jsonPath);
 
             Assert.NotNull(result);
             Assert.NotEmpty(result!.GetAllBlocks());

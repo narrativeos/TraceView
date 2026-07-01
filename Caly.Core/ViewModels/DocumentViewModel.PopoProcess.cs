@@ -69,7 +69,7 @@ public sealed partial class DocumentViewModel
                 return false;
 
             var docId = LocalPath is not null ? Path.GetFileNameWithoutExtension(LocalPath) : null;
-            return PopoJsonService.FindMinerUZipInProject(ProjectPath, docId) is not null;
+            return MinerUJsonService.FindMinerUZipInProject(ProjectPath, docId) is not null;
         }
     }
 
@@ -125,7 +125,7 @@ public sealed partial class DocumentViewModel
         var docId = Path.GetFileNameWithoutExtension(LocalPath);
 
         // Find the MinerU ZIP in the project
-        var zipPath = PopoJsonService.FindMinerUZipInProject(ProjectPath ?? string.Empty, docId);
+        var zipPath = MinerUJsonService.FindMinerUZipInProject(ProjectPath ?? string.Empty, docId);
         if (zipPath is null)
         {
             PopoStatus = PopoProcessStatus.Failed;

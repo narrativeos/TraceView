@@ -628,7 +628,7 @@ public sealed class MinerUService : IDisposable
             }
         }
 
-        var popoDoc = PopoJsonService.TryParseMinerUFromExtractedDir(extractedDir);
+        var popoDoc = MinerUJsonService.TryParseMinerUFromExtractedDir(extractedDir);
         if (popoDoc is null)
             return null;
 
@@ -723,7 +723,7 @@ public sealed class MinerUService : IDisposable
 
         // Parse the extracted directory
         var popoDoc = await Task.Run(() =>
-            PopoJsonService.TryParseMinerUFromExtractedDir(extractedDir), ct);
+            MinerUJsonService.TryParseMinerUFromExtractedDir(extractedDir), ct);
 
         // Extract markdown files
         var markdownInfo = ExtractMarkdownFromDir(extractedDir);

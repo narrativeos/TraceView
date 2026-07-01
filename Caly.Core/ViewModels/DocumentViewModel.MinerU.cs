@@ -389,7 +389,7 @@ public sealed partial class DocumentViewModel
             try
             {
                 var docId = Path.GetFileNameWithoutExtension(LocalPath!);
-                PopoJsonService.SaveMinerUZipToProject(result.ZipPath, ProjectPath, docId);
+                MinerUJsonService.SaveMinerUZipToProject(result.ZipPath, ProjectPath, docId);
             }
             catch
             {
@@ -497,7 +497,7 @@ public sealed partial class DocumentViewModel
         if (middleJsonFiles.Length == 0)
             return;
 
-        var popoDoc = PopoJsonService.TryParseMinerUMiddleJson(middleJsonFiles[0]);
+        var popoDoc = MinerUJsonService.TryParseMinerUMiddleJson(middleJsonFiles[0]);
         if (popoDoc is null)
             return;
 
