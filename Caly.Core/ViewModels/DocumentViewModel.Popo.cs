@@ -23,6 +23,7 @@ using Caly.Core.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.IO;
 
 namespace Caly.Core.ViewModels;
@@ -35,6 +36,38 @@ public sealed partial class DocumentViewModel
     partial void OnMinerUDocumentChanged(MinerUDocument? value)
     {
         OnPropertyChanged(nameof(HasMinerUDocument));
+
+        // Defensively ensure newly added pages get blocks assigned
+        if (value is not null)
+        {
+            Pages.CollectionChanged += OnPagesCollectionChangedForBlocks;
+        }
+        else
+        {
+            Pages.CollectionChanged -= OnPagesCollectionChangedForBlocks;
+        }
+    }
+
+    /// <summary>
+    /// When new pages are added to the collection, assign their MinerU blocks
+    /// if a MinerUDocument is already loaded. Handles lazy/late page creation.
+    /// </summary>
+    private void OnPagesCollectionChangedForBlocks(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.Action != NotifyCollectionChangedAction.Add || e.NewItems is null)
+            return;
+
+        var doc = MinerUDocument;
+        if (doc is null)
+            return;
+
+        foreach (var item in e.NewItems)
+        {
+            if (item is PageViewModel page && page.MinerUBlocks is null)
+            {
+                page.MinerUBlocks = doc.GetBlocksForPage(page.PageNumber);
+            }
+        }
     }
 
     /// <summary>

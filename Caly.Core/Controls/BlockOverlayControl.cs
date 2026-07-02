@@ -24,7 +24,9 @@ using Avalonia.Media;
 using Avalonia.Media.Immutable;
 using Caly.Core.Models;
 using Caly.Core.Utilities;
+using System;
 using System.Collections.Generic;
+using System.Globalization;
 using UglyToad.PdfPig.Core;
 
 namespace Caly.Core.Controls;
@@ -54,16 +56,10 @@ public sealed class BlockOverlayControl : Control
     public static readonly StyledProperty<Size> PageSizeProperty =
         AvaloniaProperty.Register<BlockOverlayControl, Size>(nameof(PageSize));
 
-    /// <summary>
-    /// Zoom level for scaling block coordinates to match the zoomed PDF display.
-    /// </summary>
-    public static readonly StyledProperty<double> ZoomLevelProperty =
-        AvaloniaProperty.Register<BlockOverlayControl, double>(nameof(ZoomLevel), 1.0);
-
     static BlockOverlayControl()
     {
         AffectsRender<BlockOverlayControl>(BlocksProperty, VisibleAreaProperty,
-            HighlightBlockIdProperty, ShowLabelsProperty, PageSizeProperty, ZoomLevelProperty);
+            HighlightBlockIdProperty, ShowLabelsProperty, PageSizeProperty);
     }
 
     public IReadOnlyList<MinerUBlock>? Blocks
@@ -96,12 +92,6 @@ public sealed class BlockOverlayControl : Control
         set => SetValue(PageSizeProperty, value);
     }
 
-    public double ZoomLevel
-    {
-        get => GetValue(ZoomLevelProperty);
-        set => SetValue(ZoomLevelProperty, value);
-    }
-
     // Cache for geometries
     private StreamGeometry[]? _blockGeometries;
     private bool _geometriesDirty = true;
@@ -128,11 +118,26 @@ public sealed class BlockOverlayControl : Control
     private static readonly ImmutablePen DefaultPen = new(DefaultStroke, 1.5);
     private static readonly ImmutablePen HighlightPen = new(HighlightStroke, 3.0);
 
+    // Cached pens per type (avoid per-frame allocation)
+    private static readonly ImmutablePen TitlePen = new(TitleStroke, 1.5);
+    private static readonly ImmutablePen TextPen = new(TextStroke, 1.5);
+    private static readonly ImmutablePen ImagePen = new(ImageStroke, 1.5);
+    private static readonly ImmutablePen TablePen = new(TableStroke, 1.5);
+    private static readonly ImmutablePen CaptionPen = new(CaptionStroke, 1.5);
+
+    // Cached highlight fill brushes per type color (avoid per-frame allocation)
+    private static readonly ImmutableSolidColorBrush TitleHighlightFill = new(Colors.Blue, 0.35);
+    private static readonly ImmutableSolidColorBrush TextHighlightFill = new(Colors.Green, 0.35);
+    private static readonly ImmutableSolidColorBrush ImageHighlightFill = new(Colors.Orange, 0.35);
+    private static readonly ImmutableSolidColorBrush TableHighlightFill = new(Colors.Purple, 0.35);
+    private static readonly ImmutableSolidColorBrush CaptionHighlightFill = new(Colors.Gray, 0.35);
+    private static readonly ImmutableSolidColorBrush DefaultHighlightFill = new(Colors.LightGray, 0.35);
+
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
 
-        if (change.Property == BlocksProperty || change.Property == PageSizeProperty || change.Property == ZoomLevelProperty)
+        if (change.Property == BlocksProperty || change.Property == PageSizeProperty)
         {
             _geometriesDirty = true;
         }
@@ -152,30 +157,35 @@ public sealed class BlockOverlayControl : Control
         }
 
         var pageSize = PageSize;
-        var geometries = new StreamGeometry[blocks.Count];
-        for (int i = 0; i < blocks.Count; i++)
+
+        // Reuse existing array if count matches to reduce allocations
+        if (_blockGeometries is null || _blockGeometries.Length != blocks.Count)
         {
-            var bbox = blocks[i].Bbox;
-            // Convert block bbox (may be normalized 0-1 or absolute pixels) to PdfRectangle
-            // Use original PDF coordinates - the Render() context is in the control's local coordinate space
-            var pdfRect = BboxToAvaloniaRectangle(bbox, pageSize);
-            geometries[i] = PdfWordHelpers.GetGeometry(pdfRect, false);
+            _blockGeometries = new StreamGeometry[blocks.Count];
         }
 
-        _blockGeometries = geometries;
+        for (int i = 0; i < blocks.Count; i++)
+        {
+            var block = blocks[i];
+            var bbox = block.Bbox;
+            // Convert block bbox (may be normalized 0-1 or absolute pixels) to PdfRectangle
+            // Use original PDF coordinates - the Render() context is in the control's local coordinate space
+            var pdfRect = BboxToAvaloniaRectangle(bbox, pageSize, block.IsBboxNormalized);
+            _blockGeometries[i] = PdfWordHelpers.GetGeometry(pdfRect, false);
+        }
+
         _geometriesDirty = false;
-        return geometries;
+        return _blockGeometries;
     }
 
     /// <summary>
     /// Converts a MinerUBlock bbox to Avalonia coordinates (top-left origin, Y down).
     /// The Render() method uses Avalonia's coordinate system, not PDF's (bottom-left origin).
     /// </summary>
-    private static PdfRectangle BboxToAvaloniaRectangle(Rect bbox, Size pageSize)
+    private static PdfRectangle BboxToAvaloniaRectangle(Rect bbox, Size pageSize, bool isNormalized)
     {
-        // Determine if coordinates are normalized (0-1 range)
-        // MinerUBlock.Bbox from MinerUJsonService is normalized when page_size is available in middle.json
-        bool isNormalized = bbox.X <= 1.0 && bbox.Y <= 1.0 && bbox.Width <= 1.0 && bbox.Height <= 1.0;
+        // Use explicit IsBboxNormalized flag set by the parsing service
+        // instead of heuristic coordinate range checks.
 
         double x0, y0, x1, y1;
 
@@ -202,22 +212,38 @@ public sealed class BlockOverlayControl : Control
         return new PdfRectangle(x0, y1, x1, y0);
     }
 
-    private (ImmutableSolidColorBrush fill, ImmutablePen pen) GetBlockStyle(MinerUBlock block, bool isHighlighted)
+    private static (ImmutableSolidColorBrush fill, ImmutablePen pen) GetBlockStyle(MinerUBlock block, bool isHighlighted)
     {
+        ImmutableSolidColorBrush fill;
+        ImmutablePen pen;
+
         if (isHighlighted)
         {
-            return (new ImmutableSolidColorBrush(block.TypeColor, 0.35), HighlightPen);
+            pen = HighlightPen;
+            fill = block.Type switch
+            {
+                "title" => TitleHighlightFill,
+                "text" => TextHighlightFill,
+                "image" => ImageHighlightFill,
+                "table" => TableHighlightFill,
+                "caption" => CaptionHighlightFill,
+                _ => DefaultHighlightFill
+            };
+        }
+        else
+        {
+            (fill, pen) = block.Type switch
+            {
+                "title" => (TitleFill, TitlePen),
+                "text" => (TextFill, TextPen),
+                "image" => (ImageFill, ImagePen),
+                "table" => (TableFill, TablePen),
+                "caption" => (CaptionFill, CaptionPen),
+                _ => (DefaultFill, DefaultPen)
+            };
         }
 
-        return block.Type switch
-        {
-            "title" => (TitleFill, new ImmutablePen(TitleStroke, 1.5)),
-            "text" => (TextFill, new ImmutablePen(TextStroke, 1.5)),
-            "image" => (ImageFill, new ImmutablePen(ImageStroke, 1.5)),
-            "table" => (TableFill, new ImmutablePen(TableStroke, 1.5)),
-            "caption" => (CaptionFill, new ImmutablePen(CaptionStroke, 1.5)),
-            _ => (DefaultFill, DefaultPen)
-        };
+        return (fill, pen);
     }
 
     public override void Render(DrawingContext context)
@@ -250,6 +276,33 @@ public sealed class BlockOverlayControl : Control
             var (fill, pen) = GetBlockStyle(block, isHighlighted);
 
             context.DrawGeometry(fill, pen, geometry);
+
+            // Draw block type/content label for OCR verification
+            if (ShowLabels && !string.IsNullOrEmpty(block.Content))
+            {
+                var label = $"{block.Type}: {Truncate(block.Content, 60)}";
+                var formattedText = new FormattedText(
+                    label,
+                    CultureInfo.CurrentCulture,
+                    FlowDirection.LeftToRight,
+                    Typeface.Default,
+                    10,
+                    Brushes.Black);
+
+                // Position label at top-left of block geometry
+                var labelPos = geometry.Bounds.TopLeft;
+                context.DrawText(formattedText, labelPos);
+            }
         }
+    }
+
+    /// <summary>
+    /// Truncates text to a maximum length, adding "..." if needed.
+    /// </summary>
+    private static string Truncate(string text, int maxLength)
+    {
+        if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
+            return text;
+        return text.Substring(0, maxLength - 3) + "...";
     }
 }

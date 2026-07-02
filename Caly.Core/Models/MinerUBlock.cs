@@ -49,6 +49,13 @@ public partial class MinerUBlock : ObservableObject
     private Rect _bbox;
 
     /// <summary>
+    /// Whether the Bbox coordinates are normalized (0-1) or in absolute pixels.
+    /// Set by the parsing service based on the source data format.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isBboxNormalized = true;
+
+    /// <summary>
     /// Block type: title, text, image, table, caption.
     /// </summary>
     [ObservableProperty]

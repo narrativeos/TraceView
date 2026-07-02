@@ -360,7 +360,9 @@ public static class MinerUJsonService
         // Parse bbox
         if (elem.TryGetProperty("bbox", out var bboxElem) || elem.TryGetProperty("box", out bboxElem))
         {
-            block.Bbox = ParseMinerUBbox(bboxElem, pageWidth, pageHeight);
+            var (bbox, isNormalized) = ParseMinerUBbox(bboxElem, pageWidth, pageHeight);
+            block.Bbox = bbox;
+            block.IsBboxNormalized = isNormalized;
         }
 
         if (elem.TryGetProperty("contd", out var contdElem))
@@ -410,8 +412,10 @@ public static class MinerUJsonService
                 Type = MapMinerUTypeToBlockType(GetStringProperty(sectionElem, "type") ?? string.Empty),
                 SourceLabel = GetStringProperty(sectionElem, "type") ?? string.Empty,
                 Content = ExtractMinerUContent(sectionElem),
-                Bbox = ParseMinerUBbox(sectionElem.TryGetProperty("bbox", out var bboxElem) ? bboxElem : default, pageWidth, pageHeight)
             };
+            var (bbox, isNormalized) = ParseMinerUBbox(sectionElem.TryGetProperty("bbox", out var bboxElem) ? bboxElem : default, pageWidth, pageHeight);
+            block.Bbox = bbox;
+            block.IsBboxNormalized = isNormalized;
             results.Add(block);
         }
 
@@ -471,18 +475,19 @@ public static class MinerUJsonService
 
     /// <summary>
     /// Parses a bbox array [x1, y1, x2, y2] from MinerU, with optional normalization.
-    /// If page dimensions are provided and coordinates appear to be absolute (large values),
-    /// normalizes to 0-1 range.
+    /// Returns the parsed Rect and whether the coordinates were normalized to 0-1.
     /// </summary>
-    static Rect ParseMinerUBbox(JsonElement elem, double pageWidth = 0, double pageHeight = 0)
+    static (Rect bbox, bool isNormalized) ParseMinerUBbox(JsonElement elem, double pageWidth = 0, double pageHeight = 0)
     {
         if (elem.ValueKind != JsonValueKind.Array || elem.GetArrayLength() < 4)
-            return new Rect(0, 0, 0, 0);
+            return (new Rect(0, 0, 0, 0), false);
 
         var x1 = GetDoubleValue(elem[0]);
         var y1 = GetDoubleValue(elem[1]);
         var x2 = GetDoubleValue(elem[2]);
         var y2 = GetDoubleValue(elem[3]);
+
+        bool normalized = false;
 
         // If page dimensions provided and coordinates look like absolute pixels (> 1000),
         // normalize to 0-1 range
@@ -492,13 +497,14 @@ public static class MinerUJsonService
             y1 /= pageHeight;
             x2 /= pageWidth;
             y2 /= pageHeight;
+            normalized = true;
         }
 
         // Ensure valid bounds
         var width = Math.Max(0, x2 - x1);
         var height = Math.Max(0, y2 - y1);
 
-        return new Rect((double)x1, (double)y1, (double)width, (double)height);
+        return (new Rect((double)x1, (double)y1, (double)width, (double)height), normalized);
     }
 
     /// <summary>
@@ -530,7 +536,8 @@ public static class MinerUJsonService
                 {
                     var pw = pageSizeMap.TryGetValue(entry.Page, out var s) ? s.width : 0.0;
                     var ph = pageSizeMap.TryGetValue(entry.Page, out s) ? s.height : 0.0;
-                    entry.Bbox = ParseMinerUBbox(bboxElem, pw, ph);
+                    var (bbox, _) = ParseMinerUBbox(bboxElem, pw, ph);
+                    entry.Bbox = bbox;
                 }
 
                 node.Location.Add(entry);

@@ -123,7 +123,6 @@
                                                                 PageSize="{Binding Size}"
                                                                 Blocks="{Binding MinerUBlocks}"
                                                                 VisibleArea="{Binding VisibleArea}"
-                                                                ZoomLevel="{Binding $parent[controls:PageItemsControl].ZoomLevel}"
                                                                 HighlightBlockId="{Binding $parent[controls:PageItemsControl].((vm:DocumentViewModel)DataContext).AnalysisViewModel.SelectedBlockId}"
                                                                 ShowLabels="True"
                                                                 HorizontalAlignment="Stretch"
