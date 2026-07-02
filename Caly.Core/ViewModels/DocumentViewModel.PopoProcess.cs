@@ -156,29 +156,8 @@ public sealed partial class DocumentViewModel
         var service = GetPopoService();
         var docId = Path.GetFileNameWithoutExtension(LocalPath);
 
-        // Find the MinerU ZIP in the project
-        var zipPath = MinerUJsonService.FindMinerUZipInProject(ProjectPath ?? string.Empty, docId);
-        if (zipPath is null)
-        {
-            PopoStatus = PopoProcessStatus.Failed;
-            var expectedPath = ProjectPath is not null
-                ? Path.Combine(ProjectPath, "mineru", $"{docId}_mineru.zip")
-                : "mineru/ directory";
-            PopoStatusText = $"No MinerU ZIP found at {expectedPath}. Run AI Parse first to generate it, then try Process with Popo again.";
-            PopoProgress = 0;
-            return;
-        }
-
-        // Health check
-        if (!await service.HealthCheckAsync())
-        {
-            PopoStatus = PopoProcessStatus.Failed;
-            var baseUrl = _settingsService.GetSettings().PopoBaseUrl;
-            PopoStatusText = $"Popo service unavailable at {baseUrl}. Ensure the Popo server is running.";
-            PopoProgress = 0;
-            return;
-        }
-
+        // Show the Popo column immediately with progress state (before health check / MinU ZIP check)
+        // This matches the AI Parse pattern where the column is shown before any async work.
         _popoCts = new CancellationTokenSource();
         IsPopoProcessing = true;
         ShowAnalysisColumn = true;
@@ -188,6 +167,30 @@ public sealed partial class DocumentViewModel
 
         try
         {
+            // Find the MinerU ZIP in the project
+            var zipPath = MinerUJsonService.FindMinerUZipInProject(ProjectPath ?? string.Empty, docId);
+            if (zipPath is null)
+            {
+                PopoStatus = PopoProcessStatus.Failed;
+                var expectedPath = ProjectPath is not null
+                    ? Path.Combine(ProjectPath, "mineru", $"{docId}_mineru.zip")
+                    : "mineru/ directory";
+                PopoStatusText = $"No MinerU ZIP found at {expectedPath}. Run AI Parse first to generate it, then try Process with Popo again.";
+                PopoProgress = 0;
+                return;
+            }
+
+            // Health check
+            if (!await service.HealthCheckAsync())
+            {
+                PopoStatus = PopoProcessStatus.Failed;
+                var baseUrl = _settingsService.GetSettings().PopoBaseUrl;
+                PopoStatusText = $"Popo service unavailable at {baseUrl}. Ensure the Popo server is running.";
+                PopoProgress = 0;
+                return;
+            }
+
+
             var settings = _settingsService.GetSettings();
             var result = await service.ProcessAsync(
                 zipPath,
@@ -196,27 +199,13 @@ public sealed partial class DocumentViewModel
                 OnPopoProgress,
                 _popoCts.Token);
 
-            // Load result
+            // Load result using the shared helper (sets MinerUDocument, AnalysisViewModel,
+            // page blocks, MinerUBlocks, MinerUBlocksFlat, and IsPopoPaneOpen)
             if (result.MinerUDocument is not null)
             {
-                // Update MinerUDocument with the processed result
-                MinerUDocument = result.MinerUDocument;
-                AnalysisViewModel = new AnalysisViewModel(result.MinerUDocument);
+                LoadMinerUDocument(result.MinerUDocument);
 
-                // Assign blocks to each page
-                foreach (var page in Pages)
-                {
-                    page.MinerUBlocks = result.MinerUDocument.GetBlocksForPage(page.PageNumber);
-                }
-
-                // Update flat block collection
-                MinerUBlocksFlat.Clear();
-                foreach (var block in result.MinerUDocument.GetAllBlocks())
-                {
-                    MinerUBlocksFlat.Add(new BlockViewModel(block));
-                }
-
-                // Save to project
+                // Save Popo result to project (Popo-specific persistence)
                 if (ProjectPath is not null)
                 {
                     try

@@ -398,6 +398,9 @@ public sealed partial class DocumentViewModel
                 // Non-critical: ignore ZIP save errors
             }
         }
+
+        // Notify that HasMinerUZip may have changed (Popo result now exists or ZIP was saved)
+        OnPropertyChanged(nameof(HasMinerUZip));
     }
 
     /// <summary>
@@ -414,26 +417,36 @@ public sealed partial class DocumentViewModel
             return;
         }
 
-        System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] MinerUDocument has {result.MinerUDocument.GetAllBlocks().Count} blocks, TreeRoot={result.MinerUDocument.TreeRoot != null}");
+        LoadMinerUDocument(result.MinerUDocument);
+    }
 
-        MinerUDocument = result.MinerUDocument;
-        AnalysisViewModel = new AnalysisViewModel(result.MinerUDocument);
+    /// <summary>
+    /// Loads a MinerUDocument into the ViewModel properties.
+    /// Shared by both MinerU (AI Parse) and Popo processing flows.
+    /// Populates page blocks, MinerU middle blocks, Popo flat blocks, and auto-opens the analysis pane.
+    /// </summary>
+    private void LoadMinerUDocument(MinerUDocument minerUDoc)
+    {
+        System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] MinerUDocument has {minerUDoc.GetAllBlocks().Count} blocks, TreeRoot={minerUDoc.TreeRoot != null}");
+
+        MinerUDocument = minerUDoc;
+        AnalysisViewModel = new AnalysisViewModel(minerUDoc);
 
         System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] MinerUDocument and AnalysisViewModel set");
 
         // Assign blocks to each page view model
         foreach (var page in Pages)
         {
-            page.MinerUBlocks = result.MinerUDocument.GetBlocksForPage(page.PageNumber);
+            page.MinerUBlocks = minerUDoc.GetBlocksForPage(page.PageNumber);
         }
 
         System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] Blocks assigned to {Pages.Count} page view models");
 
 
         // Build block collections in memory first, then replace
-        if (result.MinerUDocument.PagesBlocks is not null)
+        if (minerUDoc.PagesBlocks is not null)
         {
-            var allBlocks = result.MinerUDocument.GetAllBlocks();
+            var allBlocks = minerUDoc.GetAllBlocks();
 
             // MinerUBlocks: MinerUBlockViewModel for middle column (raw MinerU data)
             var newMinerUViewModels = allBlocks.Select(block => new MinerUBlockViewModel(
@@ -468,7 +481,7 @@ public sealed partial class DocumentViewModel
         // Auto-open the Popo analysis pane
         IsPopoPaneOpen = true;
 
-        System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] LoadParseResult completed: HasMinerUDocument={HasMinerUDocument}, MinerUBlocks={MinerUBlocks.Count}, MinerUBlocksFlat={MinerUBlocksFlat.Count}");
+        System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] LoadMinerUDocument completed: HasMinerUDocument={HasMinerUDocument}, MinerUBlocks={MinerUBlocks.Count}, MinerUBlocksFlat={MinerUBlocksFlat.Count}");
     }
 
     /// <summary>

@@ -227,21 +227,6 @@
 
 						<controls:VerticalSeparator/>
 
-						<!-- MinerU AI Parse -->
-						<Button DockPanel.Dock="Right"
-                                Margin="0,0,5,0"
-								HorizontalAlignment="Center"
-								VerticalAlignment="Stretch"
-								Background="Transparent"
-								Command="{Binding ParseWithMinerUCommand}"
-                                IsVisible="{Binding MinerUEnabled}">
-							<PathIcon Width="17"
-									  Height="17"
-									  Data="{StaticResource mineru_parse_regular}">
-								<ToolTip.Tip>AI Parse with MinerU</ToolTip.Tip>
-							</PathIcon>
-						</Button>
-
 						<!-- Popo Process -->
 						<Button DockPanel.Dock="Right"
                                 Margin="0,0,5,0"
@@ -254,6 +239,21 @@
 									  Height="17"
 									  Data="{StaticResource popo_process_regular}">
 								<ToolTip.Tip>Process with Popo</ToolTip.Tip>
+							</PathIcon>
+						</Button>
+
+						<!-- MinerU AI Parse -->
+						<Button DockPanel.Dock="Right"
+                                Margin="0,0,5,0"
+								HorizontalAlignment="Center"
+								VerticalAlignment="Stretch"
+								Background="Transparent"
+								Command="{Binding ParseWithMinerUCommand}"
+                                IsVisible="{Binding MinerUEnabled}">
+							<PathIcon Width="17"
+									  Height="17"
+									  Data="{StaticResource mineru_parse_regular}">
+								<ToolTip.Tip>AI Parse with MinerU</ToolTip.Tip>
 							</PathIcon>
 						</Button>
 
