@@ -52,6 +52,7 @@ public static class PopoJsonService
     internal static readonly JsonSerializerOptions DefaultDeserializeOptions = new()
     {
         PropertyNameCaseInsensitive = true,
+        TypeInfoResolver = SourceGenerationContext.Default,
         Converters = { new RectJsonConverter() }
     };
 
@@ -651,6 +652,82 @@ public static class PopoJsonService
         catch
         {
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Builds a MinerUDocument from a tree root returned by the Popo API.
+    /// Flattens the tree into per-page blocks, populates TreeRoot, and builds aggregation map.
+    /// </summary>
+    /// <param name="treeRoot">The root node of the document tree from the Popo API.</param>
+    /// <param name="docId">Document ID.</param>
+    /// <param name="modelName">Model name (optional, used as task/model identifier).</param>
+    public static MinerUDocument BuildMinerUDocumentFromTree(
+        AnalysisTreeNode treeRoot,
+        string docId,
+        string modelName = "mineru")
+    {
+        var doc = new MinerUDocument
+        {
+            DocId = docId,
+            ModelName = modelName,
+            TreeRoot = treeRoot
+        };
+
+        var pageBlocks = new Dictionary<int, List<MinerUBlock>>();
+        var allBlocks = new List<MinerUBlock>();
+        int blockId = 0;
+
+        // Flatten the tree recursively, skipping the root node itself
+        FlattenTreeNodes(treeRoot, pageBlocks, allBlocks, ref blockId);
+
+        doc.PagesBlocks = pageBlocks;
+        doc.InferenceBlocks = allBlocks;
+        doc.BuildAggregationMap();
+
+        return doc;
+    }
+
+    /// <summary>
+    /// Recursively flattens tree nodes into MinerUBlock objects, grouped by page.
+    /// Skips the root node (level 0, type "root") and non-content nodes.
+    /// </summary>
+    private static void FlattenTreeNodes(
+        AnalysisTreeNode node,
+        Dictionary<int, List<MinerUBlock>> pageBlocks,
+        List<MinerUBlock> allBlocks,
+        ref int blockId)
+    {
+        // Process non-root nodes that have location data
+        bool isRoot = node.Type == "root" && node.Level == 0;
+
+        if (!isRoot && node.Location.Count > 0)
+        {
+            var firstLoc = node.Location[0];
+            int page = firstLoc.Page;
+
+            var block = new MinerUBlock
+            {
+                Id = blockId,
+                Page = page,
+                Type = node.Type,
+                Content = !string.IsNullOrEmpty(node.Content) ? node.Content : node.Title,
+                Bbox = firstLoc.Bbox,
+                TitleLevel = node.Level
+            };
+
+            if (!pageBlocks.ContainsKey(page))
+                pageBlocks[page] = new List<MinerUBlock>();
+
+            pageBlocks[page].Add(block);
+            allBlocks.Add(block);
+            blockId++;
+        }
+
+        // Recurse into children
+        foreach (var child in node.Children)
+        {
+            FlattenTreeNodes(child, pageBlocks, allBlocks, ref blockId);
         }
     }
 

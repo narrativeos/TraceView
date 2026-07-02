@@ -39,6 +39,11 @@ public sealed partial class DocumentViewModel
     [ObservableProperty]
     private PopoProcessStatus _popoStatus = PopoProcessStatus.Idle;
 
+    partial void OnPopoStatusChanged(PopoProcessStatus value)
+    {
+        OnPropertyChanged(nameof(ShowPopoBlocksList));
+    }
+
     [ObservableProperty]
     private int _popoProgress;
 
@@ -47,6 +52,16 @@ public sealed partial class DocumentViewModel
 
     [ObservableProperty]
     private bool _isPopoProcessing;
+
+    partial void OnIsPopoProcessingChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ShowPopoBlocksList));
+    }
+
+    /// <summary>
+    /// Whether the Popo blocks list should be shown (not processing and no error).
+    /// </summary>
+    public bool ShowPopoBlocksList => !IsPopoProcessing && PopoStatus != PopoProcessStatus.Failed;
 
     /// <summary>
     /// Whether Popo processing is enabled (reads from settings service).
@@ -167,6 +182,10 @@ public sealed partial class DocumentViewModel
 
         // Clear Popo blocks to avoid showing stale data while processing
         PopoBlocks.Clear();
+
+        // Yield to ensure the UI renders the progress state before any potentially
+        // synchronous early-return (e.g., missing ZIP, health check failure).
+        await Task.Yield();
 
         try
         {

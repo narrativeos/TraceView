@@ -129,7 +129,7 @@ public sealed class PopoService : IDisposable
                 $"Invalid JSON response from Popo /tasks. Response: {preview}");
         }
 
-        var result = JsonSerializer.Deserialize<PopoTaskSubmitResponse>(json);
+        var result = JsonSerializer.Deserialize<PopoTaskSubmitResponse>(json, PopoJsonService.DefaultDeserializeOptions);
         if (result is null || string.IsNullOrEmpty(result.TaskId))
         {
             throw new PopoServiceException(
@@ -156,7 +156,7 @@ public sealed class PopoService : IDisposable
                 $"Invalid JSON response from Popo /tasks/{{id}}. Response: {preview}");
         }
 
-        var result = JsonSerializer.Deserialize<PopoTaskStatusResponse>(json);
+        var result = JsonSerializer.Deserialize<PopoTaskStatusResponse>(json, PopoJsonService.DefaultDeserializeOptions);
         if (result is null)
         {
             throw new PopoServiceException($"JsonSerializer returned null for Popo /tasks/{{id}} response.");
@@ -167,13 +167,14 @@ public sealed class PopoService : IDisposable
 
     /// <summary>
     /// Polls the task status until it completes or fails.
+    /// Uses the actual progress percentage from the API's progress field.
     /// </summary>
     public async Task PollUntilCompleteAsync(
         string taskId,
         Action<PopoProcessStatus, int>? onProgress = null,
         CancellationToken ct = default)
     {
-        int lastProgress = 10;
+        int lastProgress = -1;
 
         while (!ct.IsCancellationRequested)
         {
@@ -181,17 +182,13 @@ public sealed class PopoService : IDisposable
 
             if (status.IsRunning)
             {
-                var progress = status.Status switch
+                // Parse actual progress percentage from API response
+                // Format: "[60%] Image-text association (1 chunks)"
+                var apiProgress = status.ParseProgressPercent() ?? 35;
+                if (apiProgress != lastProgress)
                 {
-                    "pending" or "queued" => 20,
-                    "started" or "in_progress" => 35,
-                    "running" or "processing" => 50,
-                    _ => 35
-                };
-                if (progress != lastProgress)
-                {
-                    lastProgress = progress;
-                    onProgress?.Invoke(PopoProcessStatus.Processing, progress);
+                    lastProgress = apiProgress;
+                    onProgress?.Invoke(PopoProcessStatus.Processing, apiProgress);
                 }
             }
             else if (status.IsCompleted)
@@ -205,77 +202,63 @@ public sealed class PopoService : IDisposable
                 var errorMessage = status.GetErrorMessage() ?? "Unknown error";
                 throw new PopoServiceException($"Popo task failed: {errorMessage}");
             }
-            else
-            {
-                var progress = 35;
-                if (progress != lastProgress)
-                {
-                    lastProgress = progress;
-                    onProgress?.Invoke(PopoProcessStatus.Processing, progress);
-                }
-            }
 
             await Task.Delay(DefaultPollInterval, ct);
         }
     }
 
     /// <summary>
-    /// Downloads the result via GET /tasks/{task_id}/result.
+    /// Downloads and parses the result via GET /tasks/{task_id}/result.
+    /// The Popo API returns JSON in the format: { task_id, status, result: { doc_id, tree: {...} } }.
+    /// Parses the tree and builds a MinerUDocument directly.
     /// </summary>
-    public async Task<string> DownloadResultAsync(string taskId, string sourceDocId, CancellationToken ct = default)
+    public async Task<MinerUDocument?> DownloadAndParseResultAsync(string taskId, string sourceDocId, CancellationToken ct = default)
     {
         using var response = await _httpClient.GetAsync($"{_baseUrl}/tasks/{taskId}/result", ct);
         response.EnsureSuccessStatusCode();
 
-        var contentBytes = await response.Content.ReadAsByteArrayAsync(ct);
+        var json = await response.Content.ReadAsStringAsync(ct);
 
-        // Determine if the response is a ZIP file by checking magic bytes
-        bool isZip = contentBytes.Length >= 4 &&
-                     contentBytes[0] == 0x50 && contentBytes[1] == 0x4B &&
-                     contentBytes[2] == 0x03 && contentBytes[3] == 0x04;
+        if (string.IsNullOrEmpty(json) || !json.TrimStart().StartsWith("{"))
+        {
+            var preview = (json?.Length > 200) ? json.Substring(0, 200) + "..." : json;
+            throw new PopoServiceException(
+                $"Invalid JSON response from Popo /tasks/{{id}}/result. Response: {preview}");
+        }
 
+        // Cache the raw response for debugging
         var resultDir = Path.Combine(_cacheDirectory, $"result_{sourceDocId}");
         Directory.CreateDirectory(resultDir);
+        var jsonPath = Path.Combine(resultDir, "popo_result.json");
+        File.WriteAllText(jsonPath, json);
 
-        if (isZip)
+        // Parse the wrapped response
+        var resultResponse = JsonSerializer.Deserialize<PopoTaskResultResponse>(json, PopoJsonService.DefaultDeserializeOptions);
+        if (resultResponse?.Result?.Tree is null)
         {
-            // Save and extract ZIP
-            var zipPath = Path.Combine(resultDir, "popo_result.zip");
-            File.WriteAllBytes(zipPath, contentBytes);
-
-            var extractDir = Path.Combine(resultDir, "extract");
-            if (Directory.Exists(extractDir))
-                Directory.Delete(extractDir, recursive: true);
-            Directory.CreateDirectory(extractDir);
-            ZipFile.ExtractToDirectory(zipPath, extractDir, overwriteFiles: true);
-
-            return extractDir;
+            throw new PopoServiceException(
+                $"Popo result missing tree. Status: {resultResponse?.Result?.Status}, Error: {resultResponse?.Error}");
         }
-        else
-        {
-            // Check if it's JSON
-            var content = System.Text.Encoding.UTF8.GetString(contentBytes);
-            if (content.TrimStart().StartsWith("{") || content.TrimStart().StartsWith("["))
-            {
-                var jsonPath = Path.Combine(resultDir, "popo_result.json");
-                File.WriteAllText(jsonPath, content);
-                return resultDir;
-            }
 
-            // Save as raw text
-            var textPath = Path.Combine(resultDir, "popo_result.txt");
-            File.WriteAllText(textPath, content);
-            return resultDir;
-        }
+        // Build MinerUDocument from the API tree
+        var minerUDoc = PopoJsonService.BuildMinerUDocumentFromTree(
+            resultResponse.Result.Tree,
+            sourceDocId,
+            resultResponse.TaskId);
+
+        // Save the built MinerUDocument for caching
+        PopoJsonService.SaveMinerUDocumentToProject(minerUDoc, resultDir);
+
+        return minerUDoc;
     }
 
     /// <summary>
-    /// Full processing flow: submit -> poll -> download -> parse.
+    /// Full processing flow: submit -> poll -> download result -> build MinerUDocument.
     /// </summary>
     /// <param name="zipPath">Path to the MinerU ZIP file.</param>
     /// <param name="sourceDocId">Document ID for result caching.</param>
     /// <param name="model">Model name (e.g., "mineru"). Required by Popo API.</param>
-    /// <param name="onProgress">Progress callback.</param>
+    /// <param name="onProgress">Progress callback (status, percent 0-100).</param>
     /// <param name="ct">Cancellation token.</param>
     public async Task<PopoProcessResult> ProcessAsync(
         string zipPath,
@@ -284,29 +267,26 @@ public sealed class PopoService : IDisposable
         Action<PopoProcessStatus, int>? onProgress = null,
         CancellationToken ct = default)
     {
-        // Step 1: Submit
+        // Step 1: Submit task
         onProgress?.Invoke(PopoProcessStatus.Submitting, 10);
         var taskId = await SubmitTaskAsync(zipPath, model, ct);
 
-        // Step 2: Poll
+        // Step 2: Poll until complete (progress from API parsed automatically)
         onProgress?.Invoke(PopoProcessStatus.Queued, 15);
         await PollUntilCompleteAsync(taskId, onProgress, ct);
 
-        // Step 3: Download
+        // Step 3: Download and parse result (builds MinerUDocument from the API tree)
         onProgress?.Invoke(PopoProcessStatus.Downloading, 70);
-        var resultDir = await DownloadResultAsync(taskId, sourceDocId, ct);
+        var minerUDoc = await DownloadAndParseResultAsync(taskId, sourceDocId, ct);
 
-        // Step 4: Parse
         onProgress?.Invoke(PopoProcessStatus.ParsingResult, 85);
-        var minerUDoc = PopoJsonService.TryParseMinerUResultDir(resultDir);
 
-        // Step 5: Complete
+        // Step 4: Complete
         onProgress?.Invoke(PopoProcessStatus.Completed, 100);
 
         return new PopoProcessResult
         {
-            MinerUDocument = minerUDoc,
-            ResultDirectory = resultDir
+            MinerUDocument = minerUDoc
         };
     }
 
@@ -392,7 +372,6 @@ public static class PopoProcessStatusExtensions
 public class PopoProcessResult
 {
     public MinerUDocument? MinerUDocument { get; init; }
-    public string ResultDirectory { get; init; } = string.Empty;
 }
 
 /// <summary>
@@ -445,12 +424,67 @@ public class PopoTaskStatusResponse
     [System.Text.Json.Serialization.JsonPropertyName("updated_at")]
     public string? UpdatedAt { get; set; }
 
+    /// <summary>
+    /// Parses the percentage from the progress string like "[60%] Image-text association (1 chunks)".
+    /// Returns null if no percentage can be parsed.
+    /// </summary>
+    public int? ParseProgressPercent()
+    {
+        if (string.IsNullOrEmpty(Progress))
+            return null;
+
+        // Match pattern: [XX%] at the start of the string
+        var match = System.Text.RegularExpressions.Regex.Match(Progress, @"^\[(\d+)%\]");
+        if (match.Success && int.TryParse(match.Groups[1].Value, out var percent))
+            return percent;
+
+        return null;
+    }
+
     public bool IsRunning => !IsCompleted && !IsFailed
-        && Status is "pending" or "running" or "processing" or "queued" or "in_progress" or "started";
+        && Status is "pending" or "processing" or "running" or "queued" or "in_progress" or "started";
 
     public bool IsCompleted => Status is "completed" or "success" or "done" or "finished";
 
     public bool IsFailed => Status is "failed" or "error" or "cancelled";
 
     public string? GetErrorMessage() => Error ?? Message;
+}
+
+/// <summary>
+/// Response from GET /tasks/{task_id}/result endpoint.
+/// Wraps the actual processing result in a "result" field.
+/// </summary>
+public class PopoTaskResultResponse
+{
+    [System.Text.Json.Serialization.JsonPropertyName("task_id")]
+    public string TaskId { get; set; } = string.Empty;
+
+    [System.Text.Json.Serialization.JsonPropertyName("status")]
+    public string Status { get; set; } = string.Empty;
+
+    [System.Text.Json.Serialization.JsonPropertyName("result")]
+    public PopoProcessResultJson? Result { get; set; }
+
+    [System.Text.Json.Serialization.JsonPropertyName("error")]
+    public string? Error { get; set; }
+}
+
+/// <summary>
+/// The inner result object from a Popo task result.
+/// Contains the document tree.
+/// </summary>
+public class PopoProcessResultJson
+{
+    [System.Text.Json.Serialization.JsonPropertyName("doc_id")]
+    public string DocId { get; set; } = string.Empty;
+
+    [System.Text.Json.Serialization.JsonPropertyName("status")]
+    public string Status { get; set; } = string.Empty;
+
+    [System.Text.Json.Serialization.JsonPropertyName("message")]
+    public string? Message { get; set; }
+
+    [System.Text.Json.Serialization.JsonPropertyName("tree")]
+    public Caly.Core.Models.AnalysisTreeNode? Tree { get; set; }
 }

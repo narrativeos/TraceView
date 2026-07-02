@@ -71,7 +71,7 @@ public sealed class CalySettings
     // ========== Popo Configuration ==========
 
     /// <summary>
-    /// Popo service base URL (e.g., "http://localhost:8080")
+    /// Popo service base URL (e.g., "http://localhost:8440")
     /// </summary>
     public string PopoBaseUrl { get; set; } = "http://localhost:8440";
 

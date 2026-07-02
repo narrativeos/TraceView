@@ -2,5 +2,7 @@
   <PropertyGroup>
     <Nullable>enable</Nullable>
     <AvaloniaVersion>11.0.2</AvaloniaVersion>
+    <!-- Enable reflection-based JSON serialization for .NET 10+ compatibility -->
+    <JsonSerializerIsReflectionEnabled>true</JsonSerializerIsReflectionEnabled>
   </PropertyGroup>
 </Project>

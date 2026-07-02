@@ -15,9 +15,9 @@ public class BoolToGridLengthConverter : IValueConverter
     {
         if (value is bool isVisible)
         {
-            return isVisible ? GridLength.Star : GridLength.Auto;
+            return isVisible ? GridLength.Star : new GridLength(0);
         }
-        return GridLength.Auto;
+        return new GridLength(0);
     }
 
     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)

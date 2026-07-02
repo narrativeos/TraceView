@@ -5,6 +5,7 @@
              xmlns:vm="clr-namespace:Caly.Core.ViewModels"
              xmlns:controls="clr-namespace:Caly.Core.Controls"
              xmlns:utilities="clr-namespace:Caly.Core.Utilities"
+             xmlns:services="clr-namespace:Caly.Core.Services"
              xmlns:tabalonia="clr-namespace:Tabalonia.Controls;assembly=Tabalonia"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
              x:Class="Caly.Core.Controls.DocumentsTabsControl"
@@ -472,7 +473,7 @@
                                     </Border>
 
                                     <!-- Error/Status Message: shown when processing failed -->
-                                    <Border IsVisible="{Binding PopoStatus, Converter={StaticResource EqualsConverter}, ConverterParameter=Failed}"
+                                    <Border IsVisible="{Binding PopoStatus, Converter={StaticResource EqualsConverter}, ConverterParameter={x:Static services:PopoProcessStatus.Failed}}"
                                             VerticalAlignment="Center"
                                             HorizontalAlignment="Stretch"
                                             Padding="12"
@@ -491,8 +492,8 @@
                                         </StackPanel>
                                     </Border>
 
-                                    <!-- Blocks List: shown when not processing and no error -->
-                                    <ScrollViewer IsVisible="{Binding PopoStatus, Converter={StaticResource NotEqualsConverter}, ConverterParameter=Failed}">
+                                    <!-- Blocks List: shown only when not processing and no error -->
+                                    <ScrollViewer IsVisible="{Binding ShowPopoBlocksList}">
                                         <ItemsControl ItemsSource="{Binding PopoBlocks}">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate x:DataType="vm:BlockViewModel">

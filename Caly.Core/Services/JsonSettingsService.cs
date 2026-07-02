@@ -41,6 +41,11 @@ namespace Caly.Core.Services;
 [JsonSerializable(typeof(MinerUTaskStatusResponse), GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(MinerUTaskProgress), GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(ProjectMetadata), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(PopoTaskSubmitResponse), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(PopoTaskStatusResponse), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(PopoTaskResultResponse), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(PopoProcessResultJson), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(MinerUDocument), GenerationMode = JsonSourceGenerationMode.Metadata)]
 internal partial class SourceGenerationContext : JsonSerializerContext;
 
 internal sealed class JsonSettingsService : ISettingsService
