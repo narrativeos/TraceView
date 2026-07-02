@@ -193,7 +193,7 @@ public static class MinerUJsonService
                             continue;
 
                         var pageNum = GetIntValue(pageElem);
-                        if (pageNum <= 0)
+                        if (pageNum < 0)
                             continue;
 
                         var blocks = new List<MinerUBlock>();
@@ -224,7 +224,7 @@ public static class MinerUJsonService
                         ? GetIntValue(pageIdxElem)
                         : 0;
 
-                    if (pageNum <= 0)
+                    if (pageNum < 0)
                         continue;
 
                     var pageWidth = pageInfoElem.TryGetProperty("page_size", out var pageSizeElemForPage) && pageSizeElemForPage.ValueKind == JsonValueKind.Array && pageSizeElemForPage.GetArrayLength() >= 2
@@ -263,7 +263,26 @@ public static class MinerUJsonService
                 minerUDoc.BuildAggregationMap();
             }
 
-            // 3. Build InferenceBlocks from PagesBlocks
+            // 3. Normalize 0-based page indices to 1-based.
+            // MinerU may use 0-based page numbers (page_idx 0 = first page),
+            // while PageViewModel.PageNumber is 1-based.
+            if (minerUDoc.PagesBlocks.Count > 0 && minerUDoc.PagesBlocks.ContainsKey(0))
+            {
+                var normalized = new Dictionary<int, List<MinerUBlock>>();
+                foreach (var kvp in minerUDoc.PagesBlocks)
+                {
+                    int newKey = kvp.Key + 1;
+                    foreach (var block in kvp.Value)
+                    {
+                        if (block.Page == kvp.Key)
+                            block.Page = newKey;
+                    }
+                    normalized[newKey] = kvp.Value;
+                }
+                minerUDoc.PagesBlocks = normalized;
+            }
+
+            // 4. Build InferenceBlocks from PagesBlocks
             minerUDoc.InferenceBlocks = minerUDoc.GetAllBlocks();
 
             return minerUDoc.InferenceBlocks.Count > 0 || minerUDoc.TreeRoot is not null

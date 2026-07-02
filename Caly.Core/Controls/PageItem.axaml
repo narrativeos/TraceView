@@ -121,6 +121,7 @@
 
 								<controls:BlockOverlayControl IsVisible="{Binding HasMinerUBlocks}"
                                                                 PageSize="{Binding Size}"
+                                                                PpiScale="{Binding PpiScale}"
                                                                 Blocks="{Binding MinerUBlocks}"
                                                                 VisibleArea="{Binding VisibleArea}"
                                                                 HighlightBlockId="{Binding $parent[controls:PageItemsControl].((vm:DocumentViewModel)DataContext).AnalysisViewModel.SelectedBlockId}"

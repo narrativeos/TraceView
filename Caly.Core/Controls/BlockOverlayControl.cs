@@ -56,10 +56,18 @@ public sealed class BlockOverlayControl : Control
     public static readonly StyledProperty<Size> PageSizeProperty =
         AvaloniaProperty.Register<BlockOverlayControl, Size>(nameof(PageSize));
 
+    /// <summary>
+    /// PPI scale factor for converting PDF points to display pixels.
+    /// Used when block coordinates are in PDF point space (not normalized).
+    /// Defaults to 1.0 (no scaling). Typically 2.0 on high-DPI displays.
+    /// </summary>
+    public static readonly StyledProperty<double> PpiScaleProperty =
+        AvaloniaProperty.Register<BlockOverlayControl, double>(nameof(PpiScale), 1.0);
+
     static BlockOverlayControl()
     {
         AffectsRender<BlockOverlayControl>(BlocksProperty, VisibleAreaProperty,
-            HighlightBlockIdProperty, ShowLabelsProperty, PageSizeProperty);
+            HighlightBlockIdProperty, ShowLabelsProperty, PageSizeProperty, PpiScaleProperty);
     }
 
     public IReadOnlyList<MinerUBlock>? Blocks
@@ -92,25 +100,31 @@ public sealed class BlockOverlayControl : Control
         set => SetValue(PageSizeProperty, value);
     }
 
+    public double PpiScale
+    {
+        get => GetValue(PpiScaleProperty);
+        set => SetValue(PpiScaleProperty, value);
+    }
+
     // Cache for geometries
     private StreamGeometry[]? _blockGeometries;
     private bool _geometriesDirty = true;
 
-    // Fill colors (alpha = 0.15)
-    private static readonly ImmutableSolidColorBrush TitleFill = new(Colors.Blue, 0.15);
-    private static readonly ImmutableSolidColorBrush TextFill = new(Colors.Green, 0.15);
-    private static readonly ImmutableSolidColorBrush ImageFill = new(Colors.Orange, 0.15);
-    private static readonly ImmutableSolidColorBrush TableFill = new(Colors.Purple, 0.15);
-    private static readonly ImmutableSolidColorBrush CaptionFill = new(Colors.Gray, 0.15);
-    private static readonly ImmutableSolidColorBrush DefaultFill = new(Colors.LightGray, 0.15);
+    // Fill colors (alpha = 0.30)
+    private static readonly ImmutableSolidColorBrush TitleFill = new(Colors.Blue, 0.30);
+    private static readonly ImmutableSolidColorBrush TextFill = new(Colors.Green, 0.30);
+    private static readonly ImmutableSolidColorBrush ImageFill = new(Colors.Orange, 0.30);
+    private static readonly ImmutableSolidColorBrush TableFill = new(Colors.Purple, 0.30);
+    private static readonly ImmutableSolidColorBrush CaptionFill = new(Colors.Gray, 0.30);
+    private static readonly ImmutableSolidColorBrush DefaultFill = new(Colors.LightGray, 0.30);
 
-    // Stroke colors (alpha = 0.6)
-    private static readonly ImmutableSolidColorBrush TitleStroke = new(Colors.Blue, 0.6);
-    private static readonly ImmutableSolidColorBrush TextStroke = new(Colors.Green, 0.6);
-    private static readonly ImmutableSolidColorBrush ImageStroke = new(Colors.Orange, 0.6);
-    private static readonly ImmutableSolidColorBrush TableStroke = new(Colors.Purple, 0.6);
-    private static readonly ImmutableSolidColorBrush CaptionStroke = new(Colors.Gray, 0.6);
-    private static readonly ImmutableSolidColorBrush DefaultStroke = new(Colors.LightGray, 0.6);
+    // Stroke colors (alpha = 0.85)
+    private static readonly ImmutableSolidColorBrush TitleStroke = new(Colors.Blue, 0.85);
+    private static readonly ImmutableSolidColorBrush TextStroke = new(Colors.Green, 0.85);
+    private static readonly ImmutableSolidColorBrush ImageStroke = new(Colors.Orange, 0.85);
+    private static readonly ImmutableSolidColorBrush TableStroke = new(Colors.Purple, 0.85);
+    private static readonly ImmutableSolidColorBrush CaptionStroke = new(Colors.Gray, 0.85);
+    private static readonly ImmutableSolidColorBrush DefaultStroke = new(Colors.LightGray, 0.85);
 
     // Highlight stroke (yellow/amber)
     private static readonly ImmutableSolidColorBrush HighlightStroke = new(Color.Parse("#FFD600"), 1.0);
@@ -126,18 +140,19 @@ public sealed class BlockOverlayControl : Control
     private static readonly ImmutablePen CaptionPen = new(CaptionStroke, 1.5);
 
     // Cached highlight fill brushes per type color (avoid per-frame allocation)
-    private static readonly ImmutableSolidColorBrush TitleHighlightFill = new(Colors.Blue, 0.35);
-    private static readonly ImmutableSolidColorBrush TextHighlightFill = new(Colors.Green, 0.35);
-    private static readonly ImmutableSolidColorBrush ImageHighlightFill = new(Colors.Orange, 0.35);
-    private static readonly ImmutableSolidColorBrush TableHighlightFill = new(Colors.Purple, 0.35);
-    private static readonly ImmutableSolidColorBrush CaptionHighlightFill = new(Colors.Gray, 0.35);
-    private static readonly ImmutableSolidColorBrush DefaultHighlightFill = new(Colors.LightGray, 0.35);
+    private static readonly ImmutableSolidColorBrush TitleHighlightFill = new(Colors.Blue, 0.45);
+    private static readonly ImmutableSolidColorBrush TextHighlightFill = new(Colors.Green, 0.45);
+    private static readonly ImmutableSolidColorBrush ImageHighlightFill = new(Colors.Orange, 0.45);
+    private static readonly ImmutableSolidColorBrush TableHighlightFill = new(Colors.Purple, 0.45);
+    private static readonly ImmutableSolidColorBrush CaptionHighlightFill = new(Colors.Gray, 0.45);
+    private static readonly ImmutableSolidColorBrush DefaultHighlightFill = new(Colors.LightGray, 0.45);
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
 
-        if (change.Property == BlocksProperty || change.Property == PageSizeProperty)
+        if (change.Property == BlocksProperty || change.Property == PageSizeProperty ||
+            change.Property == PpiScaleProperty)
         {
             _geometriesDirty = true;
         }
@@ -157,6 +172,7 @@ public sealed class BlockOverlayControl : Control
         }
 
         var pageSize = PageSize;
+        var ppiScale = PpiScale;
 
         // Reuse existing array if count matches to reduce allocations
         if (_blockGeometries is null || _blockGeometries.Length != blocks.Count)
@@ -170,7 +186,7 @@ public sealed class BlockOverlayControl : Control
             var bbox = block.Bbox;
             // Convert block bbox (may be normalized 0-1 or absolute pixels) to PdfRectangle
             // Use original PDF coordinates - the Render() context is in the control's local coordinate space
-            var pdfRect = BboxToAvaloniaRectangle(bbox, pageSize, block.IsBboxNormalized);
+            var pdfRect = BboxToAvaloniaRectangle(bbox, pageSize, block.IsBboxNormalized, ppiScale);
             _blockGeometries[i] = PdfWordHelpers.GetGeometry(pdfRect, false);
         }
 
@@ -181,8 +197,10 @@ public sealed class BlockOverlayControl : Control
     /// <summary>
     /// Converts a MinerUBlock bbox to Avalonia coordinates (top-left origin, Y down).
     /// The Render() method uses Avalonia's coordinate system, not PDF's (bottom-left origin).
+    /// For non-normalized coordinates (assumed to be in PDF point space), multiplies by PpiScale
+    /// to match the display coordinate space.
     /// </summary>
-    private static PdfRectangle BboxToAvaloniaRectangle(Rect bbox, Size pageSize, bool isNormalized)
+    private static PdfRectangle BboxToAvaloniaRectangle(Rect bbox, Size pageSize, bool isNormalized, double ppiScale)
     {
         // Use explicit IsBboxNormalized flag set by the parsing service
         // instead of heuristic coordinate range checks.
@@ -199,11 +217,12 @@ public sealed class BlockOverlayControl : Control
         }
         else
         {
-            // Already in pixel coordinates (Avalonia)
-            x0 = bbox.X;
-            y0 = bbox.Y;
-            x1 = bbox.Right;
-            y1 = bbox.Bottom;
+            // Non-normalized: coordinates are in PDF point space (or absolute pixels at 1x scale).
+            // Multiply by PpiScale to convert to display pixel space.
+            x0 = bbox.X * ppiScale;
+            y0 = bbox.Y * ppiScale;
+            x1 = bbox.Right * ppiScale;
+            y1 = bbox.Bottom * ppiScale;
         }
 
         // Create PdfRectangle with Avalonia coordinates (top-left origin)

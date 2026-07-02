@@ -504,7 +504,20 @@ public sealed partial class DocumentViewModel
         if (minerUDoc is null)
             return;
 
-        // Populate MinerUBlocks
+        // Set MinerUDocument first — subscribes the Pages.CollectionChanged handler
+        // so any pages added later will automatically get blocks assigned.
+        MinerUDocument = minerUDoc;
+
+        // Assign blocks to existing pages (the CollectionChanged handler only covers future additions)
+        foreach (var page in Pages)
+        {
+            if (page.MinerUBlocks is null)
+            {
+                page.MinerUBlocks = minerUDoc.GetBlocksForPage(page.PageNumber);
+            }
+        }
+
+        // Populate MinerUBlocks (middle column)
         MinerUBlocks.Clear();
         foreach (var block in minerUDoc.GetAllBlocks())
         {
