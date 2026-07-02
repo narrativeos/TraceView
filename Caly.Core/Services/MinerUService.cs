@@ -156,7 +156,7 @@ public sealed class MinerUService : IDisposable
 
     /// <summary>
     /// Asynchronously parses a PDF file using MinerU.
-    /// Submits the task, polls for completion, downloads the result, and builds the PopoDocument.
+    /// Submits the task, polls for completion, downloads the result, and builds the MinerUDocument.
     /// </summary>
     public async Task<MinerUParseResult> ParseAsync(
         string pdfPath,
@@ -628,15 +628,15 @@ public sealed class MinerUService : IDisposable
             }
         }
 
-        var popoDoc = MinerUJsonService.TryParseMinerUFromExtractedDir(extractedDir);
-        if (popoDoc is null)
+        var minerUDoc = MinerUJsonService.TryParseMinerUFromExtractedDir(extractedDir);
+        if (minerUDoc is null)
             return null;
 
         var markdownInfo = ExtractMarkdownFromDir(extractedDir);
 
         return new MinerUParseResult
         {
-            PopoDocument = popoDoc,
+            MinerUDocument = minerUDoc,
             ZipPath = zipPath,
             Markdown = markdownInfo.markdown,
             PopoMarkdown = markdownInfo.popoMarkdown,
@@ -722,7 +722,7 @@ public sealed class MinerUService : IDisposable
         }
 
         // Parse the extracted directory
-        var popoDoc = await Task.Run(() =>
+        var minerUDoc = await Task.Run(() =>
             MinerUJsonService.TryParseMinerUFromExtractedDir(extractedDir), ct);
 
         // Extract markdown files
@@ -730,7 +730,7 @@ public sealed class MinerUService : IDisposable
 
         return new MinerUParseResult
         {
-            PopoDocument = popoDoc,
+            MinerUDocument = minerUDoc,
             ZipPath = zipPath,
             Markdown = markdownInfo.markdown,
             PopoMarkdown = markdownInfo.popoMarkdown,

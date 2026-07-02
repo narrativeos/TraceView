@@ -31,16 +31,16 @@ namespace Caly.Core.Services;
 
 /// <summary>
 /// Service for parsing MinerU JSON output files (middle.json, ZIP results).
-/// Converts MinerU's raw output into PopoDocument structures for visualization.
+/// Converts MinerU's raw output into MinerUDocument structures for visualization.
 /// </summary>
 public static class MinerUJsonService
 {
     /// <summary>
     /// Loads a MinerU parse result produced in the project's mineru/ directory.
     /// This is a separate stage from Popo post-processing and may return a
-    /// PopoDocument built from MinerU middle.json output.
+    /// MinerUDocument built from MinerU middle.json output.
     /// </summary>
-    public static PopoDocument? LoadMinerUResultFromProject(string? projectPath)
+    public static MinerUDocument? LoadMinerUResultFromProject(string? projectPath)
     {
         if (string.IsNullOrEmpty(projectPath))
             return null;
@@ -127,10 +127,10 @@ public static class MinerUJsonService
     #region MinerU Output Parsing
 
     /// <summary>
-    /// Parses MinerU middle.json output into a PopoDocument.
+    /// Parses MinerU middle.json output into a MinerUDocument.
     /// Supports both the "pages" flat block list and optional "tree" hierarchical structure.
     /// </summary>
-    public static PopoDocument? TryParseMinerUMiddleJson(string jsonPath)
+    public static MinerUDocument? TryParseMinerUMiddleJson(string jsonPath)
     {
         if (!File.Exists(jsonPath))
             return null;
@@ -141,7 +141,7 @@ public static class MinerUJsonService
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
-            var popoDoc = new PopoDocument
+            var minerUDoc = new MinerUDocument
             {
                 DocId = GetStringProperty(root, "doc_id") ?? string.Empty,
                 ModelName = GetStringProperty(root, "model_name") ?? "mineru"
@@ -182,7 +182,7 @@ public static class MinerUJsonService
                             blocks.Add(block);
                         }
 
-                        popoDoc.PagesBlocks[pageNum] = blocks;
+                        minerUDoc.PagesBlocks[pageNum] = blocks;
                     }
                 }
                 else if (pagesElem.ValueKind == JsonValueKind.Array)
@@ -210,7 +210,7 @@ public static class MinerUJsonService
                         }
 
                         if (blocks.Count > 0)
-                            popoDoc.PagesBlocks[pageNum] = blocks;
+                            minerUDoc.PagesBlocks[pageNum] = blocks;
                     }
                 }
             }
@@ -248,10 +248,10 @@ public static class MinerUJsonService
 
                     if (blocks.Count > 0)
                     {
-                        if (!popoDoc.PagesBlocks.ContainsKey(pageNum))
-                            popoDoc.PagesBlocks[pageNum] = new List<MinerUBlock>();
+                        if (!minerUDoc.PagesBlocks.ContainsKey(pageNum))
+                            minerUDoc.PagesBlocks[pageNum] = new List<MinerUBlock>();
 
-                        popoDoc.PagesBlocks[pageNum].AddRange(blocks);
+                        minerUDoc.PagesBlocks[pageNum].AddRange(blocks);
                     }
                 }
             }
@@ -259,15 +259,15 @@ public static class MinerUJsonService
             // 2. Parse tree -> TreeRoot
             if (root.TryGetProperty("tree", out var treeElem) && treeElem.ValueKind != JsonValueKind.Null)
             {
-                popoDoc.TreeRoot = MapMinerUTreeNode(treeElem, pageSizeMap);
-                popoDoc.BuildAggregationMap();
+                minerUDoc.TreeRoot = MapMinerUTreeNode(treeElem, pageSizeMap);
+                minerUDoc.BuildAggregationMap();
             }
 
             // 3. Build InferenceBlocks from PagesBlocks
-            popoDoc.InferenceBlocks = popoDoc.GetAllBlocks();
+            minerUDoc.InferenceBlocks = minerUDoc.GetAllBlocks();
 
-            return popoDoc.InferenceBlocks.Count > 0 || popoDoc.TreeRoot is not null
-                ? popoDoc
+            return minerUDoc.InferenceBlocks.Count > 0 || minerUDoc.TreeRoot is not null
+                ? minerUDoc
                 : null;
         }
         catch
@@ -277,10 +277,10 @@ public static class MinerUJsonService
     }
 
     /// <summary>
-    /// Parses a MinerU result zip file and extracts PopoDocument.
+    /// Parses a MinerU result zip file and extracts MinerUDocument.
     /// Searches for *_middle.json in the extracted files.
     /// </summary>
-    public static PopoDocument? TryParseMinerUZip(string zipPath)
+    public static MinerUDocument? TryParseMinerUZip(string zipPath)
     {
         if (!File.Exists(zipPath))
             return null;
@@ -299,12 +299,12 @@ public static class MinerUJsonService
     }
 
     /// <summary>
-    /// Parses an already-extracted MinerU output directory and builds a PopoDocument.
+    /// Parses an already-extracted MinerU output directory and builds a MinerUDocument.
     /// Searches only for *_middle.json in the directory.
     /// </summary>
     /// <param name="extractedDir">Path to the extracted directory containing MinerU output files.</param>
-    /// <returns>A PopoDocument if parsing succeeds, otherwise null.</returns>
-    public static PopoDocument? TryParseMinerUFromExtractedDir(string extractedDir)
+    /// <returns>A MinerUDocument if parsing succeeds, otherwise null.</returns>
+    public static MinerUDocument? TryParseMinerUFromExtractedDir(string extractedDir)
     {
         if (!Directory.Exists(extractedDir))
             return null;
@@ -321,9 +321,9 @@ public static class MinerUJsonService
 
         foreach (var jsonFile in preferredFiles.Concat(jsonFiles.Except(preferredFiles)))
         {
-            var popoDoc = TryParseMinerUMiddleJson(jsonFile);
-            if (popoDoc is not null)
-                return popoDoc;
+            var minerUDoc = TryParseMinerUMiddleJson(jsonFile);
+            if (minerUDoc is not null)
+                return minerUDoc;
         }
 
         return null;

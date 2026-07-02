@@ -30,17 +30,17 @@ namespace Caly.Core.ViewModels;
 public sealed partial class DocumentViewModel
 {
     [ObservableProperty]
-    private PopoDocument? _popoDocument;
+    private MinerUDocument? _minerUDocument;
 
-    partial void OnPopoDocumentChanged(PopoDocument? value)
+    partial void OnMinerUDocumentChanged(MinerUDocument? value)
     {
-        OnPropertyChanged(nameof(HasPopoDocument));
+        OnPropertyChanged(nameof(HasMinerUDocument));
     }
 
     /// <summary>
-    /// Gets whether a PopoDocument has been loaded (for UI visibility binding).
+    /// Gets whether a MinerUDocument has been loaded (for UI visibility binding).
     /// </summary>
-    public bool HasPopoDocument => PopoDocument is not null;
+    public bool HasMinerUDocument => MinerUDocument is not null;
 
     [ObservableProperty]
     private AnalysisViewModel? _analysisViewModel;
@@ -80,7 +80,7 @@ public sealed partial class DocumentViewModel
         if (!Directory.Exists(popoDir))
             return;
 
-        PopoDocument? popoDoc = null;
+        MinerUDocument? minerUDoc = null;
 
         // Try popo.json first
         var popoJsonPath = Path.Combine(popoDir, "popo.json");
@@ -89,7 +89,7 @@ public sealed partial class DocumentViewModel
             try
             {
                 var json = File.ReadAllText(popoJsonPath);
-                popoDoc = System.Text.Json.JsonSerializer.Deserialize<PopoDocument>(json, new System.Text.Json.JsonSerializerOptions
+                minerUDoc = System.Text.Json.JsonSerializer.Deserialize<MinerUDocument>(json, new System.Text.Json.JsonSerializerOptions
                 {
                     PropertyNameCaseInsensitive = true
                 });
@@ -101,30 +101,30 @@ public sealed partial class DocumentViewModel
         }
 
         // Try extract subdirectory
-        if (popoDoc is null)
+        if (minerUDoc is null)
         {
             var extractDir = Path.Combine(popoDir, "extract");
             if (Directory.Exists(extractDir))
             {
-                popoDoc = PopoJsonService.TryParsePopoResultDir(extractDir);
+                minerUDoc = PopoJsonService.TryParseMinerUResultDir(extractDir);
             }
         }
 
-        if (popoDoc is null)
+        if (minerUDoc is null)
             return;
 
-        PopoDocument = popoDoc;
-        AnalysisViewModel = new AnalysisViewModel(popoDoc);
+        MinerUDocument = minerUDoc;
+        AnalysisViewModel = new AnalysisViewModel(minerUDoc);
 
         // Assign blocks to each page view model
         foreach (var page in Pages)
         {
-            page.MinerUBlocks = popoDoc.GetBlocksForPage(page.PageNumber);
+            page.MinerUBlocks = minerUDoc.GetBlocksForPage(page.PageNumber);
         }
 
         // Populate flat Popo blocks for the right column
         MinerUBlocksFlat.Clear();
-        foreach (var block in popoDoc.GetAllBlocks())
+        foreach (var block in minerUDoc.GetAllBlocks())
         {
             MinerUBlocksFlat.Add(new BlockViewModel(block));
         }

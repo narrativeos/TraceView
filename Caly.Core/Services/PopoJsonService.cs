@@ -119,10 +119,10 @@ public static class PopoJsonService
     }
 
     /// <summary>
-    /// Loads a PopoDocument from a project's popo/ directory.
+    /// Loads a MinerUDocument from a project's popo/ directory.
     /// Looks for popo.json in the project's popo/ subdirectory only.
     /// </summary>
-    public static PopoDocument? LoadPopoDocumentFromProject(string? projectPath)
+    public static MinerUDocument? LoadMinerUDocumentFromProject(string? projectPath)
     {
         if (string.IsNullOrEmpty(projectPath))
             return null;
@@ -138,7 +138,7 @@ public static class PopoJsonService
             try
             {
                 var json = File.ReadAllText(popoJsonPath);
-                return JsonSerializer.Deserialize<PopoDocument>(json, new JsonSerializerOptions
+                return JsonSerializer.Deserialize<MinerUDocument>(json, new JsonSerializerOptions
                 {
                     PropertyNameCaseInsensitive = true
                 });
@@ -153,9 +153,9 @@ public static class PopoJsonService
     }
 
     /// <summary>
-    /// Saves a PopoDocument to a project's popo/ directory.
+    /// Saves a MinerUDocument to a project's popo/ directory.
     /// </summary>
-    public static void SavePopoDocumentToProject(PopoDocument doc, string projectPath)
+    public static void SaveMinerUDocumentToProject(MinerUDocument doc, string projectPath)
     {
         if (string.IsNullOrEmpty(projectPath))
             return;
@@ -173,13 +173,13 @@ public static class PopoJsonService
     }
 
     /// <summary>
-    /// Loads a complete PopoDocument from JSON files.
+    /// Loads a complete MinerUDocument from JSON files.
     /// </summary>
-    public static PopoDocument? LoadPopoDocument(string pdfPath, string modelName = DefaultModelName)
+    public static MinerUDocument? LoadMinerUDocument(string pdfPath, string modelName = DefaultModelName)
     {
         var (normalizedJson, inferenceJson, treeJson) = FindPopoJsonPaths(pdfPath, modelName);
 
-        var doc = new PopoDocument();
+        var doc = new MinerUDocument();
         var loaded = false;
 
         // Load normalized JSON (pages-based structure)
@@ -223,9 +223,9 @@ public static class PopoJsonService
     /// Loads normalization JSON (label_normalization.py output).
     /// Format: { "model": "...", "doc_id": "...", "pages": { "1": [ {...}, ... ], ... } }
     /// </summary>
-    internal static PopoDocument LoadNormalizationJson(string jsonPath)
+    internal static MinerUDocument LoadNormalizationJson(string jsonPath)
     {
-        var doc = new PopoDocument();
+        var doc = new MinerUDocument();
         var json = File.ReadAllText(jsonPath);
         var root = JsonDocument.Parse(json);
         var elem = root.RootElement;
@@ -433,8 +433,8 @@ public static class PopoJsonService
         return new Rect(0, 0, 0, 0);
     }
 
-    // Extension method for PopoDocument to populate PagesBlocks from InferenceBlocks
-    private static void PopulatePagesBlocksFromInference(this PopoDocument doc)
+    // Extension method for MinerUDocument to populate PagesBlocks from InferenceBlocks
+    private static void PopulatePagesBlocksFromInference(this MinerUDocument doc)
     {
         var pages = new Dictionary<int, List<MinerUBlock>>();
 
@@ -455,9 +455,9 @@ public static class PopoJsonService
 
     /// <summary>
     /// Tries to parse a Popo result directory (from Popo service).
-    /// Searches for popo_result.json or any JSON file that contains a PopoDocument structure.
+    /// Searches for popo_result.json or any JSON file that contains a MinerUDocument structure.
     /// </summary>
-    public static PopoDocument? TryParsePopoResultDir(string resultDir)
+    public static MinerUDocument? TryParseMinerUResultDir(string resultDir)
     {
         if (!Directory.Exists(resultDir))
             return null;
@@ -488,9 +488,9 @@ public static class PopoJsonService
     }
 
     /// <summary>
-    /// Tries to parse a single JSON file as a PopoDocument result.
+    /// Tries to parse a single JSON file as a MinerUDocument result.
     /// </summary>
-    static PopoDocument? TryParsePopoResultJson(string jsonPath)
+    static MinerUDocument? TryParsePopoResultJson(string jsonPath)
     {
         if (!File.Exists(jsonPath))
             return null;
@@ -501,14 +501,14 @@ public static class PopoJsonService
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
-            // Try to deserialize directly as PopoDocument
-            var popoDoc = JsonSerializer.Deserialize<PopoDocument>(json, new JsonSerializerOptions
+            // Try to deserialize directly as MinerUDocument
+            var minerUDoc = JsonSerializer.Deserialize<MinerUDocument>(json, new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true
             });
 
-            if (popoDoc is not null && (popoDoc.GetAllBlocks().Count > 0 || popoDoc.TreeRoot is not null))
-                return popoDoc;
+            if (minerUDoc is not null && (minerUDoc.GetAllBlocks().Count > 0 || minerUDoc.TreeRoot is not null))
+                return minerUDoc;
 
             // Try as MinerU middle.json format
             return MinerUJsonService.TryParseMinerUMiddleJson(jsonPath);

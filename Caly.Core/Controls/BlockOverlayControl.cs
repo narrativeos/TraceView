@@ -54,10 +54,16 @@ public sealed class BlockOverlayControl : Control
     public static readonly StyledProperty<Size> PageSizeProperty =
         AvaloniaProperty.Register<BlockOverlayControl, Size>(nameof(PageSize));
 
+    /// <summary>
+    /// Zoom level for scaling block coordinates to match the zoomed PDF display.
+    /// </summary>
+    public static readonly StyledProperty<double> ZoomLevelProperty =
+        AvaloniaProperty.Register<BlockOverlayControl, double>(nameof(ZoomLevel), 1.0);
+
     static BlockOverlayControl()
     {
         AffectsRender<BlockOverlayControl>(BlocksProperty, VisibleAreaProperty,
-            HighlightBlockIdProperty, ShowLabelsProperty, PageSizeProperty);
+            HighlightBlockIdProperty, ShowLabelsProperty, PageSizeProperty, ZoomLevelProperty);
     }
 
     public IReadOnlyList<MinerUBlock>? Blocks
@@ -90,6 +96,12 @@ public sealed class BlockOverlayControl : Control
         set => SetValue(PageSizeProperty, value);
     }
 
+    public double ZoomLevel
+    {
+        get => GetValue(ZoomLevelProperty);
+        set => SetValue(ZoomLevelProperty, value);
+    }
+
     // Cache for geometries
     private StreamGeometry[]? _blockGeometries;
     private bool _geometriesDirty = true;
@@ -120,7 +132,7 @@ public sealed class BlockOverlayControl : Control
     {
         base.OnPropertyChanged(change);
 
-        if (change.Property == BlocksProperty || change.Property == PageSizeProperty)
+        if (change.Property == BlocksProperty || change.Property == PageSizeProperty || change.Property == ZoomLevelProperty)
         {
             _geometriesDirty = true;
         }
@@ -145,7 +157,8 @@ public sealed class BlockOverlayControl : Control
         {
             var bbox = blocks[i].Bbox;
             // Convert block bbox (may be normalized 0-1 or absolute pixels) to PdfRectangle
-            var pdfRect = BboxToPdfRectangle(bbox, pageSize);
+            // Use original PDF coordinates - the Render() context is in the control's local coordinate space
+            var pdfRect = BboxToAvaloniaRectangle(bbox, pageSize);
             geometries[i] = PdfWordHelpers.GetGeometry(pdfRect, false);
         }
 
@@ -155,11 +168,10 @@ public sealed class BlockOverlayControl : Control
     }
 
     /// <summary>
-    /// Converts a MinerUBlock bbox to PdfRectangle coordinates.
-    /// Handles both normalized (0-1) and absolute pixel coordinates,
-    /// and performs Y-axis flip from Avalonia (top-left origin) to PDF (bottom-left origin).
+    /// Converts a MinerUBlock bbox to Avalonia coordinates (top-left origin, Y down).
+    /// The Render() method uses Avalonia's coordinate system, not PDF's (bottom-left origin).
     /// </summary>
-    private static PdfRectangle BboxToPdfRectangle(Rect bbox, Size pageSize)
+    private static PdfRectangle BboxToAvaloniaRectangle(Rect bbox, Size pageSize)
     {
         // Determine if coordinates are normalized (0-1 range)
         // MinerUBlock.Bbox from MinerUJsonService is normalized when page_size is available in middle.json
@@ -169,28 +181,25 @@ public sealed class BlockOverlayControl : Control
 
         if (isNormalized && pageSize.Width > 0 && pageSize.Height > 0)
         {
-            // Convert normalized coordinates to pixel coordinates
-            double pixelX0 = bbox.X * pageSize.Width;
-            double pixelY0 = bbox.Y * pageSize.Height; // Avalonia Y (down)
-            double pixelX1 = (bbox.X + bbox.Width) * pageSize.Width;
-            double pixelY1 = (bbox.Y + bbox.Height) * pageSize.Height; // Avalonia Y (down)
-
-            // Flip Y-axis: Avalonia (top-left origin, Y down) -> PDF (bottom-left origin, Y up)
-            x0 = pixelX0;
-            y0 = pageSize.Height - pixelY1; // Bottom in Avalonia becomes bottom in PDF (smaller Y)
-            x1 = pixelX1;
-            y1 = pageSize.Height - pixelY0; // Top in Avalonia becomes top in PDF (larger Y)
+            // Convert normalized coordinates to pixel coordinates (Avalonia: top-left origin, Y down)
+            x0 = bbox.X * pageSize.Width;
+            y0 = bbox.Y * pageSize.Height;
+            x1 = (bbox.X + bbox.Width) * pageSize.Width;
+            y1 = (bbox.Y + bbox.Height) * pageSize.Height;
         }
         else
         {
-            // Already in pixel coordinates, just flip Y-axis
+            // Already in pixel coordinates (Avalonia)
             x0 = bbox.X;
-            y0 = pageSize.Height - bbox.Bottom;
+            y0 = bbox.Y;
             x1 = bbox.Right;
-            y1 = pageSize.Height - bbox.Y;
+            y1 = bbox.Bottom;
         }
 
-        return new PdfRectangle(x0, y0, x1, y1);
+        // Create PdfRectangle with Avalonia coordinates (top-left origin)
+        // PdfRectangle constructor: (bottomLeftX, bottomLeftY, topRightX, topRightY)
+        // In Avalonia: bottomLeft = (x0, y1), topRight = (x1, y0)
+        return new PdfRectangle(x0, y1, x1, y0);
     }
 
     private (ImmutableSolidColorBrush fill, ImmutablePen pen) GetBlockStyle(MinerUBlock block, bool isHighlighted)

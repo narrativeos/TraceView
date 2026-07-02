@@ -649,8 +649,8 @@
 
                                         <!-- AI Analysis tab -->
                                         <TabItem MinHeight="40"
-                                                 IsVisible="{Binding HasPopoDocument}"
-                                                 IsEnabled="{Binding HasPopoDocument}">
+                                                 IsVisible="{Binding HasMinerUDocument}"
+                                                 IsEnabled="{Binding HasMinerUDocument}">
                                             <TabItem.Header>
                                                 <PathIcon Width="17"
                                                           Height="17"

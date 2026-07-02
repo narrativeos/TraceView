@@ -34,26 +34,26 @@ namespace Caly.Core.ViewModels;
 /// </summary>
 public partial class AnalysisViewModel : ViewModelBase
 {
-    private readonly PopoDocument _popoDocument;
+    private readonly MinerUDocument _minerUDocument;
 
-    public AnalysisViewModel(PopoDocument popoDocument)
+    public AnalysisViewModel(MinerUDocument minerUDocument)
     {
-        _popoDocument = popoDocument;
+        _minerUDocument = minerUDocument;
 
         // Build block view models
-        foreach (var block in popoDocument.GetAllBlocks())
+        foreach (var block in minerUDocument.GetAllBlocks())
         {
             AllBlocks.Add(new BlockViewModel(block));
         }
 
         // Build tree view model
-        if (popoDocument.TreeRoot is not null)
+        if (minerUDocument.TreeRoot is not null)
         {
-            TreeRoot = new TreeNodeViewModel(popoDocument.TreeRoot);
+            TreeRoot = new TreeNodeViewModel(minerUDocument.TreeRoot);
         }
 
         // Load aggregations
-        Aggregations = popoDocument.Aggregations;
+        Aggregations = minerUDocument.Aggregations;
 
         // Initialize visible types
         VisibleTypes.Add("title");
@@ -65,12 +65,12 @@ public partial class AnalysisViewModel : ViewModelBase
         ApplyFilters();
     }
 
-    public PopoDocument PopoDocument => _popoDocument;
+    public MinerUDocument MinerUDocument => _minerUDocument;
 
     // === Data availability indicators ===
-    public bool HasNormalization => _popoDocument.PagesBlocks.Count > 0;
-    public bool HasInference => _popoDocument.InferenceBlocks.Count > 0;
-    public bool HasTree => _popoDocument.TreeRoot is not null;
+    public bool HasNormalization => _minerUDocument.PagesBlocks.Count > 0;
+    public bool HasInference => _minerUDocument.InferenceBlocks.Count > 0;
+    public bool HasTree => _minerUDocument.TreeRoot is not null;
 
     /// <summary>
     /// Human-readable status text showing which stages are available.
@@ -115,8 +115,8 @@ public partial class AnalysisViewModel : ViewModelBase
 
     partial void OnTreeRootChanged(TreeNodeViewModel? value)
     {
-        // Reload aggregations from PopoDocument
-        Aggregations = _popoDocument.Aggregations;
+        // Reload aggregations from MinerUDocument
+        Aggregations = _minerUDocument.Aggregations;
     }
 
     // === Selection/Highlight ===

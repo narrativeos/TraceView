@@ -196,14 +196,14 @@ public class MinerUTaskStatusResponse
 
 /// <summary>
 /// Final result of a MinerU parse operation.
-/// Contains the parsed PopoDocument and local file paths.
+/// Contains the parsed MinerUDocument and local file paths.
 /// </summary>
 public class MinerUParseResult
 {
     /// <summary>
-    /// The structured Popo document model built from MinerU output.
+    /// The structured MinerU document model built from MinerU output.
     /// </summary>
-    public PopoDocument? PopoDocument { get; init; }
+    public MinerUDocument? MinerUDocument { get; init; }
 
     /// <summary>
     /// Local path to the cached zip file from MinerU.

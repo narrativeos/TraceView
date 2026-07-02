@@ -65,7 +65,7 @@ public sealed partial class DocumentViewModel
                 return false;
 
             // Don't show button if Popo result already exists
-            if (HasPopoDocument)
+            if (HasMinerUDocument)
                 return false;
 
             var docId = LocalPath is not null ? Path.GetFileNameWithoutExtension(LocalPath) : null;
@@ -100,7 +100,7 @@ public sealed partial class DocumentViewModel
 
     /// <summary>
     /// Processes the current document with Popo service.
-    /// Submits the MinerU ZIP, waits for processing, downloads the result, and loads the PopoDocument.
+    /// Submits the MinerU ZIP, waits for processing, downloads the result, and loads the MinerUDocument.
     /// </summary>
     [RelayCommand]
     private async Task ProcessWithPopoAsync()
@@ -159,21 +159,21 @@ public sealed partial class DocumentViewModel
                 _popoCts.Token);
 
             // Load result
-            if (result.PopoDocument is not null)
+            if (result.MinerUDocument is not null)
             {
-                // Update PopoDocument with the processed result
-                PopoDocument = result.PopoDocument;
-                AnalysisViewModel = new AnalysisViewModel(result.PopoDocument);
+                // Update MinerUDocument with the processed result
+                MinerUDocument = result.MinerUDocument;
+                AnalysisViewModel = new AnalysisViewModel(result.MinerUDocument);
 
                 // Assign blocks to each page
                 foreach (var page in Pages)
                 {
-                    page.MinerUBlocks = result.PopoDocument.GetBlocksForPage(page.PageNumber);
+                    page.MinerUBlocks = result.MinerUDocument.GetBlocksForPage(page.PageNumber);
                 }
 
                 // Update flat block collection
                 MinerUBlocksFlat.Clear();
-                foreach (var block in result.PopoDocument.GetAllBlocks())
+                foreach (var block in result.MinerUDocument.GetAllBlocks())
                 {
                     MinerUBlocksFlat.Add(new BlockViewModel(block));
                 }
@@ -183,7 +183,7 @@ public sealed partial class DocumentViewModel
                 {
                     try
                     {
-                        PopoJsonService.SavePopoDocumentToProject(result.PopoDocument, ProjectPath);
+                        PopoJsonService.SaveMinerUDocumentToProject(result.MinerUDocument, ProjectPath);
                     }
                     catch
                     {

@@ -282,14 +282,14 @@ public sealed class PopoService : IDisposable
 
         // Step 4: Parse
         onProgress?.Invoke(PopoProcessStatus.ParsingResult, 85);
-        var popoDoc = PopoJsonService.TryParsePopoResultDir(resultDir);
+        var minerUDoc = PopoJsonService.TryParseMinerUResultDir(resultDir);
 
         // Step 5: Complete
         onProgress?.Invoke(PopoProcessStatus.Completed, 100);
 
         return new PopoProcessResult
         {
-            PopoDocument = popoDoc,
+            MinerUDocument = minerUDoc,
             ResultDirectory = resultDir
         };
     }
@@ -375,7 +375,7 @@ public static class PopoProcessStatusExtensions
 /// </summary>
 public class PopoProcessResult
 {
-    public PopoDocument? PopoDocument { get; init; }
+    public MinerUDocument? MinerUDocument { get; init; }
     public string ResultDirectory { get; init; } = string.Empty;
 }
 

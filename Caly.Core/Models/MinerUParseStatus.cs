@@ -44,10 +44,10 @@ public enum MinerUParseStatus
     /// <summary>Saving result to local cache directory (80%).</summary>
     Caching,
 
-    /// <summary>Parsing MinerU output (middle.json) into PopoDocument (85%).</summary>
+    /// <summary>Parsing MinerU output (middle.json) into MinerUDocument (85%).</summary>
     ParsingResult,
 
-    /// <summary>Parse completed successfully, PopoDocument is ready (100%).</summary>
+    /// <summary>Parse completed successfully, MinerUDocument is ready (100%).</summary>
     Completed,
 
     /// <summary>Parse failed with an error.</summary>
