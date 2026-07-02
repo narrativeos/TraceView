@@ -101,7 +101,10 @@ public sealed class PopoService : IDisposable
     /// Submits a MinerU ZIP file to Popo for processing via POST /tasks.
     /// Returns the task ID for status polling.
     /// </summary>
-    public async Task<string> SubmitTaskAsync(string zipPath, CancellationToken ct = default)
+    /// <param name="zipPath">Path to the MinerU ZIP file.</param>
+    /// <param name="model">Model name (e.g., "mineru", "monkeyocr"). Required by Popo API.</param>
+    /// <param name="ct">Cancellation token.</param>
+    public async Task<string> SubmitTaskAsync(string zipPath, string model, CancellationToken ct = default)
     {
         if (!File.Exists(zipPath))
             throw new PopoServiceException($"ZIP file not found: {zipPath}");
@@ -112,6 +115,7 @@ public sealed class PopoService : IDisposable
         var fileContent = new ByteArrayContent(zipBytes);
         fileContent.Headers.ContentType = new MediaTypeHeaderValue("application/zip");
         content.Add(fileContent, "file", Path.GetFileName(zipPath));
+        content.Add(new StringContent(model), "model");
 
         using var response = await _httpClient.PostAsync($"{_baseUrl}/tasks", content, ct);
         response.EnsureSuccessStatusCode();
@@ -177,7 +181,13 @@ public sealed class PopoService : IDisposable
 
             if (status.IsRunning)
             {
-                var progress = status.Status == "pending" ? 20 : 50;
+                var progress = status.Status switch
+                {
+                    "pending" or "queued" => 20,
+                    "started" or "in_progress" => 35,
+                    "running" or "processing" => 50,
+                    _ => 35
+                };
                 if (progress != lastProgress)
                 {
                     lastProgress = progress;
@@ -262,15 +272,21 @@ public sealed class PopoService : IDisposable
     /// <summary>
     /// Full processing flow: submit -> poll -> download -> parse.
     /// </summary>
+    /// <param name="zipPath">Path to the MinerU ZIP file.</param>
+    /// <param name="sourceDocId">Document ID for result caching.</param>
+    /// <param name="model">Model name (e.g., "mineru"). Required by Popo API.</param>
+    /// <param name="onProgress">Progress callback.</param>
+    /// <param name="ct">Cancellation token.</param>
     public async Task<PopoProcessResult> ProcessAsync(
         string zipPath,
         string sourceDocId,
+        string model = "mineru",
         Action<PopoProcessStatus, int>? onProgress = null,
         CancellationToken ct = default)
     {
         // Step 1: Submit
         onProgress?.Invoke(PopoProcessStatus.Submitting, 10);
-        var taskId = await SubmitTaskAsync(zipPath, ct);
+        var taskId = await SubmitTaskAsync(zipPath, model, ct);
 
         // Step 2: Poll
         onProgress?.Invoke(PopoProcessStatus.Queued, 15);
@@ -414,9 +430,27 @@ public class PopoTaskStatusResponse
     [System.Text.Json.Serialization.JsonPropertyName("result_url")]
     public string? ResultUrl { get; set; }
 
-    public bool IsRunning => Status is "pending" or "running" or "processing";
-    public bool IsCompleted => Status == "completed";
-    public bool IsFailed => Status == "failed";
+    [System.Text.Json.Serialization.JsonPropertyName("progress")]
+    public string? Progress { get; set; }
+
+    [System.Text.Json.Serialization.JsonPropertyName("doc_id")]
+    public string? DocId { get; set; }
+
+    [System.Text.Json.Serialization.JsonPropertyName("model")]
+    public string? Model { get; set; }
+
+    [System.Text.Json.Serialization.JsonPropertyName("created_at")]
+    public string? CreatedAt { get; set; }
+
+    [System.Text.Json.Serialization.JsonPropertyName("updated_at")]
+    public string? UpdatedAt { get; set; }
+
+    public bool IsRunning => !IsCompleted && !IsFailed
+        && Status is "pending" or "running" or "processing" or "queued" or "in_progress" or "started";
+
+    public bool IsCompleted => Status is "completed" or "success" or "done" or "finished";
+
+    public bool IsFailed => Status is "failed" or "error" or "cancelled";
 
     public string? GetErrorMessage() => Error ?? Message;
 }

@@ -75,6 +75,11 @@ public sealed class CalySettings
     /// </summary>
     public string PopoBaseUrl { get; set; } = "http://localhost:8440";
 
+    /// <summary>
+    /// Popo model name (e.g., "mineru", "monkeyocr", "PaddleOCR-VL-1.5", "dolphin", "glm-ocr")
+    /// </summary>
+    public string PopoModel { get; set; } = "mineru";
+
     // ========== Project Configuration ==========
 
     /// <summary>

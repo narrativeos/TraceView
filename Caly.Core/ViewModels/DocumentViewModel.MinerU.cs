@@ -74,9 +74,9 @@ public sealed partial class DocumentViewModel
     private string _minerUProgressDetail = string.Empty;
 
     /// <summary>
-    /// Whether MinerU AI parsing is enabled (reads from CalySettings).
+    /// Whether MinerU AI parsing is enabled (reads from settings service).
     /// </summary>
-    public bool MinerUEnabled => CalySettings.Default.MinerUEnabled;
+    public bool MinerUEnabled => _settingsService.GetSettings().MinerUEnabled;
 
     private CancellationTokenSource? _minerUCts;
 
@@ -105,15 +105,17 @@ public sealed partial class DocumentViewModel
 
     /// <summary>
     /// Whether the MinerU column is visible (user toggle).
+    /// Defaults to false; shown when MinerU data is loaded.
     /// </summary>
     [ObservableProperty]
-    private bool _showMinerUColumn = true;
+    private bool _showMinerUColumn = false;
 
     /// <summary>
     /// Whether the Popo column is visible (user toggle).
+    /// Defaults to false; shown when Popo data is loaded.
     /// </summary>
     [ObservableProperty]
-    private bool _showAnalysisColumn = true;
+    private bool _showAnalysisColumn = false;
 
 
     #endregion
@@ -126,7 +128,7 @@ public sealed partial class DocumentViewModel
     /// </summary>
     private MinerUService GetMinerUService()
     {
-        var settings = CalySettings.Default;
+        var settings = _settingsService.GetSettings();
         var minerUDir = ProjectPath is not null
             ? Path.Combine(ProjectPath, "mineru")
             : null;
@@ -279,7 +281,7 @@ public sealed partial class DocumentViewModel
 
         try
         {
-            var settings = CalySettings.Default;
+            var settings = _settingsService.GetSettings();
 
             // Health check
             if (!await service.HealthCheckAsync(_minerUCts.Token))
@@ -539,6 +541,9 @@ public sealed partial class DocumentViewModel
         MinerUStatus = MinerUParseStatus.Completed;
         MinerUProgress = 100;
         MinerUStatusText = $"Loaded ({MinerUBlocks.Count} blocks)";
+
+        // Show the MinerU column when data is loaded
+        ShowMinerUColumn = true;
     }
 
     #endregion

@@ -47,6 +47,21 @@ public static class PopoJsonService
     public const string DefaultModelName = "mineru";
 
     /// <summary>
+    /// Shared JSON serializer options with RectJsonConverter for bbox array/object format compatibility.
+    /// </summary>
+    internal static readonly JsonSerializerOptions DefaultDeserializeOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        Converters = { new RectJsonConverter() }
+    };
+
+    private static readonly JsonSerializerOptions s_defaultSerializeOptions = new()
+    {
+        WriteIndented = true,
+        Converters = { new RectJsonConverter() }
+    };
+
+    /// <summary>
     /// Finds Popo JSON files for a given PDF document path.
     /// Searches the outputs/ directory following MinerU-Popo standard structure.
     /// </summary>
@@ -138,10 +153,7 @@ public static class PopoJsonService
             try
             {
                 var json = File.ReadAllText(popoJsonPath);
-                return JsonSerializer.Deserialize<MinerUDocument>(json, new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                });
+                return JsonSerializer.Deserialize<MinerUDocument>(json, DefaultDeserializeOptions);
             }
             catch
             {
@@ -164,11 +176,7 @@ public static class PopoJsonService
         Directory.CreateDirectory(popoDir);
 
         var popoJsonPath = Path.Combine(popoDir, "popo.json");
-        var json = JsonSerializer.Serialize(doc, new JsonSerializerOptions
-        {
-            WriteIndented = true,
-            PropertyNameCaseInsensitive = true
-        });
+        var json = JsonSerializer.Serialize(doc, s_defaultSerializeOptions);
         File.WriteAllText(popoJsonPath, json);
     }
 
@@ -455,40 +463,175 @@ public static class PopoJsonService
 
     /// <summary>
     /// Tries to parse a Popo result directory (from Popo service).
-    /// Searches for popo_result.json or any JSON file that contains a MinerUDocument structure.
+    /// Searches for popo_result.json, extract/ JSON files, standard outputs/ structure,
+    /// or falls back to MinerU middle.json format.
     /// </summary>
     public static MinerUDocument? TryParseMinerUResultDir(string resultDir)
     {
         if (!Directory.Exists(resultDir))
             return null;
 
-        // Try popo_result.json first
+        // Strategy 1: Direct popo_result.json file
         var popoResultJson = Path.Combine(resultDir, "popo_result.json");
         if (File.Exists(popoResultJson))
         {
-            return TryParsePopoResultJson(popoResultJson);
+            var result = TryParsePopoResultJson(popoResultJson);
+            if (result is not null)
+                return result;
         }
 
-        // Try in extract subdirectory
+        // Strategy 2: Extract subdirectory from ZIP extraction
         var extractDir = Path.Combine(resultDir, "extract");
         if (Directory.Exists(extractDir))
         {
-            // Look for any JSON file in the extract directory
-            var jsonFiles = Directory.GetFiles(extractDir, "*.json", SearchOption.AllDirectories);
-            foreach (var jsonFile in jsonFiles)
+            // 2a: Prefer standard MinerU *_middle.json files first (default MinerU output)
+            var middleJsonFiles = Directory.GetFiles(extractDir, "*_middle.json", SearchOption.AllDirectories);
+            foreach (var middleJson in middleJsonFiles)
+            {
+                var result = MinerUJsonService.TryParseMinerUMiddleJson(middleJson);
+                if (result is not null)
+                    return result;
+            }
+
+            // 2b: Try other JSON files as Popo-serialized MinerUDocument format
+            var otherJsonFiles = Directory.GetFiles(extractDir, "*.json", SearchOption.AllDirectories)
+                .Where(f => !Path.GetFileName(f).EndsWith("_middle.json", StringComparison.OrdinalIgnoreCase));
+            foreach (var jsonFile in otherJsonFiles)
             {
                 var result = TryParsePopoResultJson(jsonFile);
                 if (result is not null)
                     return result;
             }
+
+            // 2c: Try standard outputs/ structure inside extract/
+            var outputsDir = Path.Combine(extractDir, "outputs");
+            if (Directory.Exists(outputsDir))
+            {
+                var result = LoadFromOutputsDirectory(outputsDir);
+                if (result is not null)
+                    return result;
+            }
         }
 
-        // Fallback: try to parse as MinerU middle.json format
+        // Strategy 3: Standard outputs/ directory at the top level
+        var topOutputsDir = Path.Combine(resultDir, "outputs");
+        if (Directory.Exists(topOutputsDir))
+        {
+            var result = LoadFromOutputsDirectory(topOutputsDir);
+            if (result is not null)
+                return result;
+        }
+
+        // Strategy 4: Fallback to MinerU middle.json format
         return MinerUJsonService.TryParseMinerUFromExtractedDir(resultDir);
     }
 
     /// <summary>
-    /// Tries to parse a single JSON file as a MinerUDocument result.
+    /// Loads a MinerUDocument from the standard Popo outputs/ directory structure:
+    ///   outputs/label_normalization/{model}/{docId}.json
+    ///   outputs/inference/{model}/{docId}.json
+    ///   outputs/build_tree/{model}/{docId}.json
+    /// </summary>
+    private static MinerUDocument? LoadFromOutputsDirectory(string outputsDir)
+    {
+        // Find the first available JSON file to determine docId and model
+        string? docId = null;
+        string? modelName = null;
+
+        foreach (var stage in new[] { "label_normalization", "inference", "build_tree" })
+        {
+            var stageDir = Path.Combine(outputsDir, stage);
+            if (!Directory.Exists(stageDir))
+                continue;
+
+            foreach (var modelDir in Directory.GetDirectories(stageDir))
+            {
+                foreach (var jsonFile in Directory.GetFiles(modelDir, "*.json"))
+                {
+                    docId = Path.GetFileNameWithoutExtension(jsonFile);
+                    modelName = Path.GetFileName(modelDir);
+                    goto found;
+                }
+            }
+        }
+        found:
+
+        if (docId is null)
+            return null;
+
+        var doc = new MinerUDocument { DocId = docId, ModelName = modelName ?? DefaultModelName };
+
+        // Load normalization
+        var (normalized, inference, tree) = FindPopoJsonPathsInOutputs(outputsDir, modelName ?? DefaultModelName, docId);
+        var loaded = false;
+
+        if (normalized is not null)
+        {
+            var normDoc = LoadNormalizationJson(normalized);
+            doc.PagesBlocks = normDoc.PagesBlocks;
+            doc.ModelName = normDoc.ModelName;
+            doc.DocId = normDoc.DocId;
+            loaded = true;
+        }
+
+        if (inference is not null)
+        {
+            var infBlocks = LoadInferenceJson(inference);
+            if (infBlocks is not null)
+            {
+                doc.InferenceBlocks = infBlocks;
+                if (!loaded && infBlocks.Count > 0)
+                    doc.PopulatePagesBlocksFromInference();
+                loaded = true;
+            }
+        }
+
+        if (tree is not null)
+        {
+            doc.TreeRoot = LoadTreeJson(tree);
+            if (doc.TreeRoot is not null)
+            {
+                doc.BuildAggregationMap();
+                loaded = true;
+            }
+        }
+
+        return loaded ? doc : null;
+    }
+
+    /// <summary>
+    /// Finds Popo JSON files within a given outputs/ directory.
+    /// </summary>
+    private static (string? normalized, string? inference, string? tree) FindPopoJsonPathsInOutputs(
+        string outputsDir, string modelName, string docId)
+    {
+        string? FindInStage(string stage)
+        {
+            // Try specific model first
+            var path = Path.Combine(outputsDir, stage, modelName, $"{docId}.json");
+            if (File.Exists(path))
+                return path;
+
+            // Fallback: any model directory
+            var stageDir = Path.Combine(outputsDir, stage);
+            if (Directory.Exists(stageDir))
+            {
+                foreach (var modelDir in Directory.GetDirectories(stageDir))
+                {
+                    var fallbackPath = Path.Combine(modelDir, $"{docId}.json");
+                    if (File.Exists(fallbackPath))
+                        return fallbackPath;
+                }
+            }
+            return null;
+        }
+
+        return (FindInStage("label_normalization"), FindInStage("inference"), FindInStage("build_tree"));
+    }
+
+    /// <summary>
+    /// Tries to parse a single JSON file as a Popo-serialized MinerUDocument.
+    /// Callers should route MinerU *_middle.json files to TryParseMinerUMiddleJson directly.
     /// </summary>
     static MinerUDocument? TryParsePopoResultJson(string jsonPath)
     {
@@ -498,20 +641,12 @@ public static class PopoJsonService
         try
         {
             var json = File.ReadAllText(jsonPath);
-            using var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
-
-            // Try to deserialize directly as MinerUDocument
-            var minerUDoc = JsonSerializer.Deserialize<MinerUDocument>(json, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            });
+            var minerUDoc = JsonSerializer.Deserialize<MinerUDocument>(json, DefaultDeserializeOptions);
 
             if (minerUDoc is not null && (minerUDoc.GetAllBlocks().Count > 0 || minerUDoc.TreeRoot is not null))
                 return minerUDoc;
 
-            // Try as MinerU middle.json format
-            return MinerUJsonService.TryParseMinerUMiddleJson(jsonPath);
+            return null;
         }
         catch
         {

@@ -405,7 +405,7 @@
                                           Background="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
                                           IsVisible="{Binding ShowAnalysisColumn}"/>
 
-                            <!-- Column 3: Popo Blocks -->
+                            <!-- Column 3: Popo Blocks with In-Place Progress -->
                             <Border Grid.Column="2"
                                     Padding="8"
                                     Background="{DynamicResource SystemChromeLowColor}"
@@ -413,6 +413,7 @@
                                     BorderThickness="1"
                                     IsVisible="{Binding ShowAnalysisColumn}">
                                 <DockPanel>
+                                    <!-- Header -->
                                     <StackPanel DockPanel.Dock="Top"
                                                 Orientation="Horizontal"
                                                 Spacing="4"
@@ -422,9 +423,53 @@
                                                    FontSize="12"/>
                                         <TextBlock Text="{Binding MinerUBlocksFlat.Count, StringFormat='({0} blocks)'}"
                                                    FontSize="11"
-                                                   Opacity="0.6"/>
+                                                   Opacity="0.6"
+                                                   IsVisible="{Binding !IsPopoProcessing}"/>
                                     </StackPanel>
-                                    <ScrollViewer>
+
+                                    <!-- Progress State: shown during Popo processing -->
+                                    <Border IsVisible="{Binding IsPopoProcessing}"
+                                            VerticalAlignment="Center"
+                                            HorizontalAlignment="Stretch">
+                                        <StackPanel VerticalAlignment="Center"
+                                                    HorizontalAlignment="Center"
+                                                    Spacing="12">
+                                            <!-- Spinner -->
+                                            <PathIcon Width="32"
+                                                      Height="32"
+                                                      Data="{StaticResource spinner_regular}"
+                                                      Foreground="{DynamicResource SystemAccentColor}"
+                                                      HorizontalAlignment="Center"/>
+
+                                            <!-- Status Text -->
+                                            <TextBlock Text="{Binding PopoStatusText}"
+                                                       FontSize="13"
+                                                       HorizontalAlignment="Center"
+                                                       TextAlignment="Center"/>
+
+                                            <!-- Progress Bar -->
+                                            <ProgressBar Width="200"
+                                                         Minimum="0"
+                                                         Maximum="100"
+                                                         Value="{Binding PopoProgress}"
+                                                         HorizontalAlignment="Center"/>
+
+                                            <!-- Progress Percentage -->
+                                            <TextBlock Text="{Binding PopoProgress, StringFormat='{}{0}%'}"
+                                                       FontSize="11"
+                                                       HorizontalAlignment="Center"
+                                                       Opacity="0.7"/>
+
+                                            <!-- Cancel Button -->
+                                            <Button Content="Cancel"
+                                                    Command="{Binding CancelPopoProcessCommand}"
+                                                    HorizontalAlignment="Center"
+                                                    Padding="20,4"/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- Blocks List: shown when not processing -->
+                                    <ScrollViewer IsVisible="{Binding !IsPopoProcessing}">
                                         <ItemsControl ItemsSource="{Binding MinerUBlocksFlat}">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate x:DataType="vm:BlockViewModel">

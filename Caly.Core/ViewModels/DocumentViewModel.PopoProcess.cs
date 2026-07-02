@@ -49,9 +49,41 @@ public sealed partial class DocumentViewModel
     private bool _isPopoProcessing;
 
     /// <summary>
-    /// Whether Popo processing is enabled (reads from CalySettings).
+    /// Whether Popo processing is enabled (reads from settings service).
     /// </summary>
-    public bool PopoEnabled => !string.IsNullOrEmpty(CalySettings.Default.PopoBaseUrl);
+    public bool PopoEnabled => !string.IsNullOrEmpty(_settingsService.GetSettings().PopoBaseUrl);
+
+    /// <summary>
+    /// Whether Popo-processed results already exist in the project's popo/ directory.
+    /// </summary>
+    public bool HasPopoResult
+    {
+        get
+        {
+            if (ProjectPath is null)
+                return false;
+
+            var popoDir = Path.Combine(ProjectPath, "popo");
+            if (!Directory.Exists(popoDir))
+                return false;
+
+            // Check for popo.json
+            var popoJsonPath = Path.Combine(popoDir, "popo.json");
+            if (File.Exists(popoJsonPath))
+                return true;
+
+            // Check for extract subdirectory with JSON files
+            var extractDir = Path.Combine(popoDir, "extract");
+            if (Directory.Exists(extractDir))
+            {
+                var jsonFiles = Directory.GetFiles(extractDir, "*.json", SearchOption.AllDirectories);
+                if (jsonFiles.Length > 0)
+                    return true;
+            }
+
+            return false;
+        }
+    }
 
     /// <summary>
     /// Whether there is a MinerU ZIP available for Popo processing.
@@ -64,8 +96,8 @@ public sealed partial class DocumentViewModel
             if (ProjectPath is null)
                 return false;
 
-            // Don't show button if Popo result already exists
-            if (HasMinerUDocument)
+            // Don't show button if Popo result already exists (not MinerU result)
+            if (HasPopoResult)
                 return false;
 
             var docId = LocalPath is not null ? Path.GetFileNameWithoutExtension(LocalPath) : null;
@@ -86,7 +118,7 @@ public sealed partial class DocumentViewModel
 
     private PopoService GetPopoService()
     {
-        var settings = CalySettings.Default;
+        var settings = _settingsService.GetSettings();
         var cacheDir = ProjectPath is not null
             ? Path.Combine(ProjectPath, "popo")
             : null;
@@ -129,7 +161,10 @@ public sealed partial class DocumentViewModel
         if (zipPath is null)
         {
             PopoStatus = PopoProcessStatus.Failed;
-            PopoStatusText = "No MinerU ZIP found. Run AI Parse first.";
+            var expectedPath = ProjectPath is not null
+                ? Path.Combine(ProjectPath, "mineru", $"{docId}_mineru.zip")
+                : "mineru/ directory";
+            PopoStatusText = $"No MinerU ZIP found at {expectedPath}. Run AI Parse first to generate it, then try Process with Popo again.";
             PopoProgress = 0;
             return;
         }
@@ -138,7 +173,8 @@ public sealed partial class DocumentViewModel
         if (!await service.HealthCheckAsync())
         {
             PopoStatus = PopoProcessStatus.Failed;
-            PopoStatusText = "Popo service unavailable";
+            var baseUrl = _settingsService.GetSettings().PopoBaseUrl;
+            PopoStatusText = $"Popo service unavailable at {baseUrl}. Ensure the Popo server is running.";
             PopoProgress = 0;
             return;
         }
@@ -152,9 +188,11 @@ public sealed partial class DocumentViewModel
 
         try
         {
+            var settings = _settingsService.GetSettings();
             var result = await service.ProcessAsync(
                 zipPath,
                 docId,
+                settings.PopoModel,
                 OnPopoProgress,
                 _popoCts.Token);
 
@@ -204,12 +242,14 @@ public sealed partial class DocumentViewModel
         }
         catch (PopoServiceException ex)
         {
+            System.Diagnostics.Debug.WriteLine($"[PopoProcess] PopoServiceException: {ex}");
             PopoStatus = PopoProcessStatus.Failed;
             PopoProgress = 0;
             PopoStatusText = $"Popo failed: {ex.Message}";
         }
         catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"[PopoProcess] Unexpected error: {ex}");
             PopoStatus = PopoProcessStatus.Failed;
             PopoProgress = 0;
             PopoStatusText = $"Error: {ex.Message}";

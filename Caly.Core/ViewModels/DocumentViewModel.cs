@@ -56,6 +56,7 @@ public sealed partial class DocumentViewModel : ViewModelBase
 
     private readonly IPdfDocumentService _pdfService;
     private readonly PdfPageService _pdfPageService;
+    private readonly ISettingsService _settingsService;
 
     private readonly CancellationTokenSource _mainCts = new();
     private readonly CancellationToken _mainToken;
@@ -192,7 +193,7 @@ public sealed partial class DocumentViewModel : ViewModelBase
     }
 #endif
 
-    public DocumentViewModel(IPdfDocumentService pdfService, PdfPageService pdfPageService, ITextSearchService textSearchService)
+    public DocumentViewModel(IPdfDocumentService pdfService, PdfPageService pdfPageService, ITextSearchService textSearchService, ISettingsService settingsService)
     {
         ArgumentNullException.ThrowIfNull(pdfService, nameof(pdfService));
 
@@ -202,6 +203,7 @@ public sealed partial class DocumentViewModel : ViewModelBase
         _pdfService = pdfService;
         _pdfPageService = pdfPageService;
         _textSearchService = textSearchService;
+        _settingsService = settingsService;
 
         _loadPagesTask = new Lazy<Task>(LoadPages);
         
@@ -320,6 +322,8 @@ public sealed partial class DocumentViewModel : ViewModelBase
     internal void SetProjectPath(string projectPath)
     {
         ProjectPath = projectPath;
+        // Notify HasMinerUZip since it depends on ProjectPath
+        OnPropertyChanged(nameof(HasMinerUZip));
     }
 
     /// <summary>

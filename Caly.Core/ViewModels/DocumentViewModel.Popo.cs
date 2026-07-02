@@ -36,6 +36,7 @@ public sealed partial class DocumentViewModel
     partial void OnMinerUDocumentChanged(MinerUDocument? value)
     {
         OnPropertyChanged(nameof(HasMinerUDocument));
+        OnPropertyChanged(nameof(HasMinerUZip));
 
         // Defensively ensure newly added pages get blocks assigned
         if (value is not null)
@@ -122,10 +123,7 @@ public sealed partial class DocumentViewModel
             try
             {
                 var json = File.ReadAllText(popoJsonPath);
-                minerUDoc = System.Text.Json.JsonSerializer.Deserialize<MinerUDocument>(json, new System.Text.Json.JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                });
+                minerUDoc = System.Text.Json.JsonSerializer.Deserialize<MinerUDocument>(json, PopoJsonService.DefaultDeserializeOptions);
             }
             catch
             {
@@ -148,6 +146,9 @@ public sealed partial class DocumentViewModel
 
         MinerUDocument = minerUDoc;
         AnalysisViewModel = new AnalysisViewModel(minerUDoc);
+
+        // Show the analysis column when Popo data is loaded
+        ShowAnalysisColumn = true;
 
         // Assign blocks to each page view model
         foreach (var page in Pages)
