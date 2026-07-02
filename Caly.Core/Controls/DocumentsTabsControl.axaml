@@ -13,6 +13,9 @@
 
     <UserControl.Resources>
         <utilities:BoolToGridLengthConverter x:Key="BoolToGridLengthConverter"/>
+        <utilities:EqualsConverter x:Key="EqualsConverter"/>
+        <utilities:NotEqualsConverter x:Key="NotEqualsConverter"/>
+        <utilities:IsNotNullConverter x:Key="IsNotNullConverter"/>
     </UserControl.Resources>
 
     <Design.DataContext>
@@ -421,7 +424,7 @@
                                         <TextBlock Text="Popo"
                                                    FontWeight="Bold"
                                                    FontSize="12"/>
-                                        <TextBlock Text="{Binding MinerUBlocksFlat.Count, StringFormat='({0} blocks)'}"
+                                        <TextBlock Text="{Binding PopoBlocks.Count, StringFormat='({0} blocks)'}"
                                                    FontSize="11"
                                                    Opacity="0.6"
                                                    IsVisible="{Binding !IsPopoProcessing}"/>
@@ -468,9 +471,29 @@
                                         </StackPanel>
                                     </Border>
 
-                                    <!-- Blocks List: shown when not processing -->
-                                    <ScrollViewer IsVisible="{Binding !IsPopoProcessing}">
-                                        <ItemsControl ItemsSource="{Binding MinerUBlocksFlat}">
+                                    <!-- Error/Status Message: shown when processing failed -->
+                                    <Border IsVisible="{Binding PopoStatus, Converter={StaticResource EqualsConverter}, ConverterParameter=Failed}"
+                                            VerticalAlignment="Center"
+                                            HorizontalAlignment="Stretch"
+                                            Padding="12"
+                                            Background="#FFF2F2"
+                                            CornerRadius="4">
+                                        <StackPanel Spacing="8">
+                                            <TextBlock Text="{Binding PopoStatusText}"
+                                                       FontSize="12"
+                                                       Foreground="#FF4444"
+                                                       TextAlignment="Center"
+                                                       TextWrapping="Wrap"/>
+                                            <Button Content="Retry"
+                                                    Command="{Binding ProcessWithPopoCommand}"
+                                                    HorizontalAlignment="Center"
+                                                    Padding="20,4"/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- Blocks List: shown when not processing and no error -->
+                                    <ScrollViewer IsVisible="{Binding PopoStatus, Converter={StaticResource NotEqualsConverter}, ConverterParameter=Failed}">
+                                        <ItemsControl ItemsSource="{Binding PopoBlocks}">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate x:DataType="vm:BlockViewModel">
                                                     <Border Padding="6"
@@ -584,9 +607,9 @@
 										</TabItem>
 
 										<!-- Bookmarks tab -->
-										<TabItem MinHeight="40"
-                                                 IsVisible="{Binding BookmarksSource^, Converter={x:Static ObjectConverters.IsNotNull}}"
-                                                 IsEnabled="{Binding BookmarksSource^, Converter={x:Static ObjectConverters.IsNotNull}}">
+                                        <TabItem MinHeight="40"
+                                                 IsVisible="{Binding BookmarksSource^, Converter={StaticResource IsNotNullConverter}}"
+                                                 IsEnabled="{Binding BookmarksSource^, Converter={StaticResource IsNotNullConverter}}">
 											<TabItem.Header>
 												<PathIcon Width="17"
 														  Height="17"

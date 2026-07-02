@@ -423,7 +423,8 @@ public sealed partial class DocumentViewModel
     /// <summary>
     /// Loads a MinerUDocument into the ViewModel properties.
     /// Shared by both MinerU (AI Parse) and Popo processing flows.
-    /// Populates page blocks, MinerU middle blocks, Popo flat blocks, and auto-opens the analysis pane.
+    /// Populates page blocks, MinerU middle blocks, and auto-opens the analysis pane.
+    /// Does NOT populate PopoBlocks — that is done separately by Popo processing.
     /// </summary>
     private void LoadMinerUDocument(MinerUDocument minerUDoc)
     {
@@ -463,25 +464,18 @@ public sealed partial class DocumentViewModel
                     Bbox = new double[] { block.Bbox.X, block.Bbox.Y, block.Bbox.Right, block.Bbox.Bottom }
                 })).ToList();
 
-            // MinerUBlocksFlat: BlockViewModel for right column (Popo processed data)
-            var newBlockViewModels = allBlocks.Select(block => new BlockViewModel(block)).ToList();
-
             // Replace collections in bulk
             MinerUBlocks.Clear();
             foreach (var b in newMinerUViewModels)
                 MinerUBlocks.Add(b);
 
-            MinerUBlocksFlat.Clear();
-            foreach (var b in newBlockViewModels)
-                MinerUBlocksFlat.Add(b);
-
-            System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] Collections populated: MinerUBlocks={MinerUBlocks.Count}, MinerUBlocksFlat={MinerUBlocksFlat.Count}");
+            System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] Collections populated: MinerUBlocks={MinerUBlocks.Count}");
         }
 
         // Auto-open the Popo analysis pane
         IsPopoPaneOpen = true;
 
-        System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] LoadMinerUDocument completed: HasMinerUDocument={HasMinerUDocument}, MinerUBlocks={MinerUBlocks.Count}, MinerUBlocksFlat={MinerUBlocksFlat.Count}");
+        System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] LoadMinerUDocument completed: HasMinerUDocument={HasMinerUDocument}, MinerUBlocks={MinerUBlocks.Count}");
     }
 
     /// <summary>

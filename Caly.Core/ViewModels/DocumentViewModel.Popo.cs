@@ -83,15 +83,16 @@ public sealed partial class DocumentViewModel
     private bool _isPopoPaneOpen;
 
     /// <summary>
-    /// Flat list of MinerU blocks for the right column of the three-column layout.
+    /// Flat list of Popo-processed blocks for the right column of the three-column layout.
+    /// Only populated when Popo processing completes (not during MinerU parse).
     /// </summary>
     [ObservableProperty]
-    private ObservableCollection<BlockViewModel> _minerUBlocksFlat = new();
+    private ObservableCollection<BlockViewModel> _popoBlocks = new();
 
     /// <summary>
-    /// Gets whether MinerU blocks are available for display.
+    /// Gets whether Popo blocks are available for display.
     /// </summary>
-    public bool HasMinerUBlocksFlat => MinerUBlocksFlat.Count > 0;
+    public bool HasPopoBlocks => PopoBlocks.Count > 0;
 
     [RelayCommand]
     private void TogglePopoPane()
@@ -157,10 +158,10 @@ public sealed partial class DocumentViewModel
         }
 
         // Populate flat Popo blocks for the right column
-        MinerUBlocksFlat.Clear();
+        PopoBlocks.Clear();
         foreach (var block in minerUDoc.GetAllBlocks())
         {
-            MinerUBlocksFlat.Add(new BlockViewModel(block));
+            PopoBlocks.Add(new BlockViewModel(block));
         }
     }
 }

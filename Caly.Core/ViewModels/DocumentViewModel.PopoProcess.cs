@@ -165,6 +165,9 @@ public sealed partial class DocumentViewModel
         PopoProgress = 0;
         PopoStatusText = PopoProcessStatus.Submitting.ToDisplayName();
 
+        // Clear Popo blocks to avoid showing stale data while processing
+        PopoBlocks.Clear();
+
         try
         {
             // Find the MinerU ZIP in the project
@@ -200,10 +203,19 @@ public sealed partial class DocumentViewModel
                 _popoCts.Token);
 
             // Load result using the shared helper (sets MinerUDocument, AnalysisViewModel,
-            // page blocks, MinerUBlocks, MinerUBlocksFlat, and IsPopoPaneOpen)
+            // page blocks, MinerUBlocks, and IsPopoPaneOpen)
             if (result.MinerUDocument is not null)
             {
                 LoadMinerUDocument(result.MinerUDocument);
+
+                // Populate PopoBlocks with the actual Popo-processed results
+                // (separate from LoadMinerUDocument so MinerU data doesn't leak into the Popo column)
+                var allBlocks = result.MinerUDocument.GetAllBlocks();
+                PopoBlocks.Clear();
+                foreach (var block in allBlocks)
+                {
+                    PopoBlocks.Add(new BlockViewModel(block));
+                }
 
                 // Save Popo result to project (Popo-specific persistence)
                 if (ProjectPath is not null)
@@ -246,6 +258,8 @@ public sealed partial class DocumentViewModel
         finally
         {
             IsPopoProcessing = false;
+            // Keep the column visible so the user can see the final status (error or completion)
+            // The column will remain open until the user manually toggles it off
             _popoCts?.Dispose();
             _popoCts = null;
         }
