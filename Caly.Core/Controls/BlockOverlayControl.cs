@@ -20,6 +20,7 @@
 
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Media.Immutable;
 using Caly.Core.Models;
@@ -64,10 +65,18 @@ public sealed class BlockOverlayControl : Control
     public static readonly StyledProperty<double> PpiScaleProperty =
         AvaloniaProperty.Register<BlockOverlayControl, double>(nameof(PpiScale), 1.0);
 
+    /// <summary>
+    /// Current zoom level from PageItemsControl.
+    /// Used to compensate label font size so text stays readable when zoomed out.
+    /// </summary>
+    public static readonly StyledProperty<double> ZoomLevelProperty =
+        AvaloniaProperty.Register<BlockOverlayControl, double>(nameof(ZoomLevel), 1.0);
+
     static BlockOverlayControl()
     {
         AffectsRender<BlockOverlayControl>(BlocksProperty, VisibleAreaProperty,
-            HighlightBlockIdProperty, ShowLabelsProperty, PageSizeProperty, PpiScaleProperty);
+            HighlightBlockIdProperty, ShowLabelsProperty, PageSizeProperty,
+            PpiScaleProperty, ZoomLevelProperty);
     }
 
     public IReadOnlyList<MinerUBlock>? Blocks
@@ -106,9 +115,61 @@ public sealed class BlockOverlayControl : Control
         set => SetValue(PpiScaleProperty, value);
     }
 
+    public double ZoomLevel
+    {
+        get => GetValue(ZoomLevelProperty);
+        set => SetValue(ZoomLevelProperty, value);
+    }
+
     // Cache for geometries
     private StreamGeometry[]? _blockGeometries;
     private bool _geometriesDirty = true;
+
+    // Hover tracking for label display
+    private int _hoveredBlockIndex = -1;
+
+    /// <summary>
+    /// Initializes a new instance.
+    /// </summary>
+    public BlockOverlayControl()
+    {
+    }
+
+    protected override void OnPointerMoved(PointerEventArgs e)
+    {
+        base.OnPointerMoved(e);
+
+        var pos = e.GetPosition(this);
+        int prev = _hoveredBlockIndex;
+        _hoveredBlockIndex = -1;
+
+        var geometries = _blockGeometries;
+        if (geometries is not null)
+        {
+            for (int i = 0; i < geometries.Length; i++)
+            {
+                if (geometries[i].Bounds.Contains(pos))
+                {
+                    _hoveredBlockIndex = i;
+                    break;
+                }
+            }
+        }
+
+        if (_hoveredBlockIndex != prev)
+            InvalidateVisual();
+    }
+
+    protected override void OnPointerExited(PointerEventArgs e)
+    {
+        base.OnPointerExited(e);
+
+        if (_hoveredBlockIndex != -1)
+        {
+            _hoveredBlockIndex = -1;
+            InvalidateVisual();
+        }
+    }
 
     // Fill colors (alpha = 0.30)
     private static readonly ImmutableSolidColorBrush TitleFill = new(Colors.Blue, 0.30);
@@ -139,6 +200,14 @@ public sealed class BlockOverlayControl : Control
     private static readonly ImmutablePen TablePen = new(TableStroke, 1.5);
     private static readonly ImmutablePen CaptionPen = new(CaptionStroke, 1.5);
 
+    // Hover pens (thicker, solid)
+    private static readonly ImmutablePen TitleHoverPen = new(TitleHoverStroke, 2.5);
+    private static readonly ImmutablePen TextHoverPen = new(TextHoverStroke, 2.5);
+    private static readonly ImmutablePen ImageHoverPen = new(ImageHoverStroke, 2.5);
+    private static readonly ImmutablePen TableHoverPen = new(TableHoverStroke, 2.5);
+    private static readonly ImmutablePen CaptionHoverPen = new(CaptionHoverStroke, 2.5);
+    private static readonly ImmutablePen DefaultHoverPen = new(DefaultHoverStroke, 2.5);
+
     // Cached highlight fill brushes per type color (avoid per-frame allocation)
     private static readonly ImmutableSolidColorBrush TitleHighlightFill = new(Colors.Blue, 0.45);
     private static readonly ImmutableSolidColorBrush TextHighlightFill = new(Colors.Green, 0.45);
@@ -146,6 +215,22 @@ public sealed class BlockOverlayControl : Control
     private static readonly ImmutableSolidColorBrush TableHighlightFill = new(Colors.Purple, 0.45);
     private static readonly ImmutableSolidColorBrush CaptionHighlightFill = new(Colors.Gray, 0.45);
     private static readonly ImmutableSolidColorBrush DefaultHighlightFill = new(Colors.LightGray, 0.45);
+
+    // Hover fill colors (alpha = 0.45 — midway between normal fill and highlight)
+    private static readonly ImmutableSolidColorBrush TitleHoverFill = new(Colors.Blue, 0.45);
+    private static readonly ImmutableSolidColorBrush TextHoverFill = new(Colors.Green, 0.45);
+    private static readonly ImmutableSolidColorBrush ImageHoverFill = new(Colors.Orange, 0.45);
+    private static readonly ImmutableSolidColorBrush TableHoverFill = new(Colors.Purple, 0.45);
+    private static readonly ImmutableSolidColorBrush CaptionHoverFill = new(Colors.Gray, 0.45);
+    private static readonly ImmutableSolidColorBrush DefaultHoverFill = new(Colors.LightGray, 0.45);
+
+    // Hover stroke colors (alpha = 1.0)
+    private static readonly ImmutableSolidColorBrush TitleHoverStroke = new(Colors.Blue, 1.0);
+    private static readonly ImmutableSolidColorBrush TextHoverStroke = new(Colors.Green, 1.0);
+    private static readonly ImmutableSolidColorBrush ImageHoverStroke = new(Colors.Orange, 1.0);
+    private static readonly ImmutableSolidColorBrush TableHoverStroke = new(Colors.Purple, 1.0);
+    private static readonly ImmutableSolidColorBrush CaptionHoverStroke = new(Colors.Gray, 1.0);
+    private static readonly ImmutableSolidColorBrush DefaultHoverStroke = new(Colors.LightGray, 1.0);
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
@@ -231,7 +316,7 @@ public sealed class BlockOverlayControl : Control
         return new PdfRectangle(x0, y1, x1, y0);
     }
 
-    private static (ImmutableSolidColorBrush fill, ImmutablePen pen) GetBlockStyle(MinerUBlock block, bool isHighlighted)
+    private static (ImmutableSolidColorBrush fill, ImmutablePen pen) GetBlockStyle(MinerUBlock block, bool isHighlighted, bool isHovered)
     {
         ImmutableSolidColorBrush fill;
         ImmutablePen pen;
@@ -247,6 +332,18 @@ public sealed class BlockOverlayControl : Control
                 "table" => TableHighlightFill,
                 "caption" => CaptionHighlightFill,
                 _ => DefaultHighlightFill
+            };
+        }
+        else if (isHovered)
+        {
+            (fill, pen) = block.Type switch
+            {
+                "title" => (TitleHoverFill, TitleHoverPen),
+                "text" => (TextHoverFill, TextHoverPen),
+                "image" => (ImageHoverFill, ImageHoverPen),
+                "table" => (TableHoverFill, TableHoverPen),
+                "caption" => (CaptionHoverFill, CaptionHoverPen),
+                _ => (DefaultHoverFill, DefaultHoverPen)
             };
         }
         else
@@ -292,20 +389,26 @@ public sealed class BlockOverlayControl : Control
                 continue;
 
             bool isHighlighted = HighlightBlockId.HasValue && block.Id == HighlightBlockId.Value;
-            var (fill, pen) = GetBlockStyle(block, isHighlighted);
+            bool isHovered = i == _hoveredBlockIndex;
+            var (fill, pen) = GetBlockStyle(block, isHighlighted, isHovered);
 
             context.DrawGeometry(fill, pen, geometry);
 
-            // Draw block type/content label for OCR verification
-            if (ShowLabels && !string.IsNullOrEmpty(block.Content))
+            // Draw block label only when hovered (or highlighted in analysis panel)
+            if (ShowLabels && (isHovered || isHighlighted) && !string.IsNullOrEmpty(block.Content))
             {
                 var label = $"{block.Type}: {Truncate(block.Content, 60)}";
+                // Font size in screen pixels (fixed), inversely scaled by zoom
+                // so text stays readable regardless of zoom level.
+                // E.g. 11 / 0.08 = 137.5 → rendered at 137.5×0.08 ≈ 11 screen px
+                double zoom = Math.Max(ZoomLevel, 0.01);
+                double fontSize = 11.0 / zoom;
                 var formattedText = new FormattedText(
                     label,
                     CultureInfo.CurrentCulture,
                     FlowDirection.LeftToRight,
                     Typeface.Default,
-                    10,
+                    fontSize,
                     Brushes.Black);
 
                 // Position label at top-left of block geometry
