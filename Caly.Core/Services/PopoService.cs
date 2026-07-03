@@ -246,9 +246,6 @@ public sealed class PopoService : IDisposable
             sourceDocId,
             resultResponse.TaskId);
 
-        // Save the built MinerUDocument for caching
-        PopoJsonService.SaveMinerUDocumentToProject(minerUDoc, resultDir);
-
         return minerUDoc;
     }
 

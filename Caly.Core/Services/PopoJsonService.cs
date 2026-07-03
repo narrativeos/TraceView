@@ -59,6 +59,7 @@ public static class PopoJsonService
     private static readonly JsonSerializerOptions s_defaultSerializeOptions = new()
     {
         WriteIndented = true,
+        TypeInfoResolver = SourceGenerationContext.Default,
         Converters = { new RectJsonConverter() }
     };
 
