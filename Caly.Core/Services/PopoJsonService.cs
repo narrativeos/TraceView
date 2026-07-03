@@ -652,6 +652,10 @@ public static class PopoJsonService
     ///   2. PopoTaskResultResponse wrapper (e.g., result_*/popo_result.json)
     ///      which contains task_id/status/result.tree.
     /// Callers should route MinerU *_middle.json files to TryParseMinerUMiddleJson directly.
+    ///
+    /// Performance note: uses JsonDocument.Parse to inspect the root structure first,
+    /// avoiding double deserialization. If the root has a "result" property, it's the
+    /// PopoTaskResultResponse wrapper format; otherwise, it's a direct MinerUDocument.
     /// </summary>
     static MinerUDocument? TryParsePopoResultJson(string jsonPath)
     {
@@ -662,23 +666,33 @@ public static class PopoJsonService
         {
             var json = File.ReadAllText(jsonPath);
 
-            // Strategy 1: Try direct MinerUDocument deserialization (popo.json format)
-            var minerUDoc = JsonSerializer.Deserialize<MinerUDocument>(json, MineruDocumentOptions);
-            if (minerUDoc is not null && (minerUDoc.GetAllBlocks().Count > 0 || minerUDoc.TreeRoot is not null))
-                return minerUDoc;
+            // Inspect root structure first to determine format — avoids double deserialization
+            using var rootDoc = JsonDocument.Parse(json);
+            var root = rootDoc.RootElement;
+            bool isWrapperFormat = root.TryGetProperty("result", out _);
 
-            // Strategy 2: Try PopoTaskResultResponse wrapper format (popo_result.json format)
-            // This is the raw API response saved by PopoService.DownloadAndParseResultAsync:
-            //   { task_id, status, result: { doc_id, status, message, tree: {...} } }
-            // Use MineruDocumentOptions (reflection-based) because AnalysisTreeNode also uses
-            // [ObservableProperty] — the JSON source generator can't see its generated properties.
-            var wrapped = JsonSerializer.Deserialize<PopoTaskResultResponse>(json, MineruDocumentOptions);
-            if (wrapped?.Result?.Tree is not null)
+            if (isWrapperFormat)
             {
-                return BuildMinerUDocumentFromTree(
-                    wrapped.Result.Tree,
-                    wrapped.Result.DocId,
-                    DefaultModelName);
+                // PopoTaskResultResponse wrapper format (popo_result.json):
+                //   { task_id, status, result: { doc_id, status, message, tree: {...} } }
+                // Use MineruDocumentOptions (reflection-based) because AnalysisTreeNode also uses
+                // [ObservableProperty] — the JSON source generator can't see its generated properties.
+                var wrapped = JsonSerializer.Deserialize<PopoTaskResultResponse>(json, MineruDocumentOptions);
+                if (wrapped?.Result?.Tree is not null)
+                {
+                    return BuildMinerUDocumentFromTree(
+                        wrapped.Result.Tree,
+                        wrapped.Result.DocId,
+                        DefaultModelName);
+                }
+            }
+            else
+            {
+                // Direct MinerUDocument format (popo.json):
+                //   { docId, modelName, pagesBlocks, treeRoot, ... }
+                var minerUDoc = JsonSerializer.Deserialize<MinerUDocument>(json, MineruDocumentOptions);
+                if (minerUDoc is not null && (minerUDoc.GetAllBlocks().Count > 0 || minerUDoc.TreeRoot is not null))
+                    return minerUDoc;
             }
 
             return null;

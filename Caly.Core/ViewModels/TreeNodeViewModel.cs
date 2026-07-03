@@ -19,11 +19,13 @@
 // SOFTWARE.
 
 using Avalonia.Collections;
+using Avalonia.Media;
 using Caly.Core.Models;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 
 namespace Caly.Core.ViewModels;
 
@@ -59,6 +61,9 @@ public partial class TreeNodeViewModel : ObservableObject
     [ObservableProperty]
     private bool _isSelected;
 
+    [ObservableProperty]
+    private bool _isContentExpanded;
+
     /// <summary>
     /// Display title (truncated to 50 chars).
     /// </summary>
@@ -66,8 +71,14 @@ public partial class TreeNodeViewModel : ObservableObject
     {
         get
         {
-            var title = string.IsNullOrEmpty(Title) ? $"[{Type}]" : Title;
-            return title.Length > 50 ? title.Substring(0, 50) + "..." : title;
+            // Filter out API placeholder titles
+            var rawTitle = Title;
+            if (string.IsNullOrEmpty(rawTitle) ||
+                rawTitle == "Default Title")
+            {
+                rawTitle = $"[{Type}]";
+            }
+            return rawTitle.Length > 50 ? rawTitle.Substring(0, 50) + "..." : rawTitle;
         }
     }
 
@@ -75,6 +86,76 @@ public partial class TreeNodeViewModel : ObservableObject
     /// Whether the node has a non-empty title.
     /// </summary>
     public bool HasTitle => !string.IsNullOrEmpty(Title);
+
+    /// <summary>
+    /// Type icon character for display.
+    /// </summary>
+    public string TypeIcon
+    {
+        get
+        {
+            return Type switch
+            {
+                "text" => "\uD83D\uDCD4",       // 📄
+                "page_number" => "\uD83D\uDD22", // 🔢
+                "image" => "\uD83D\uDD92",      // 🖼️
+                "table" => "\uD83D\uDCCA",      // 📊
+                "title" => "\uD83D\uDCCC",      // 📌
+                "root" => "\uD83C\uDF33",       // 🌳
+                _ => "\uD83D\uDCC1",            // 📁
+            };
+        }
+    }
+
+    /// <summary>
+    /// Type color for card border/accent.
+    /// </summary>
+    public string TypeColorHex
+    {
+        get
+        {
+            return Type switch
+            {
+                "text" => "#4CAF50",      // Green
+                "page_number" => "#9E9E9E", // Gray
+                "image" => "#2196F3",     // Blue
+                "table" => "#FF9800",     // Orange
+                "title" => "#9C27B0",     // Purple
+                "root" => "#795548",      // Brown
+                _ => "#607D8B",           // Blue Gray
+            };
+        }
+    }
+
+    /// <summary>
+    /// Block count shorthand.
+    /// </summary>
+    public int BlockCount => BlockIds.Count;
+
+    /// <summary>
+    /// Page range string like "P1-4" or "P2".
+    /// </summary>
+    public string PageRange
+    {
+        get
+        {
+            var pages = _node.Location.Select(l => l.Page).Distinct().OrderBy(p => p).ToList();
+            if (pages.Count == 0) return "";
+            if (pages.Count == 1) return $"P{pages[0]}";
+            return $"P{pages.First()}-{pages.Last()}";
+        }
+    }
+
+    /// <summary>
+    /// Unique page count.
+    /// </summary>
+    public int UniquePageCount
+    {
+        get
+        {
+            return _node.Location.Select(l => l.Page).Distinct().Count();
+        }
+    }
 
     /// <summary>
     /// Content preview (truncated to 120 chars).
@@ -85,14 +166,64 @@ public partial class TreeNodeViewModel : ObservableObject
         {
             if (string.IsNullOrEmpty(Content))
                 return string.Empty;
-            return Content.Length > 120 ? Content[..120] + "..." : Content;
+
+            // Remove <|txt_split|> markers for cleaner preview
+            var clean = Content.Replace("<|txt_split|>", "\n");
+            return clean.Length > 120 ? clean[..120] + "..." : clean;
         }
+    }
+
+    /// <summary>
+    /// Clean content for display (without <|txt_split|> markers).
+    /// </summary>
+    public string DisplayContent
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(Content))
+                return string.Empty;
+            return Content.Replace("<|txt_split|>", "\n");
+        }
+    }
+
+    /// <summary>
+    /// Whether content is long and needs collapsible display.
+    /// </summary>
+    public bool IsContentLong
+    {
+        get
+        {
+            var clean = DisplayContent;
+            return clean.Length > 120;
+        }
+    }
+
+    /// <summary>
+    /// Toggle content expand/collapse.
+    /// </summary>
+    [RelayCommand]
+    private void ToggleContentExpand()
+    {
+        IsContentExpanded = !IsContentExpanded;
     }
 
     /// <summary>
     /// Display info string with level and block count.
     /// </summary>
     public string DisplayInfo => $"level:{Level} blocks:[{string.Join(",", BlockIds)}]";
+
+    /// <summary>
+    /// Block ids display (first 5 + count).
+    /// </summary>
+    public string BlockIdsDisplay
+    {
+        get
+        {
+            if (BlockIds.Count <= 5)
+                return string.Join(",", BlockIds);
+            return string.Join(",", BlockIds.Take(5)) + $"... ({BlockIds.Count} total)";
+        }
+    }
 
     /// <summary>
     /// Total block count including descendants.
