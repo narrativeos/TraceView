@@ -70,7 +70,7 @@ public partial class TreeNodeViewModel : ObservableObject
     private bool _isSelected;
 
     [ObservableProperty]
-    private bool _isContentExpanded;
+    private bool _isContentExpanded = true;
 
     /// <summary>
     /// Display title (truncated to 50 chars).
