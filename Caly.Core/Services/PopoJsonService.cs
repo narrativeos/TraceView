@@ -789,5 +789,139 @@ public static class PopoJsonService
         }
     }
 
+    /// <summary>
+    /// Populates block_ids for tree nodes by matching bboxes against the middle.json.
+    /// This is needed because the Popo API often returns empty block_ids for image nodes.
+    /// </summary>
+    public static void PopulateTreeBlockIds(StructureDocument doc, string? artifactsDir)
+    {
+        if (doc.TreeRoot is null || artifactsDir is null)
+            return;
+
+        // Find middle.json
+        var middleJsons = Directory.GetFiles(artifactsDir, "*_middle.json", SearchOption.AllDirectories);
+        if (middleJsons.Length == 0)
+            return;
+
+        var middleJson = middleJsons[0];
+        try
+        {
+            var json = File.ReadAllText(middleJson);
+            using var docJson = System.Text.Json.JsonDocument.Parse(json);
+            PopulateTreeBlockIdsRecursive(doc.TreeRoot, docJson.RootElement);
+        }
+        catch { }
+    }
+
+    private static void PopulateTreeBlockIdsRecursive(AnalysisTreeNode node, System.Text.Json.JsonElement elem)
+    {
+        if (elem.ValueKind == System.Text.Json.JsonValueKind.Object &&
+            elem.TryGetProperty("pdf_info", out var pdfInfo))
+        {
+            foreach (var page in pdfInfo.EnumerateArray())
+            {
+                var pageIdx = 0;
+                if (page.TryGetProperty("page_idx", out var pi))
+                    pageIdx = pi.GetInt32();
+
+                var pageW = 1000.0;
+                var pageH = 1000.0;
+                if (page.TryGetProperty("page_size", out var ps))
+                {
+                    var psArr = ps.EnumerateArray().Select(v => v.GetDouble()).ToArray();
+                    if (psArr.Length >= 2)
+                    {
+                        pageW = psArr[0];
+                        pageH = psArr[1];
+                    }
+                }
+
+                if (page.TryGetProperty("para_blocks", out var blocks))
+                {
+                    MatchTreeNodesToBlocks(node, blocks, pageIdx, pageW, pageH);
+                }
+            }
+        }
+
+        // Recurse into children
+        foreach (var child in node.Children)
+        {
+            PopulateTreeBlockIdsRecursive(child, elem);
+        }
+    }
+
+    private static void MatchTreeNodesToBlocks(
+        AnalysisTreeNode treeNode,
+        System.Text.Json.JsonElement blocks,
+        int pageIdx,
+        double pageW,
+        double pageH)
+    {
+        foreach (var block in blocks.EnumerateArray())
+        {
+            if (treeNode.Location.Count == 0)
+                continue;
+
+            // Check if this block's page matches any of the tree node's pages
+            var treePages = treeNode.Location.Select(l => l.Page).ToList();
+            if (!treePages.Contains(pageIdx + 1)) // Popo uses 1-based, middle.json uses 0-based
+                continue;
+
+            // Check if bboxes overlap significantly
+            if (!block.TryGetProperty("bbox", out var bbox))
+                continue;
+
+            var bboxArr = bbox.EnumerateArray().Select(v => v.GetDouble()).ToArray();
+            if (bboxArr.Length < 4)
+                continue;
+
+            var absX1 = bboxArr[0];
+            var absY1 = bboxArr[1];
+            var absX2 = bboxArr[2];
+            var absY2 = bboxArr[3];
+            var normX1 = absX1 / pageW;
+            var normY1 = absY1 / pageH;
+            var normX2 = absX2 / pageW;
+            var normY2 = absY2 / pageH;
+
+            // Check if this bbox matches any of the tree node's locations
+            foreach (var loc in treeNode.Location)
+            {
+                if (loc.Page != pageIdx + 1)
+                    continue;
+
+                // Check bbox overlap
+                var treeX1 = loc.Bbox.X;
+                var treeY1 = loc.Bbox.Y;
+                var treeX2 = treeX1 + loc.Bbox.Width;
+                var treeY2 = treeY1 + loc.Bbox.Height;
+
+                // Calculate overlap
+                var overlapX1 = Math.Max(normX1, treeX1);
+                var overlapY1 = Math.Max(normY1, treeY1);
+                var overlapX2 = Math.Min(normX2, treeX2);
+                var overlapY2 = Math.Min(normY2, treeY2);
+
+                if (overlapX1 < overlapX2 && overlapY1 < overlapY2)
+                {
+                    // Found overlap - get the block id
+                    if (block.TryGetProperty("id", out var id))
+                    {
+                        if (id.ValueKind == System.Text.Json.JsonValueKind.Number)
+                        {
+                            treeNode.BlockIds.Add(id.GetInt32());
+                        }
+                    }
+                }
+            }
+        }
+
+        // Recurse into children
+        foreach (var child in treeNode.Children)
+        {
+            MatchTreeNodesToBlocks(child, blocks, pageIdx, pageW, pageH);
+        }
+    }
+
     #endregion
 }

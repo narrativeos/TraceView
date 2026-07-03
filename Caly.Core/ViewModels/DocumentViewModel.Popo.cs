@@ -322,6 +322,12 @@ public sealed partial class DocumentViewModel
         // Show the analysis column when Popo data is loaded
         ShowAnalysisColumn = true;
 
+        // Populate block_ids from middle.json for tree nodes (Popo API returns empty block_ids)
+        if (minerUDoc.TreeRoot is not null && artifactsDir is not null)
+        {
+            PopoJsonService.PopulateTreeBlockIds(minerUDoc, artifactsDir);
+        }
+
         // Build hierarchical tree for Column 3 (matches popo_result.json tree structure)
         if (minerUDoc.TreeRoot is not null)
         {
