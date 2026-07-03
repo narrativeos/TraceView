@@ -41,7 +41,7 @@ public partial class TreeNodeViewModel : ObservableObject
     private readonly string? _artifactsDirectory;
     private readonly System.Collections.Generic.Dictionary<int, MinerUBlock?>? _blockLookup;
     private readonly int _imageIndex; // Index among all image nodes (for order-based matching)
-    private readonly System.Collections.Generic.Dictionary<string, string>? _imagePathMap; // bbox key -> image_path
+    private readonly List<ImageMapEntry>? _imagePathMap; // Image map entries from middle.json
 
     /// <summary>
     /// Callback invoked when this tree node is selected.
@@ -71,7 +71,7 @@ public partial class TreeNodeViewModel : ObservableObject
             }
         }
 
-        // Build bbox-to-image_path map from middle.json for image matching
+        // Build image map from middle.json for image matching
         if (artifactsDirectory is not null)
         {
             _imagePathMap = BuildImagePathMap(artifactsDirectory);
@@ -88,54 +88,93 @@ public partial class TreeNodeViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Builds a map from normalized bbox key to image_path by parsing the middle.json.
+    /// Image map entry containing image_path and page dimensions.
     /// </summary>
-    private static System.Collections.Generic.Dictionary<string, string>? BuildImagePathMap(string artifactsDir)
+    private sealed class ImageMapEntry
     {
-        // Look for *_middle.json in the artifacts directory
+        public string ImagePath;
+        public int PageIdx;
+        public double PageWidth;
+        public double PageHeight;
+        public double BboxX1; // Absolute x1
+        public double BboxY1; // Absolute y1
+        public double BboxX2; // Absolute x2
+        public double BboxY2; // Absolute y2
+
+        public ImageMapEntry(string imagePath, int pageIdx, double pageWidth, double pageHeight, double x1, double y1, double x2, double y2)
+        {
+            ImagePath = imagePath;
+            PageIdx = pageIdx;
+            PageWidth = pageWidth;
+            PageHeight = pageHeight;
+            BboxX1 = x1;
+            BboxY1 = y1;
+            BboxX2 = x2;
+            BboxY2 = y2;
+        }
+    }
+
+    /// <summary>
+    /// Builds a list of image map entries by parsing the middle.json.
+    /// </summary>
+    private static List<ImageMapEntry>? BuildImagePathMap(string artifactsDir)
+    {
         var middleJsons = Directory.GetFiles(artifactsDir, "*_middle.json", SearchOption.AllDirectories);
         if (middleJsons.Length == 0)
             return null;
 
-        var map = new System.Collections.Generic.Dictionary<string, string>();
+        var entries = new List<ImageMapEntry>();
         foreach (var jsonPath in middleJsons)
         {
             try
             {
                 var json = File.ReadAllText(jsonPath);
                 using var doc = System.Text.Json.JsonDocument.Parse(json);
-                ParseMiddleJsonForImages(doc.RootElement, map);
+                ParseMiddleJsonForImages(doc.RootElement, entries);
             }
             catch { }
         }
-        return map.Count > 0 ? map : null;
+        return entries.Count > 0 ? entries : null;
     }
 
-    private static void ParseMiddleJsonForImages(System.Text.Json.JsonElement elem, System.Collections.Generic.Dictionary<string, string> map)
+    private static void ParseMiddleJsonForImages(System.Text.Json.JsonElement elem, List<ImageMapEntry> entries)
     {
-        // Handle both dict and array roots
         if (elem.ValueKind == System.Text.Json.JsonValueKind.Object)
         {
-            // Try pdf_info array (MinerU middle.json format)
             if (elem.TryGetProperty("pdf_info", out var pdfInfo))
             {
                 foreach (var page in pdfInfo.EnumerateArray())
                 {
+                    var pageIdx = 0;
+                    if (page.TryGetProperty("page_idx", out var pi))
+                        pageIdx = pi.GetInt32();
+
+                    var pageW = 1000.0;
+                    var pageH = 1000.0;
+                    if (page.TryGetProperty("page_size", out var ps))
+                    {
+                        var psArr = ps.EnumerateArray().Select(v => v.GetDouble()).ToArray();
+                        if (psArr.Length >= 2)
+                        {
+                            pageW = psArr[0];
+                            pageH = psArr[1];
+                        }
+                    }
+
                     if (page.TryGetProperty("para_blocks", out var blocks))
                     {
                         foreach (var block in blocks.EnumerateArray())
                         {
-                            ExtractImagePathFromBlock(block, map);
+                            ExtractImagePathFromBlock(block, entries, pageIdx, pageW, pageH);
                         }
                     }
                 }
             }
-            // Try direct object with blocks
             else if (elem.TryGetProperty("blocks", out var directBlocks))
             {
                 foreach (var block in directBlocks.EnumerateArray())
                 {
-                    ExtractImagePathFromBlock(block, map);
+                    ExtractImagePathFromBlock(block, entries, 0, 1000.0, 1000.0);
                 }
             }
         }
@@ -143,28 +182,29 @@ public partial class TreeNodeViewModel : ObservableObject
         {
             foreach (var item in elem.EnumerateArray())
             {
-                ExtractImagePathFromBlock(item, map);
+                ExtractImagePathFromBlock(item, entries, 0, 1000.0, 1000.0);
             }
         }
     }
 
-    private static void ExtractImagePathFromBlock(System.Text.Json.JsonElement block, System.Collections.Generic.Dictionary<string, string> map)
+    private static void ExtractImagePathFromBlock(System.Text.Json.JsonElement block, List<ImageMapEntry> entries, int pageIdx, double pageW, double pageH)
     {
         if (block.TryGetProperty("type", out var type) && type.GetString() == "image")
         {
-            // Get bbox
             if (block.TryGetProperty("bbox", out var bbox))
             {
-                var bboxStr = string.Join(",", bbox.EnumerateArray().Select(v => v.GetInt32()));
-                // Search nested blocks for image_path
-                string? imagePath = null;
-                if (block.TryGetProperty("blocks", out var nestedBlocks))
+                var bboxArr = bbox.EnumerateArray().Select(v => v.GetDouble()).ToArray();
+                if (bboxArr.Length >= 4)
                 {
-                    imagePath = FindImagePathInBlocks(nestedBlocks);
-                }
-                if (imagePath is not null && !map.ContainsKey(bboxStr))
-                {
-                    map[bboxStr] = imagePath;
+                    string? imagePath = null;
+                    if (block.TryGetProperty("blocks", out var nestedBlocks))
+                    {
+                        imagePath = FindImagePathInBlocks(nestedBlocks);
+                    }
+                    if (imagePath is not null)
+                    {
+                        entries.Add(new ImageMapEntry(imagePath, pageIdx, pageW, pageH, bboxArr[0], bboxArr[1], bboxArr[2], bboxArr[3]));
+                    }
                 }
             }
         }
@@ -288,36 +328,30 @@ public partial class TreeNodeViewModel : ObservableObject
                 var loc = _node.Location[0];
                 var normX = loc.Bbox.X; // normalized 0-1
                 var normY = loc.Bbox.Y; // normalized 0-1
-                // Find the best matching bbox from the map
+                var treePage = loc.Page; // page number from Popo tree (1-based)
+                // Find the best matching entry
                 double bestScore = double.MaxValue;
-                string? bestImagePath = null;
-                foreach (var (absBboxStr, imagePath) in _imagePathMap)
+                ImageMapEntry? bestEntry = null;
+                foreach (var entry in _imagePathMap)
                 {
-                    var parts = absBboxStr.Split(',').Select(int.Parse).ToArray();
-                    if (parts.Length == 4)
+                    // Match by page first (Popo uses 1-based page numbers, middle.json uses 0-based page_idx)
+                    if (entry.PageIdx + 1 != treePage)
+                        continue;
+                    var absNormX = entry.BboxX1 / entry.PageWidth;
+                    var absNormY = entry.BboxY1 / entry.PageHeight;
+                    var dx = normX - absNormX;
+                    var dy = normY - absNormY;
+                    var score = dx * dx + dy * dy;
+                    if (score < bestScore)
                     {
-                        var absX1 = parts[0];
-                        var absY1 = parts[1];
-                        var absX2 = parts[2];
-                        var absY2 = parts[3];
-                        // Find page dimensions from the bbox values
-                        var pageW = 3900.0;
-                        var pageH = 5600.0;
-                        var absNormX = absX1 / pageW;
-                        var absNormY = absY1 / pageH;
-                        var dx = normX - absNormX;
-                        var dy = normY - absNormY;
-                        var score = dx * dx + dy * dy;
-                        if (score < bestScore)
-                        {
-                            bestScore = score;
-                            bestImagePath = imagePath;
-                        }
+                        bestScore = score;
+                        bestEntry = entry;
                     }
                 }
-                if (bestImagePath is not null && bestScore < 0.01)
+                // If we found a close match (within threshold)
+                if (bestEntry is not null && bestScore < 0.01)
                 {
-                    var imageName = Path.GetFileName(bestImagePath);
+                    var imageName = Path.GetFileName(bestEntry.ImagePath);
                     foreach (var file in allImageFiles)
                     {
                         if (Path.GetFileName(file).Equals(imageName, StringComparison.OrdinalIgnoreCase))
