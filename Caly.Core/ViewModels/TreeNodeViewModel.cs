@@ -40,6 +40,7 @@ public partial class TreeNodeViewModel : ObservableObject
     private readonly AnalysisTreeNode _node;
     private readonly string? _artifactsDirectory;
     private readonly System.Collections.Generic.Dictionary<int, MinerUBlock?>? _blockLookup;
+    private readonly int _imageIndex; // Index among all image nodes (for order-based matching)
 
     /// <summary>
     /// Callback invoked when this tree node is selected.
@@ -49,9 +50,15 @@ public partial class TreeNodeViewModel : ObservableObject
     public Action<int?>? OnBlockSelected { get; set; }
 
     public TreeNodeViewModel(AnalysisTreeNode node, string? artifactsDirectory = null, StructureDocument? structureDocument = null)
+        : this(node, artifactsDirectory, structureDocument, -1)
+    {
+    }
+
+    private TreeNodeViewModel(AnalysisTreeNode node, string? artifactsDirectory, StructureDocument? structureDocument, int imageIndex)
     {
         _node = node;
         _artifactsDirectory = artifactsDirectory;
+        _imageIndex = imageIndex;
 
         // Build a lookup dictionary from block ID to MinerUBlock for accurate image matching
         if (structureDocument is not null)
@@ -63,9 +70,13 @@ public partial class TreeNodeViewModel : ObservableObject
             }
         }
 
+        // Assign image indices to children in document order
+        int childImageIndex = Type == "image" ? imageIndex + 1 : imageIndex;
         foreach (var child in node.Children)
         {
-            Children.Add(new TreeNodeViewModel(child, artifactsDirectory, structureDocument));
+            if (child.Type == "image")
+                childImageIndex++;
+            Children.Add(new TreeNodeViewModel(child, artifactsDirectory, structureDocument, childImageIndex));
         }
     }
 
@@ -88,7 +99,7 @@ public partial class TreeNodeViewModel : ObservableObject
 
     /// <summary>
     /// Bitmap image for display (only for image nodes).
-    /// Uses BlockIds to look up the MinerUBlock and get the actual image filename.
+    /// Uses BlockIds to look up MinerUBlock, or falls back to order-based matching.
     /// </summary>
     public Bitmap? ImageBitmap
     {
@@ -104,6 +115,7 @@ public partial class TreeNodeViewModel : ObservableObject
             var imageExtensions = new[] { ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp" };
             var allImageFiles = Directory.GetFiles(_artifactsDirectory, "*.*", SearchOption.AllDirectories)
                 .Where(f => imageExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()))
+                .OrderBy(f => f) // Sort for consistent order
                 .ToList();
 
             if (allImageFiles.Count == 0)
@@ -119,7 +131,6 @@ public partial class TreeNodeViewModel : ObservableObject
                         var imageContent = block.Content;
                         if (!string.IsNullOrEmpty(imageContent))
                         {
-                            // Try matching by filename
                             var contentName = Path.GetFileName(imageContent);
                             foreach (var file in allImageFiles)
                             {
@@ -129,7 +140,6 @@ public partial class TreeNodeViewModel : ObservableObject
                                     catch { }
                                 }
                             }
-                            // Try matching by full path
                             foreach (var file in allImageFiles)
                             {
                                 if (file.Contains(imageContent))
@@ -143,7 +153,7 @@ public partial class TreeNodeViewModel : ObservableObject
                 }
             }
 
-            // Strategy 2: Match by Content (filename reference in MinerU/Popo data)
+            // Strategy 2: Match by Content
             if (!string.IsNullOrEmpty(Content))
             {
                 var contentName = Path.GetFileName(Content);
@@ -157,53 +167,17 @@ public partial class TreeNodeViewModel : ObservableObject
                 }
             }
 
-            // Strategy 3: Match by Metadata
-            if (!string.IsNullOrEmpty(Metadata))
+            // Strategy 3: Order-based matching
+            // When BlockIds are empty and Content is empty (common in Popo API output),
+            // match by the image index among all image nodes in the tree.
+            if (_imageIndex >= 0 && _imageIndex < allImageFiles.Count)
             {
-                var metaName = Path.GetFileName(Metadata);
-                foreach (var file in allImageFiles)
-                {
-                    if (Path.GetFileName(file).Equals(metaName, StringComparison.OrdinalIgnoreCase))
-                    {
-                        try { _cachedBitmap = new Bitmap(file); return _cachedBitmap; }
-                        catch { }
-                    }
-                }
-            }
-
-            // Strategy 4: Match by BlockIds in filename
-            if (BlockIds.Count > 0)
-            {
-                foreach (var blockId in BlockIds)
-                {
-                    foreach (var file in allImageFiles)
-                    {
-                        var fileName = Path.GetFileNameWithoutExtension(file).ToLowerInvariant();
-                        if (fileName.Contains(blockId.ToString()))
-                        {
-                            try { _cachedBitmap = new Bitmap(file); return _cachedBitmap; }
-                            catch { }
-                        }
-                    }
-                }
-            }
-
-            // Strategy 5: Match by Title
-            if (!string.IsNullOrEmpty(Title))
-            {
-                foreach (var file in allImageFiles)
-                {
-                    var fileName = Path.GetFileNameWithoutExtension(file).ToLowerInvariant();
-                    if (fileName.Contains(Title.ToLowerInvariant()))
-                    {
-                        try { _cachedBitmap = new Bitmap(file); return _cachedBitmap; }
-                        catch { }
-                    }
-                }
+                var file = allImageFiles[_imageIndex];
+                try { _cachedBitmap = new Bitmap(file); return _cachedBitmap; }
+                catch { }
             }
 
             // No fallback - return null if image not found
-            // The UI will display the image path/filename instead
             return null;
         }
     }
