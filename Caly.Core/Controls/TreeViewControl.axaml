@@ -13,8 +13,11 @@
                         CornerRadius="6"
                         BorderThickness="1,1,1,1"
                         BorderBrush="{Binding TypeColorHex}"
-                        Background="{StaticResource SystemControlBackgroundChromeLowBrush}">
-                    <Grid ColumnDefinitions="Auto,*">
+                        Background="{StaticResource SystemControlBackgroundChromeLowBrush}"
+                        MaxWidth="Infinity"
+                        HorizontalAlignment="Stretch">
+                    <Grid ColumnDefinitions="Auto,*"
+                          MaxWidth="Infinity">
                         <!-- Type Icon -->
                         <TextBlock Grid.Column="0"
                                    Text="{Binding TypeIcon}"
@@ -23,13 +26,17 @@
                                    Margin="0,0,6,0"/>
 
                         <!-- Card Content -->
-                        <StackPanel Grid.Column="1" Spacing="4">
+                        <StackPanel Grid.Column="1" Spacing="4"
+                                    MaxWidth="Infinity">
                             <!-- Header: Type + Level + Blocks + Pages -->
-                            <StackPanel Orientation="Horizontal" Spacing="4">
+                            <StackPanel Orientation="Horizontal" Spacing="4"
+                                        MaxWidth="Infinity">
                                 <TextBlock Text="{Binding Type}"
                                            FontWeight="Bold"
                                            FontSize="12"
-                                           Foreground="{Binding TypeColorHex}"/>
+                                           Foreground="{Binding TypeColorHex}"
+                                           MaxWidth="80"
+                                           TextTrimming="CharacterEllipsis"/>
 
                                 <TextBlock Text="L"
                                            FontSize="10"
@@ -58,7 +65,8 @@
                             <TextBlock Text="{Binding Title}"
                                        FontWeight="SemiBold"
                                        FontSize="13"
-                                       MaxLines="1"
+                                       MaxLines="2"
+                                       TextWrapping="Wrap"
                                        TextTrimming="CharacterEllipsis"
                                        IsVisible="{Binding HasTitle}"/>
 
@@ -71,9 +79,11 @@
                                        TextTrimming="CharacterEllipsis"/>
 
                             <!-- Meta info row -->
-                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,2,0,0">
+                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,2,0,0"
+                                        MaxWidth="Infinity">
                                 <!-- Block IDs -->
-                                <StackPanel Orientation="Horizontal" Spacing="2">
+                                <StackPanel Orientation="Horizontal" Spacing="2"
+                                            MaxWidth="Infinity">
                                     <TextBlock Text="🔗" FontSize="9"/>
                                     <TextBlock Text="{Binding BlockIdsDisplay}"
                                                FontSize="9"
