@@ -27,6 +27,7 @@ using System.Collections.Specialized;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System;
 
 namespace Caly.Core.ViewModels;
 
@@ -212,14 +213,14 @@ public sealed partial class DocumentViewModel
             return;
 
         // Find artifacts directory for image display
-        // Try popo/extract first, then extract from MinerU ZIP if needed
+        // Try in order: 1) popo/extract, 2) MinerU cache extract dir, 3) extract from MinerU ZIP
         string? artifactsDir = null;
         if (ProjectPath is not null)
         {
+            // 1: Try popo/extract first
             var extractDir = Path.Combine(ProjectPath, "popo", "extract");
             if (Directory.Exists(extractDir))
             {
-                // Check if it contains images
                 var imageFiles = System.IO.Directory.GetFiles(extractDir, "*.*", System.IO.SearchOption.AllDirectories)
                     .Where(f => System.IO.Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
                     .ToList();
@@ -227,10 +228,9 @@ public sealed partial class DocumentViewModel
                     artifactsDir = extractDir;
             }
 
-            // If no images in extract, try to extract from MinerU ZIP
+            // 2: Try MinerU cache extract directory (~/.TraceView/{docName}/mineru/extract_{docId}/)
             if (artifactsDir is null)
             {
-                // Try to find docId from LocalPath or from mineru/ directory contents
                 string? docId = LocalPath is not null
                     ? System.IO.Path.GetFileNameWithoutExtension(LocalPath)
                     : null;
@@ -244,7 +244,46 @@ public sealed partial class DocumentViewModel
                         var zipFiles = Directory.GetFiles(mineruDir, "*_mineru.zip");
                         if (zipFiles.Length > 0)
                         {
-                            // Extract docId from filename: "{docId}_mineru.zip"
+                            var fileName = Path.GetFileNameWithoutExtension(zipFiles[0]);
+                            docId = fileName.EndsWith("_mineru") ? fileName[..^7] : fileName;
+                        }
+                    }
+                }
+
+                if (docId is not null)
+                {
+                    // Check the MinerU cache directory structure
+                    // The cache is at ~/.TraceView/{docName}/mineru/extract_{docId}/
+                    var cacheBase = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".TraceView", docId);
+                    var mineruCacheDir = Path.Combine(cacheBase, "mineru");
+                    var extractedDir = Path.Combine(mineruCacheDir, $"extract_{docId}");
+
+                    if (Directory.Exists(extractedDir))
+                    {
+                        var imageFiles = System.IO.Directory.GetFiles(extractedDir, "*.*", System.IO.SearchOption.AllDirectories)
+                            .Where(f => System.IO.Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
+                            .ToList();
+                        if (imageFiles.Count > 0)
+                            artifactsDir = extractedDir;
+                    }
+                }
+            }
+
+            // 3: Extract from MinerU ZIP as last resort
+            if (artifactsDir is null)
+            {
+                string? docId = LocalPath is not null
+                    ? System.IO.Path.GetFileNameWithoutExtension(LocalPath)
+                    : null;
+
+                if (docId is null)
+                {
+                    var mineruDir = Path.Combine(ProjectPath, "mineru");
+                    if (Directory.Exists(mineruDir))
+                    {
+                        var zipFiles = Directory.GetFiles(mineruDir, "*_mineru.zip");
+                        if (zipFiles.Length > 0)
+                        {
                             var fileName = Path.GetFileNameWithoutExtension(zipFiles[0]);
                             docId = fileName.EndsWith("_mineru") ? fileName[..^7] : fileName;
                         }
