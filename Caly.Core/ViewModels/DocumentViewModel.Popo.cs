@@ -25,6 +25,8 @@ using CommunityToolkit.Mvvm.Input;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.IO;
+using System.IO.Compression;
+using System.Linq;
 
 namespace Caly.Core.ViewModels;
 
@@ -209,13 +211,77 @@ public sealed partial class DocumentViewModel
         if (minerUDoc is null)
             return;
 
+        // Find artifacts directory for image display
+        // Try popo/extract first, then extract from MinerU ZIP if needed
+        string? artifactsDir = null;
+        if (ProjectPath is not null)
+        {
+            var extractDir = Path.Combine(ProjectPath, "popo", "extract");
+            if (Directory.Exists(extractDir))
+            {
+                // Check if it contains images
+                var imageFiles = System.IO.Directory.GetFiles(extractDir, "*.*", System.IO.SearchOption.AllDirectories)
+                    .Where(f => System.IO.Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
+                    .ToList();
+                if (imageFiles.Count > 0)
+                    artifactsDir = extractDir;
+            }
+
+            // If no images in extract, try to extract from MinerU ZIP
+            if (artifactsDir is null)
+            {
+                // Try to find docId from LocalPath or from mineru/ directory contents
+                string? docId = LocalPath is not null
+                    ? System.IO.Path.GetFileNameWithoutExtension(LocalPath)
+                    : null;
+
+                // If we don't have LocalPath, try to infer docId from mineru/ directory
+                if (docId is null)
+                {
+                    var mineruDir = Path.Combine(ProjectPath, "mineru");
+                    if (Directory.Exists(mineruDir))
+                    {
+                        var zipFiles = Directory.GetFiles(mineruDir, "*_mineru.zip");
+                        if (zipFiles.Length > 0)
+                        {
+                            // Extract docId from filename: "{docId}_mineru.zip"
+                            var fileName = Path.GetFileNameWithoutExtension(zipFiles[0]);
+                            docId = fileName.EndsWith("_mineru") ? fileName[..^7] : fileName;
+                        }
+                    }
+                }
+
+                if (docId is not null)
+                {
+                    var zipPath = MinerUJsonService.FindMinerUZipInProject(ProjectPath, docId);
+                    if (zipPath is not null)
+                    {
+                        var imagesDir = Path.Combine(ProjectPath, "popo", "images");
+                        try
+                        {
+                            if (!Directory.Exists(imagesDir))
+                            {
+                                Directory.CreateDirectory(imagesDir);
+                                System.IO.Compression.ZipFile.ExtractToDirectory(zipPath, imagesDir, overwriteFiles: true);
+                            }
+                            artifactsDir = imagesDir;
+                        }
+                        catch
+                        {
+                            // Ignore extraction errors
+                        }
+                    }
+                }
+            }
+        }
+
         // Show the analysis column when Popo data is loaded
         ShowAnalysisColumn = true;
 
         // Build hierarchical tree for Column 3 (matches popo_result.json tree structure)
         if (minerUDoc.TreeRoot is not null)
         {
-            PopoTreeRoot = new TreeNodeViewModel(minerUDoc.TreeRoot);
+            PopoTreeRoot = new TreeNodeViewModel(minerUDoc.TreeRoot, artifactsDir);
         }
 
         // Populate flat blocks for backward compatibility

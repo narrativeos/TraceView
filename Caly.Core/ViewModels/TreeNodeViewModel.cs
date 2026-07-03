@@ -70,7 +70,13 @@ public partial class TreeNodeViewModel : ObservableObject
     public bool IsImage => Type == "image";
 
     /// <summary>
+    /// Cached bitmap to avoid reloading on every access.
+    /// </summary>
+    private Bitmap? _cachedBitmap;
+
+    /// <summary>
     /// Bitmap image for display (only for image nodes).
+    /// Uses Content or Metadata to match the correct image file.
     /// </summary>
     public Bitmap? ImageBitmap
     {
@@ -79,31 +85,94 @@ public partial class TreeNodeViewModel : ObservableObject
             if (Type != "image" || _artifactsDirectory is null)
                 return null;
 
+            if (_cachedBitmap is not null)
+                return _cachedBitmap;
+
             // Try to find image file in artifacts directory
             // MinerU stores images in subdirectories like images/ or figure/
             var imageExtensions = new[] { ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp" };
-            var searchDirs = new[] { _artifactsDirectory, Path.Combine(_artifactsDirectory, "images"), Path.Combine(_artifactsDirectory, "figure") };
 
-            foreach (var dir in searchDirs)
+            // Get all image files once
+            var allImageFiles = Directory.GetFiles(_artifactsDirectory, "*.*", SearchOption.AllDirectories)
+                .Where(f => imageExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()))
+                .ToList();
+
+            if (allImageFiles.Count == 0)
+                return null;
+
+            // Strategy 1: Match by Content (filename reference in MinerU/Popo data)
+            if (!string.IsNullOrEmpty(Content))
             {
-                if (!Directory.Exists(dir))
-                    continue;
-
-                // Search for image files that match block IDs or content reference
-                var files = Directory.GetFiles(dir, "*.*", SearchOption.AllDirectories)
-                    .Where(f => imageExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()));
-
-                foreach (var file in files)
+                var contentName = Path.GetFileName(Content);
+                foreach (var file in allImageFiles)
                 {
-                    try
+                    if (Path.GetFileName(file).Equals(contentName, StringComparison.OrdinalIgnoreCase))
                     {
-                        return new Bitmap(file);
-                    }
-                    catch
-                    {
-                        // Try next file
+                        try { _cachedBitmap = new Bitmap(file); return _cachedBitmap; }
+                        catch { }
                     }
                 }
+                // Also try full content as path
+                foreach (var file in allImageFiles)
+                {
+                    if (file.Contains(Content))
+                    {
+                        try { _cachedBitmap = new Bitmap(file); return _cachedBitmap; }
+                        catch { }
+                    }
+                }
+            }
+
+            // Strategy 2: Match by Metadata
+            if (!string.IsNullOrEmpty(Metadata))
+            {
+                var metaName = Path.GetFileName(Metadata);
+                foreach (var file in allImageFiles)
+                {
+                    if (Path.GetFileName(file).Equals(metaName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        try { _cachedBitmap = new Bitmap(file); return _cachedBitmap; }
+                        catch { }
+                    }
+                }
+            }
+
+            // Strategy 3: Match by BlockIds - image filenames often contain the block ID
+            if (BlockIds.Count > 0)
+            {
+                foreach (var blockId in BlockIds)
+                {
+                    foreach (var file in allImageFiles)
+                    {
+                        var fileName = Path.GetFileNameWithoutExtension(file).ToLowerInvariant();
+                        if (fileName.Contains(blockId.ToString()))
+                        {
+                            try { _cachedBitmap = new Bitmap(file); return _cachedBitmap; }
+                            catch { }
+                        }
+                    }
+                }
+            }
+
+            // Strategy 4: Use Title to match
+            if (!string.IsNullOrEmpty(Title))
+            {
+                foreach (var file in allImageFiles)
+                {
+                    var fileName = Path.GetFileNameWithoutExtension(file).ToLowerInvariant();
+                    if (fileName.Contains(Title.ToLowerInvariant()))
+                    {
+                        try { _cachedBitmap = new Bitmap(file); return _cachedBitmap; }
+                        catch { }
+                    }
+                }
+            }
+
+            // Fallback: return first image (for simple cases)
+            foreach (var file in allImageFiles)
+            {
+                try { _cachedBitmap = new Bitmap(file); return _cachedBitmap; }
+                catch { }
             }
 
             return null;
