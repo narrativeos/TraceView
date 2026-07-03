@@ -17,6 +17,7 @@
         <utilities:EqualsConverter x:Key="EqualsConverter"/>
         <utilities:NotEqualsConverter x:Key="NotEqualsConverter"/>
         <utilities:IsNotNullConverter x:Key="IsNotNullConverter"/>
+        <utilities:IsNullConverter x:Key="IsNullConverter"/>
     </UserControl.Resources>
 
     <Design.DataContext>
@@ -555,14 +556,12 @@
                                                                              Stretch="Uniform"
                                                                              HorizontalAlignment="Stretch"
                                                                              VerticalAlignment="Stretch"/>
-                                                                      <TextBlock Text="{Binding Metadata}"
-                                                                                 FontSize="9"
-                                                                                 Opacity="0.6"
+                                                                      <TextBlock Text="{Binding ImagePathText}"
+                                                                                 FontSize="10"
+                                                                                 Foreground="#FF9800"
                                                                                  TextWrapping="Wrap"
-                                                                                 MaxLines="2"
-                                                                                 VerticalAlignment="Bottom"
-                                                                                 Background="#80000000"
-                                                                                 IsVisible="{Binding !IsContentExpanded}"/>
+                                                                                 VerticalAlignment="Center"
+                                                                                 HorizontalAlignment="Center"/>
                                                                   </Grid>
                                                               </Border>
 

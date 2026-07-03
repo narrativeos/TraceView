@@ -202,13 +202,8 @@ public partial class TreeNodeViewModel : ObservableObject
                 }
             }
 
-            // Fallback: return first image
-            foreach (var file in allImageFiles)
-            {
-                try { _cachedBitmap = new Bitmap(file); return _cachedBitmap; }
-                catch { }
-            }
-
+            // No fallback - return null if image not found
+            // The UI will display the image path/filename instead
             return null;
         }
     }
@@ -217,6 +212,51 @@ public partial class TreeNodeViewModel : ObservableObject
     /// Whether a valid image is available for display.
     /// </summary>
     public bool HasImage => Type == "image" && _artifactsDirectory is not null;
+
+    /// <summary>
+    /// Whether the image bitmap was successfully loaded.
+    /// </summary>
+    public bool HasImageBitmap => _cachedBitmap is not null;
+
+    /// <summary>
+    /// Image path text for display when image is not found.
+    /// Shows the expected image filename from MinerUBlock or Content.
+    /// </summary>
+    public string ImagePathText
+    {
+        get
+        {
+            if (Type != "image")
+                return string.Empty;
+
+            // Try to get filename from MinerUBlock
+            if (_blockLookup is not null && BlockIds.Count > 0)
+            {
+                foreach (var blockId in BlockIds)
+                {
+                    if (_blockLookup.TryGetValue(blockId, out var block) && block is not null
+                        && !string.IsNullOrEmpty(block.Content))
+                    {
+                        return $"[图片] {Path.GetFileName(block.Content)}";
+                    }
+                }
+            }
+
+            // Try Content
+            if (!string.IsNullOrEmpty(Content))
+            {
+                return $"[图片] {Path.GetFileName(Content)}";
+            }
+
+            // Try Metadata
+            if (!string.IsNullOrEmpty(Metadata))
+            {
+                return $"[图片] {Path.GetFileName(Metadata)}";
+            }
+
+            return "[图片未找到]";
+        }
+    }
 
     /// <summary>
     /// Whether to show the content preview (collapsed, non-image nodes).
