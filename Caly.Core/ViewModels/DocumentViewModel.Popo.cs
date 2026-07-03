@@ -126,7 +126,7 @@ public sealed partial class DocumentViewModel
                     try
                     {
                         var json = File.ReadAllText(popoJsonPath);
-                        minerUDoc = System.Text.Json.JsonSerializer.Deserialize<MinerUDocument>(json, PopoJsonService.DefaultDeserializeOptions);
+                        minerUDoc = System.Text.Json.JsonSerializer.Deserialize<MinerUDocument>(json, PopoJsonService.MineruDocumentOptions);
                     }
                     catch
                     {

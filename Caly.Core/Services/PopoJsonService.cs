@@ -25,6 +25,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 
 namespace Caly.Core.Services;
 
@@ -60,6 +61,19 @@ public static class PopoJsonService
     {
         WriteIndented = true,
         TypeInfoResolver = SourceGenerationContext.Default,
+        Converters = { new RectJsonConverter() }
+    };
+
+    /// <summary>
+    /// JSON serializer options for MinerUDocument serialization/deserialization.
+    /// Uses reflection-based resolver because MinerUDocument uses [ObservableProperty]
+    /// whose generated properties are not visible to the JSON source generator.
+    /// </summary>
+    internal static readonly JsonSerializerOptions MineruDocumentOptions = new()
+    {
+        WriteIndented = true,
+        PropertyNameCaseInsensitive = true,
+        TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
         Converters = { new RectJsonConverter() }
     };
 
@@ -155,7 +169,7 @@ public static class PopoJsonService
             try
             {
                 var json = File.ReadAllText(popoJsonPath);
-                return JsonSerializer.Deserialize<MinerUDocument>(json, DefaultDeserializeOptions);
+                return JsonSerializer.Deserialize<MinerUDocument>(json, MineruDocumentOptions);
             }
             catch
             {
@@ -178,7 +192,7 @@ public static class PopoJsonService
         Directory.CreateDirectory(popoDir);
 
         var popoJsonPath = Path.Combine(popoDir, "popo.json");
-        var json = JsonSerializer.Serialize(doc, s_defaultSerializeOptions);
+        var json = JsonSerializer.Serialize(doc, MineruDocumentOptions);
         File.WriteAllText(popoJsonPath, json);
     }
 
@@ -643,7 +657,7 @@ public static class PopoJsonService
         try
         {
             var json = File.ReadAllText(jsonPath);
-            var minerUDoc = JsonSerializer.Deserialize<MinerUDocument>(json, DefaultDeserializeOptions);
+            var minerUDoc = JsonSerializer.Deserialize<MinerUDocument>(json, MineruDocumentOptions);
 
             if (minerUDoc is not null && (minerUDoc.GetAllBlocks().Count > 0 || minerUDoc.TreeRoot is not null))
                 return minerUDoc;
