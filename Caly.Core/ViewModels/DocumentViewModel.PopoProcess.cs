@@ -236,17 +236,10 @@ public sealed partial class DocumentViewModel
                     PopoBlocks.Add(new BlockViewModel(block));
                 }
 
-                // Save Popo result to project (Popo-specific persistence)
+                // Persist to project popo/popo.json so TryLoadPopoData can auto-load next time
                 if (ProjectPath is not null)
                 {
-                    try
-                    {
-                        PopoJsonService.SaveMinerUDocumentToProject(result.MinerUDocument, ProjectPath);
-                    }
-                    catch
-                    {
-                        // Non-critical
-                    }
+                    PopoJsonService.SaveMinerUDocumentToProject(result.MinerUDocument, ProjectPath);
                 }
             }
 

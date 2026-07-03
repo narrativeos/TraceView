@@ -368,23 +368,11 @@ public sealed partial class DocumentViewModel
     }
 
     /// <summary>
-    /// Saves the parse result to the project for persistence.
+    /// Saves the MinerU ZIP to the project folder (for Popo upload).
+    /// Does NOT generate any Popo-related files — MinerU has no dependency on Popo.
     /// </summary>
     private async Task SaveParseResultAsync(MinerUParseResult result)
     {
-        // Save result to project for persistence
-        if (result.MinerUDocument is not null && ProjectPath is not null)
-        {
-            try
-            {
-                PopoJsonService.SaveMinerUDocumentToProject(result.MinerUDocument, ProjectPath);
-            }
-            catch
-            {
-                // Non-critical: ignore save errors
-            }
-        }
-
         // Save the MinerU ZIP to the project folder for Popo upload
         if (!string.IsNullOrEmpty(result.ZipPath) && ProjectPath is not null)
         {

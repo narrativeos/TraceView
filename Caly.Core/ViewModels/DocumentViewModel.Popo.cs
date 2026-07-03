@@ -102,44 +102,65 @@ public sealed partial class DocumentViewModel
 
     /// <summary>
     /// Attempts to load Popo analysis data for the currently opened document.
-    /// Only checks the project's popo/ directory - does NOT fallback to mineru/ data.
+    /// Checks in order: 1) project popo/popo.json, 2) project popo/extract/,
+    /// 3) project popo/result_* subdirectories, 4) standard outputs/ directory.
     /// Called silently after the document is successfully opened.
     /// </summary>
     internal void TryLoadPopoData()
     {
-        if (ProjectPath is null)
-            return;
-
-        // Only check popo/ directory - no fallback to mineru/
-        var popoDir = Path.Combine(ProjectPath, "popo");
-        if (!Directory.Exists(popoDir))
+        if (ProjectPath is null && LocalPath is null)
             return;
 
         MinerUDocument? minerUDoc = null;
 
-        // Try popo.json first
-        var popoJsonPath = Path.Combine(popoDir, "popo.json");
-        if (File.Exists(popoJsonPath))
+        // Phase 1: Check project's popo/ directory
+        if (ProjectPath is not null)
         {
-            try
+            var popoDir = Path.Combine(ProjectPath, "popo");
+            if (Directory.Exists(popoDir))
             {
-                var json = File.ReadAllText(popoJsonPath);
-                minerUDoc = System.Text.Json.JsonSerializer.Deserialize<MinerUDocument>(json, PopoJsonService.DefaultDeserializeOptions);
-            }
-            catch
-            {
-                // Ignore parse errors
+                // 1a: Try popo.json first
+                var popoJsonPath = Path.Combine(popoDir, "popo.json");
+                if (File.Exists(popoJsonPath))
+                {
+                    try
+                    {
+                        var json = File.ReadAllText(popoJsonPath);
+                        minerUDoc = System.Text.Json.JsonSerializer.Deserialize<MinerUDocument>(json, PopoJsonService.DefaultDeserializeOptions);
+                    }
+                    catch
+                    {
+                        // Ignore parse errors
+                    }
+                }
+
+                // 1b: Try extract subdirectory
+                if (minerUDoc is null)
+                {
+                    var extractDir = Path.Combine(popoDir, "extract");
+                    if (Directory.Exists(extractDir))
+                    {
+                        minerUDoc = PopoJsonService.TryParseMinerUResultDir(extractDir);
+                    }
+                }
+
+                // 1c: Try result_* subdirectories (Popo service output)
+                if (minerUDoc is null)
+                {
+                    foreach (var subDir in Directory.GetDirectories(popoDir, "result_*"))
+                    {
+                        minerUDoc = PopoJsonService.TryParseMinerUResultDir(subDir);
+                        if (minerUDoc is not null)
+                            break;
+                    }
+                }
             }
         }
 
-        // Try extract subdirectory
-        if (minerUDoc is null)
+        // Phase 2: Check standard outputs/ directory (sibling to PDF)
+        if (minerUDoc is null && LocalPath is not null)
         {
-            var extractDir = Path.Combine(popoDir, "extract");
-            if (Directory.Exists(extractDir))
-            {
-                minerUDoc = PopoJsonService.TryParseMinerUResultDir(extractDir);
-            }
+            minerUDoc = PopoJsonService.LoadMinerUDocument(LocalPath);
         }
 
         if (minerUDoc is null)
