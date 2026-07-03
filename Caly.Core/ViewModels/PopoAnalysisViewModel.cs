@@ -36,9 +36,15 @@ public partial class AnalysisViewModel : ViewModelBase
 {
     private readonly StructureDocument _structureDocument;
 
-    public AnalysisViewModel(StructureDocument structureDocument)
+    /// <summary>
+    /// Path to the extracted artifacts directory (images, etc.).
+    /// </summary>
+    public string? ArtifactsDirectory { get; }
+
+    public AnalysisViewModel(StructureDocument structureDocument, string? artifactsDirectory = null)
     {
         _structureDocument = structureDocument;
+        ArtifactsDirectory = artifactsDirectory;
 
         // Build block view models
         foreach (var block in structureDocument.GetAllBlocks())
@@ -49,7 +55,7 @@ public partial class AnalysisViewModel : ViewModelBase
         // Build tree view model and wire selection to page block highlighting
         if (structureDocument.TreeRoot is not null)
         {
-            var treeRoot = new TreeNodeViewModel(structureDocument.TreeRoot);
+            var treeRoot = new TreeNodeViewModel(structureDocument.TreeRoot, artifactsDirectory);
             WireTreeSelection(treeRoot, this);
             TreeRoot = treeRoot;
         }

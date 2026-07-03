@@ -21,11 +21,13 @@
 using System;
 using Avalonia.Collections;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using Caly.Core.Models;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 
 namespace Caly.Core.ViewModels;
@@ -36,6 +38,7 @@ namespace Caly.Core.ViewModels;
 public partial class TreeNodeViewModel : ObservableObject
 {
     private readonly AnalysisTreeNode _node;
+    private readonly string? _artifactsDirectory;
 
     /// <summary>
     /// Callback invoked when this tree node is selected.
@@ -44,12 +47,13 @@ public partial class TreeNodeViewModel : ObservableObject
     /// </summary>
     public Action<int?>? OnBlockSelected { get; set; }
 
-    public TreeNodeViewModel(AnalysisTreeNode node)
+    public TreeNodeViewModel(AnalysisTreeNode node, string? artifactsDirectory = null)
     {
         _node = node;
+        _artifactsDirectory = artifactsDirectory;
         foreach (var child in node.Children)
         {
-            Children.Add(new TreeNodeViewModel(child));
+            Children.Add(new TreeNodeViewModel(child, artifactsDirectory));
         }
     }
 
@@ -59,6 +63,67 @@ public partial class TreeNodeViewModel : ObservableObject
     public string Content => _node.Content;
     public int Level => _node.Level;
     public List<int> BlockIds => _node.BlockIds;
+
+    /// <summary>
+    /// Whether this node represents an image.
+    /// </summary>
+    public bool IsImage => Type == "image";
+
+    /// <summary>
+    /// Bitmap image for display (only for image nodes).
+    /// </summary>
+    public Bitmap? ImageBitmap
+    {
+        get
+        {
+            if (Type != "image" || _artifactsDirectory is null)
+                return null;
+
+            // Try to find image file in artifacts directory
+            // MinerU stores images in subdirectories like images/ or figure/
+            var imageExtensions = new[] { ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp" };
+            var searchDirs = new[] { _artifactsDirectory, Path.Combine(_artifactsDirectory, "images"), Path.Combine(_artifactsDirectory, "figure") };
+
+            foreach (var dir in searchDirs)
+            {
+                if (!Directory.Exists(dir))
+                    continue;
+
+                // Search for image files that match block IDs or content reference
+                var files = Directory.GetFiles(dir, "*.*", SearchOption.AllDirectories)
+                    .Where(f => imageExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()));
+
+                foreach (var file in files)
+                {
+                    try
+                    {
+                        return new Bitmap(file);
+                    }
+                    catch
+                    {
+                        // Try next file
+                    }
+                }
+            }
+
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Whether a valid image is available for display.
+    /// </summary>
+    public bool HasImage => Type == "image" && _artifactsDirectory is not null;
+
+    /// <summary>
+    /// Whether to show the content preview (collapsed, non-image nodes).
+    /// </summary>
+    public bool ShowContentPreview => !IsContentExpanded && !IsImage;
+
+    /// <summary>
+    /// Whether to show the full content (expanded, non-image nodes).
+    /// </summary>
+    public bool ShowFullContent => IsContentExpanded && !IsImage;
 
     [ObservableProperty]
     private ObservableCollection<TreeNodeViewModel> _children = new();

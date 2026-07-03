@@ -544,22 +544,44 @@
                                                                              Margin="6,0,4,0"/>
                                                               </Grid>
 
-                                                              <!-- Content preview (collapsed) -->
+                                                              <!-- Image display for image nodes -->
+                                                              <Border IsVisible="{Binding IsImage}"
+                                                                      MaxHeight="200"
+                                                                      CornerRadius="3"
+                                                                      ClipToBounds="True"
+                                                                      Margin="0,2,0,0">
+                                                                  <Grid>
+                                                                      <Image Source="{Binding ImageBitmap}"
+                                                                             Stretch="Uniform"
+                                                                             HorizontalAlignment="Stretch"
+                                                                             VerticalAlignment="Stretch"/>
+                                                                      <TextBlock Text="{Binding Metadata}"
+                                                                                 FontSize="9"
+                                                                                 Opacity="0.6"
+                                                                                 TextWrapping="Wrap"
+                                                                                 MaxLines="2"
+                                                                                 VerticalAlignment="Bottom"
+                                                                                 Background="#80000000"
+                                                                                 IsVisible="{Binding !IsContentExpanded}"/>
+                                                                  </Grid>
+                                                              </Border>
+
+                                                              <!-- Content preview (collapsed, non-image nodes) -->
                                                               <TextBlock Text="{Binding ContentPreview}"
                                                                          FontSize="10"
                                                                          Opacity="0.7"
                                                                          MaxLines="2"
                                                                          TextTrimming="CharacterEllipsis"
-                                                                         IsVisible="{Binding !IsContentExpanded}"
+                                                                         IsVisible="{Binding ShowContentPreview}"
                                                                          HorizontalAlignment="Stretch"
                                                                          TextAlignment="Left"/>
 
-                                                              <!-- Full content (expanded) -->
+                                                              <!-- Full content (expanded, non-image nodes) -->
                                                               <TextBlock Text="{Binding DisplayContent}"
                                                                          FontSize="10"
                                                                          Opacity="0.8"
                                                                          TextWrapping="Wrap"
-                                                                         IsVisible="{Binding IsContentExpanded}"
+                                                                         IsVisible="{Binding ShowFullContent}"
                                                                          HorizontalAlignment="Stretch"
                                                                          TextAlignment="Left"/>
 

@@ -280,12 +280,27 @@ public sealed class PopoService : IDisposable
 
         onProgress?.Invoke(PopoProcessStatus.ParsingResult, 85);
 
-        // Step 4: Complete
+        // Step 4: Extract images from ZIP for display
+        var artifactsDir = Path.Combine(_cacheDirectory, $"images_{sourceDocId}");
+        try
+        {
+            if (!Directory.Exists(artifactsDir))
+            {
+                Directory.CreateDirectory(artifactsDir);
+                ZipFile.ExtractToDirectory(zipPath, artifactsDir, overwriteFiles: true);
+            }
+        }
+        catch
+        {
+            artifactsDir = null;
+        }
+
         onProgress?.Invoke(PopoProcessStatus.Completed, 100);
 
         return new PopoProcessResult
         {
-            StructureDocument = minerUDoc
+            StructureDocument = minerUDoc,
+            ArtifactsDirectory = artifactsDir
         };
     }
 
@@ -371,6 +386,11 @@ public static class PopoProcessStatusExtensions
 public class PopoProcessResult
 {
     public StructureDocument? StructureDocument { get; init; }
+    
+    /// <summary>
+    /// Local path to the extracted artifacts directory (images, etc.).
+    /// </summary>
+    public string? ArtifactsDirectory { get; init; }
 }
 
 /// <summary>

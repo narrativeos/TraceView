@@ -405,7 +405,7 @@ public sealed partial class DocumentViewModel
             return;
         }
 
-        LoadStructureDocument(result.StructureDocument);
+        LoadStructureDocument(result.StructureDocument, result.ArtifactsDirectory);
     }
 
     /// <summary>
@@ -414,12 +414,12 @@ public sealed partial class DocumentViewModel
     /// Populates page blocks, MinerU middle blocks, and auto-opens the analysis pane.
     /// Does NOT populate PopoBlocks — that is done separately by Popo processing.
     /// </summary>
-    private void LoadStructureDocument(StructureDocument minerUDoc)
+    private void LoadStructureDocument(StructureDocument minerUDoc, string? artifactsDirectory = null)
     {
         System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] StructureDocument has {minerUDoc.GetAllBlocks().Count} blocks, TreeRoot={minerUDoc.TreeRoot != null}");
 
         StructureDocument = minerUDoc;
-        AnalysisViewModel = new AnalysisViewModel(minerUDoc);
+        AnalysisViewModel = new AnalysisViewModel(minerUDoc, artifactsDirectory);
 
         System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] StructureDocument and AnalysisViewModel set");
 
@@ -504,6 +504,7 @@ public sealed partial class DocumentViewModel
         // Set StructureDocument first — subscribes the Pages.CollectionChanged handler
         // so any pages added later will automatically get blocks assigned.
         StructureDocument = minerUDoc;
+        AnalysisViewModel = new AnalysisViewModel(minerUDoc);
 
         // Assign blocks to existing pages (the CollectionChanged handler only covers future additions)
         foreach (var page in Pages)
