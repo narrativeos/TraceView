@@ -499,10 +499,14 @@
                                                     BorderThickness="0"
                                                     Background="Transparent"
                                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                             <TreeView.Styles>
+                                                 <Style Selector="TreeViewItem">
+                                                     <Setter Property="IsExpanded" Value="True"/>
+                                                 </Style>
+                                             </TreeView.Styles>
                                              <TreeView.ItemTemplate>
                                                  <TreeDataTemplate x:DataType="vm:TreeNodeViewModel"
-                                                                   ItemsSource="{Binding Children}"
-                                                                   IsExpanded="{Binding IsExpanded, Mode=TwoWay}">
+                                                                   ItemsSource="{Binding Children}">
                                                       <Border Padding="6,4"
                                                               Margin="0,1"
                                                               CornerRadius="3"
