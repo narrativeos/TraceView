@@ -213,29 +213,42 @@ public sealed partial class DocumentViewModel
             return;
 
         // Find artifacts directory for image display
-        // Try in order: 1) popo/extract, 2) MinerU cache extract dir, 3) extract from MinerU ZIP
+        // Try in order: 1) popo/images (Popo service output), 2) popo/extract, 3) MinerU cache, 4) extract from ZIP
         string? artifactsDir = null;
         if (ProjectPath is not null)
         {
-            // 1: Try popo/extract first
-            var extractDir = Path.Combine(ProjectPath, "popo", "extract");
-            if (Directory.Exists(extractDir))
+            // 1: Try popo/images first (Popo service extracts images here)
+            var popoImagesDir = Path.Combine(ProjectPath, "popo", "images");
+            if (Directory.Exists(popoImagesDir))
             {
-                var imageFiles = System.IO.Directory.GetFiles(extractDir, "*.*", System.IO.SearchOption.AllDirectories)
+                var imageFiles = System.IO.Directory.GetFiles(popoImagesDir, "*.*", System.IO.SearchOption.AllDirectories)
                     .Where(f => System.IO.Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
                     .ToList();
                 if (imageFiles.Count > 0)
-                    artifactsDir = extractDir;
+                    artifactsDir = popoImagesDir;
             }
 
-            // 2: Try MinerU cache extract directory (~/.TraceView/{docName}/mineru/extract_{docId}/)
+            // 2: Try popo/extract
+            if (artifactsDir is null)
+            {
+                var extractDir = Path.Combine(ProjectPath, "popo", "extract");
+                if (Directory.Exists(extractDir))
+                {
+                    var imageFiles = System.IO.Directory.GetFiles(extractDir, "*.*", System.IO.SearchOption.AllDirectories)
+                        .Where(f => System.IO.Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
+                        .ToList();
+                    if (imageFiles.Count > 0)
+                        artifactsDir = extractDir;
+                }
+            }
+
+            // 3: Try MinerU cache extract directory (~/.TraceView/{docName}/mineru/extract_{docId}/)
             if (artifactsDir is null)
             {
                 string? docId = LocalPath is not null
                     ? System.IO.Path.GetFileNameWithoutExtension(LocalPath)
                     : null;
 
-                // If we don't have LocalPath, try to infer docId from mineru/ directory
                 if (docId is null)
                 {
                     var mineruDir = Path.Combine(ProjectPath, "mineru");
@@ -252,8 +265,6 @@ public sealed partial class DocumentViewModel
 
                 if (docId is not null)
                 {
-                    // Check the MinerU cache directory structure
-                    // The cache is at ~/.TraceView/{docName}/mineru/extract_{docId}/
                     var cacheBase = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".TraceView", docId);
                     var mineruCacheDir = Path.Combine(cacheBase, "mineru");
                     var extractedDir = Path.Combine(mineruCacheDir, $"extract_{docId}");
@@ -269,7 +280,7 @@ public sealed partial class DocumentViewModel
                 }
             }
 
-            // 3: Extract from MinerU ZIP as last resort
+            // 4: Extract from MinerU ZIP as last resort
             if (artifactsDir is null)
             {
                 string? docId = LocalPath is not null
@@ -295,20 +306,14 @@ public sealed partial class DocumentViewModel
                     var zipPath = MinerUJsonService.FindMinerUZipInProject(ProjectPath, docId);
                     if (zipPath is not null)
                     {
-                        var imagesDir = Path.Combine(ProjectPath, "popo", "images");
                         try
                         {
-                            if (!Directory.Exists(imagesDir))
-                            {
-                                Directory.CreateDirectory(imagesDir);
-                                System.IO.Compression.ZipFile.ExtractToDirectory(zipPath, imagesDir, overwriteFiles: true);
-                            }
-                            artifactsDir = imagesDir;
+                            if (!Directory.Exists(popoImagesDir))
+                                Directory.CreateDirectory(popoImagesDir);
+                            System.IO.Compression.ZipFile.ExtractToDirectory(zipPath, popoImagesDir, overwriteFiles: true);
+                            artifactsDir = popoImagesDir;
                         }
-                        catch
-                        {
-                            // Ignore extraction errors
-                        }
+                        catch { }
                     }
                 }
             }
