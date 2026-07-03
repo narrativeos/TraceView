@@ -72,6 +72,24 @@ public partial class TreeNodeViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Whether the node has a non-empty title.
+    /// </summary>
+    public bool HasTitle => !string.IsNullOrEmpty(Title);
+
+    /// <summary>
+    /// Content preview (truncated to 120 chars).
+    /// </summary>
+    public string ContentPreview
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(Content))
+                return string.Empty;
+            return Content.Length > 120 ? Content[..120] + "..." : Content;
+        }
+    }
+
+    /// <summary>
     /// Display info string with level and block count.
     /// </summary>
     public string DisplayInfo => $"level:{Level} blocks:[{string.Join(",", BlockIds)}]";

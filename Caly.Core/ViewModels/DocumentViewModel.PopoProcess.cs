@@ -221,14 +221,15 @@ public sealed partial class DocumentViewModel
                 OnPopoProgress,
                 _popoCts.Token);
 
-            // Load result using the shared helper (sets MinerUDocument, AnalysisViewModel,
-            // page blocks, MinerUBlocks, and IsPopoPaneOpen)
             if (result.MinerUDocument is not null)
             {
-                LoadMinerUDocument(result.MinerUDocument);
+                // Build hierarchical tree for Column 3 (matches popo_result.json tree structure)
+                if (result.MinerUDocument.TreeRoot is not null)
+                {
+                    PopoTreeRoot = new TreeNodeViewModel(result.MinerUDocument.TreeRoot);
+                }
 
-                // Populate PopoBlocks with the actual Popo-processed results
-                // (separate from LoadMinerUDocument so MinerU data doesn't leak into the Popo column)
+                // Populate flat blocks for backward compatibility
                 var allBlocks = result.MinerUDocument.GetAllBlocks();
                 PopoBlocks.Clear();
                 foreach (var block in allBlocks)

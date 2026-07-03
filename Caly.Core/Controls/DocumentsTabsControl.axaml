@@ -425,7 +425,7 @@
                                         <TextBlock Text="Popo"
                                                    FontWeight="Bold"
                                                    FontSize="12"/>
-                                        <TextBlock Text="{Binding PopoBlocks.Count, StringFormat='({0} blocks)'}"
+                                        <TextBlock Text="{Binding PopoTreeNodeCount, StringFormat='({0} nodes)'}"
                                                    FontSize="11"
                                                    Opacity="0.6"
                                                    IsVisible="{Binding !IsPopoProcessing}"/>
@@ -494,34 +494,51 @@
 
                                     <!-- Blocks List: shown only when not processing and no error -->
                                     <ScrollViewer IsVisible="{Binding ShowPopoBlocksList}">
-                                        <ItemsControl ItemsSource="{Binding PopoBlocks}">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate x:DataType="vm:BlockViewModel">
-                                                    <Border Padding="6"
+                                        <TreeView ItemsSource="{Binding PopoTreeRootChildren}"
+                                                  BorderThickness="0"
+                                                  Background="Transparent">
+                                            <TreeView.ItemTemplate>
+                                                <TreeDataTemplate x:DataType="vm:TreeNodeViewModel"
+                                                                  ItemsSource="{Binding Children}">
+                                                    <Border Padding="8"
                                                             Margin="0,2"
                                                             Background="{DynamicResource SystemChromeMediumLowColor}"
-                                                            CornerRadius="3">
-                                                        <StackPanel Spacing="3">
+                                                            CornerRadius="4">
+                                                        <StackPanel Spacing="4">
+                                                            <!-- Title (section heading) -->
+                                                            <TextBlock Text="{Binding DisplayTitle}"
+                                                                       FontSize="12"
+                                                                       FontWeight="Bold"
+                                                                       TextWrapping="Wrap"
+                                                                       IsVisible="{Binding HasTitle}"/>
+
+                                                            <!-- Type + Level badge row -->
                                                             <StackPanel Orientation="Horizontal"
-                                                                        Spacing="4">
-                                                                <TextBlock Text="{Binding Id, StringFormat='#{0}'}"
+                                                                        Spacing="6">
+                                                                <Border Padding="3,1"
+                                                                        CornerRadius="3"
+                                                                        Background="{DynamicResource SystemAccentColor}">
+                                                                    <TextBlock Text="{Binding Type}"
+                                                                               FontSize="10"
+                                                                               Foreground="White"/>
+                                                                </Border>
+                                                                <TextBlock Text="{Binding Level, StringFormat='L{0}'}"
                                                                            FontSize="10"
-                                                                           FontWeight="Bold"
-                                                                           Opacity="0.7"/>
-                                                                <TextBlock Text="{Binding Type}"
-                                                                           FontSize="10"
-                                                                           FontWeight="SemiBold"/>
+                                                                           Opacity="0.5"
+                                                                           VerticalAlignment="Center"/>
                                                             </StackPanel>
+
+                                                            <!-- Content preview -->
                                                             <TextBlock Text="{Binding ContentPreview}"
-                                                                       FontSize="10"
+                                                                       FontSize="11"
                                                                        TextWrapping="Wrap"
                                                                        Opacity="0.8"
-                                                                       MaxLines="3"/>
+                                                                       MaxLines="4"/>
                                                         </StackPanel>
                                                     </Border>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
+                                                </TreeDataTemplate>
+                                            </TreeView.ItemTemplate>
+                                        </TreeView>
                                     </ScrollViewer>
                                 </DockPanel>
                             </Border>

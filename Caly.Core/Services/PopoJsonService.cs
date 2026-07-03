@@ -647,6 +647,10 @@ public static class PopoJsonService
 
     /// <summary>
     /// Tries to parse a single JSON file as a Popo-serialized MinerUDocument.
+    /// Handles two formats:
+    ///   1. Direct MinerUDocument JSON (e.g., popo.json)
+    ///   2. PopoTaskResultResponse wrapper (e.g., result_*/popo_result.json)
+    ///      which contains task_id/status/result.tree.
     /// Callers should route MinerU *_middle.json files to TryParseMinerUMiddleJson directly.
     /// </summary>
     static MinerUDocument? TryParsePopoResultJson(string jsonPath)
@@ -657,10 +661,25 @@ public static class PopoJsonService
         try
         {
             var json = File.ReadAllText(jsonPath);
-            var minerUDoc = JsonSerializer.Deserialize<MinerUDocument>(json, MineruDocumentOptions);
 
+            // Strategy 1: Try direct MinerUDocument deserialization (popo.json format)
+            var minerUDoc = JsonSerializer.Deserialize<MinerUDocument>(json, MineruDocumentOptions);
             if (minerUDoc is not null && (minerUDoc.GetAllBlocks().Count > 0 || minerUDoc.TreeRoot is not null))
                 return minerUDoc;
+
+            // Strategy 2: Try PopoTaskResultResponse wrapper format (popo_result.json format)
+            // This is the raw API response saved by PopoService.DownloadAndParseResultAsync:
+            //   { task_id, status, result: { doc_id, status, message, tree: {...} } }
+            // Use MineruDocumentOptions (reflection-based) because AnalysisTreeNode also uses
+            // [ObservableProperty] — the JSON source generator can't see its generated properties.
+            var wrapped = JsonSerializer.Deserialize<PopoTaskResultResponse>(json, MineruDocumentOptions);
+            if (wrapped?.Result?.Tree is not null)
+            {
+                return BuildMinerUDocumentFromTree(
+                    wrapped.Result.Tree,
+                    wrapped.Result.DocId,
+                    DefaultModelName);
+            }
 
             return null;
         }

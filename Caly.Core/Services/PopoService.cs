@@ -233,7 +233,9 @@ public sealed class PopoService : IDisposable
         File.WriteAllText(jsonPath, json);
 
         // Parse the wrapped response
-        var resultResponse = JsonSerializer.Deserialize<PopoTaskResultResponse>(json, PopoJsonService.DefaultDeserializeOptions);
+        // Use MineruDocumentOptions (reflection-based) because AnalysisTreeNode also uses
+        // [ObservableProperty] — the JSON source generator can't see its generated properties.
+        var resultResponse = JsonSerializer.Deserialize<PopoTaskResultResponse>(json, PopoJsonService.MineruDocumentOptions);
         if (resultResponse?.Result?.Tree is null)
         {
             throw new PopoServiceException(

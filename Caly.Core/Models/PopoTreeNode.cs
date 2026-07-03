@@ -93,8 +93,9 @@ public partial class AnalysisTreeNode : ObservableObject
     private bool _isSelected;
 
     /// <summary>
-    /// Computed property: child count.
+    /// Computed property: child count (excluded from JSON serialization).
     /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
     public int ChildCount => Children.Count;
 
     /// <summary>

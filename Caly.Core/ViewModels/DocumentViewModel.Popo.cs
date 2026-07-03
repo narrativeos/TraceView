@@ -94,6 +94,49 @@ public sealed partial class DocumentViewModel
     /// </summary>
     public bool HasPopoBlocks => PopoBlocks.Count > 0;
 
+    /// <summary>
+    /// Tree root for hierarchical Popo display (Column 3).
+    /// Wraps MinerUDocument.TreeRoot into a TreeNodeViewModel for TreeView binding.
+    /// </summary>
+    [ObservableProperty]
+    private TreeNodeViewModel? _popoTreeRoot;
+
+    /// <summary>
+    /// Safe access to PopoTreeRoot.Children for TreeView ItemsSource.
+    /// </summary>
+    public ObservableCollection<TreeNodeViewModel>? PopoTreeRootChildren =>
+        PopoTreeRoot?.Children;
+
+    /// <summary>
+    /// Total visible node count in the Popo tree (excluding the root container, for header display).
+    /// Counts all descendants of the root node that are actually shown in the TreeView.
+    /// </summary>
+    public int PopoTreeNodeCount
+    {
+        get
+        {
+            var root = PopoTreeRoot;
+            if (root is null) return 0;
+            return CountDescendants(root);
+        }
+    }
+
+    private static int CountDescendants(TreeNodeViewModel node)
+    {
+        int count = 0;
+        foreach (var child in node.Children)
+        {
+            count += 1 + CountDescendants(child);
+        }
+        return count;
+    }
+
+    partial void OnPopoTreeRootChanged(TreeNodeViewModel? value)
+    {
+        OnPropertyChanged(nameof(PopoTreeNodeCount));
+        OnPropertyChanged(nameof(PopoTreeRootChildren));
+    }
+
     [RelayCommand]
     private void TogglePopoPane()
     {
@@ -166,19 +209,16 @@ public sealed partial class DocumentViewModel
         if (minerUDoc is null)
             return;
 
-        MinerUDocument = minerUDoc;
-        AnalysisViewModel = new AnalysisViewModel(minerUDoc);
-
         // Show the analysis column when Popo data is loaded
         ShowAnalysisColumn = true;
 
-        // Assign blocks to each page view model
-        foreach (var page in Pages)
+        // Build hierarchical tree for Column 3 (matches popo_result.json tree structure)
+        if (minerUDoc.TreeRoot is not null)
         {
-            page.MinerUBlocks = minerUDoc.GetBlocksForPage(page.PageNumber);
+            PopoTreeRoot = new TreeNodeViewModel(minerUDoc.TreeRoot);
         }
 
-        // Populate flat Popo blocks for the right column
+        // Populate flat blocks for backward compatibility
         PopoBlocks.Clear();
         foreach (var block in minerUDoc.GetAllBlocks())
         {
