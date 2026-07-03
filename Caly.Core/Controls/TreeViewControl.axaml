@@ -11,7 +11,8 @@
                ClipToBounds="True">
         <TreeView.ItemTemplate>
             <TreeDataTemplate x:DataType="vm:TreeNodeViewModel"
-                              ItemsSource="{Binding Children}">
+                              ItemsSource="{Binding Children}"
+                              IsExpanded="{Binding IsExpanded, Mode=TwoWay}">
                 <Border Padding="8"
                         Margin="0,2,0,2"
                         CornerRadius="6"
