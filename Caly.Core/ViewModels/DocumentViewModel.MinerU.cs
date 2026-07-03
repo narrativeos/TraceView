@@ -181,7 +181,7 @@ public sealed partial class DocumentViewModel
 
         // Step 1: Try to load from cache first (avoids unnecessary network requests)
         var cachedResult = service.TryLoadFromCache(LocalPath);
-        if (cachedResult?.MinerUDocument is not null)
+        if (cachedResult?.StructureDocument is not null)
         {
             LoadParseResult(cachedResult);
             MinerUStatus = MinerUParseStatus.Completed;
@@ -322,7 +322,7 @@ public sealed partial class DocumentViewModel
 
             var result = await service.BuildParseResultFromZipAsync(zipPath, LocalPath, OnMinerUProgress, _minerUCts.Token);
 
-            System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] Parse completed: MinerUDocument={result.MinerUDocument != null}, ZipPath={result.ZipPath}, ArtifactsDir={result.ArtifactsDirectory}");
+            System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] Parse completed: StructureDocument={result.StructureDocument != null}, ZipPath={result.ZipPath}, ArtifactsDir={result.ArtifactsDirectory}");
 
             // Load result into Popo properties
             LoadParseResult(result);
@@ -397,31 +397,31 @@ public sealed partial class DocumentViewModel
     /// </summary>
     private void LoadParseResult(MinerUParseResult result)
     {
-        System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] LoadParseResult called, MinerUDocument={result.MinerUDocument != null}");
+        System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] LoadParseResult called, StructureDocument={result.StructureDocument != null}");
 
-        if (result.MinerUDocument is null)
+        if (result.StructureDocument is null)
         {
-            System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] LoadParseResult: MinerUDocument is NULL, returning early!");
+            System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] LoadParseResult: StructureDocument is NULL, returning early!");
             return;
         }
 
-        LoadMinerUDocument(result.MinerUDocument);
+        LoadStructureDocument(result.StructureDocument);
     }
 
     /// <summary>
-    /// Loads a MinerUDocument into the ViewModel properties.
+    /// Loads a StructureDocument into the ViewModel properties.
     /// Shared by both MinerU (AI Parse) and Popo processing flows.
     /// Populates page blocks, MinerU middle blocks, and auto-opens the analysis pane.
     /// Does NOT populate PopoBlocks — that is done separately by Popo processing.
     /// </summary>
-    private void LoadMinerUDocument(MinerUDocument minerUDoc)
+    private void LoadStructureDocument(StructureDocument minerUDoc)
     {
-        System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] MinerUDocument has {minerUDoc.GetAllBlocks().Count} blocks, TreeRoot={minerUDoc.TreeRoot != null}");
+        System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] StructureDocument has {minerUDoc.GetAllBlocks().Count} blocks, TreeRoot={minerUDoc.TreeRoot != null}");
 
-        MinerUDocument = minerUDoc;
+        StructureDocument = minerUDoc;
         AnalysisViewModel = new AnalysisViewModel(minerUDoc);
 
-        System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] MinerUDocument and AnalysisViewModel set");
+        System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] StructureDocument and AnalysisViewModel set");
 
         // Assign blocks to each page view model
         foreach (var page in Pages)
@@ -463,7 +463,7 @@ public sealed partial class DocumentViewModel
         // Auto-open the Popo analysis pane
         IsPopoPaneOpen = true;
 
-        System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] LoadMinerUDocument completed: HasMinerUDocument={HasMinerUDocument}, MinerUBlocks={MinerUBlocks.Count}");
+        System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] LoadStructureDocument completed: HasStructureDocument={HasStructureDocument}, MinerUBlocks={MinerUBlocks.Count}");
     }
 
     /// <summary>
@@ -501,9 +501,9 @@ public sealed partial class DocumentViewModel
         if (minerUDoc is null)
             return;
 
-        // Set MinerUDocument first — subscribes the Pages.CollectionChanged handler
+        // Set StructureDocument first — subscribes the Pages.CollectionChanged handler
         // so any pages added later will automatically get blocks assigned.
-        MinerUDocument = minerUDoc;
+        StructureDocument = minerUDoc;
 
         // Assign blocks to existing pages (the CollectionChanged handler only covers future additions)
         foreach (var page in Pages)

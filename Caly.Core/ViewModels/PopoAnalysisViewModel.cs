@@ -34,26 +34,26 @@ namespace Caly.Core.ViewModels;
 /// </summary>
 public partial class AnalysisViewModel : ViewModelBase
 {
-    private readonly MinerUDocument _minerUDocument;
+    private readonly StructureDocument _structureDocument;
 
-    public AnalysisViewModel(MinerUDocument minerUDocument)
+    public AnalysisViewModel(StructureDocument structureDocument)
     {
-        _minerUDocument = minerUDocument;
+        _structureDocument = structureDocument;
 
         // Build block view models
-        foreach (var block in minerUDocument.GetAllBlocks())
+        foreach (var block in structureDocument.GetAllBlocks())
         {
             AllBlocks.Add(new BlockViewModel(block));
         }
 
         // Build tree view model
-        if (minerUDocument.TreeRoot is not null)
+        if (structureDocument.TreeRoot is not null)
         {
-            TreeRoot = new TreeNodeViewModel(minerUDocument.TreeRoot);
+            TreeRoot = new TreeNodeViewModel(structureDocument.TreeRoot);
         }
 
         // Load aggregations
-        Aggregations = minerUDocument.Aggregations;
+        Aggregations = structureDocument.Aggregations;
 
         // Initialize visible types
         VisibleTypes.Add("title");
@@ -65,12 +65,12 @@ public partial class AnalysisViewModel : ViewModelBase
         ApplyFilters();
     }
 
-    public MinerUDocument MinerUDocument => _minerUDocument;
+    public StructureDocument StructureDocument => _structureDocument;
 
     // === Data availability indicators ===
-    public bool HasNormalization => _minerUDocument.PagesBlocks.Count > 0;
-    public bool HasInference => _minerUDocument.InferenceBlocks.Count > 0;
-    public bool HasTree => _minerUDocument.TreeRoot is not null;
+    public bool HasNormalization => _structureDocument.PagesBlocks.Count > 0;
+    public bool HasInference => _structureDocument.InferenceBlocks.Count > 0;
+    public bool HasTree => _structureDocument.TreeRoot is not null;
 
     /// <summary>
     /// Human-readable status text showing which stages are available.
@@ -115,8 +115,8 @@ public partial class AnalysisViewModel : ViewModelBase
 
     partial void OnTreeRootChanged(TreeNodeViewModel? value)
     {
-        // Reload aggregations from MinerUDocument
-        Aggregations = _minerUDocument.Aggregations;
+        // Reload aggregations from StructureDocument
+        Aggregations = _structureDocument.Aggregations;
     }
 
     // === Selection/Highlight ===

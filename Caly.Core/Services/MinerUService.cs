@@ -636,7 +636,7 @@ public sealed class MinerUService : IDisposable
 
         return new MinerUParseResult
         {
-            MinerUDocument = minerUDoc,
+            StructureDocument = minerUDoc,
             ZipPath = zipPath,
             Markdown = markdownInfo.markdown,
             PopoMarkdown = markdownInfo.popoMarkdown,
@@ -730,7 +730,7 @@ public sealed class MinerUService : IDisposable
 
         return new MinerUParseResult
         {
-            MinerUDocument = minerUDoc,
+            StructureDocument = minerUDoc,
             ZipPath = zipPath,
             Markdown = markdownInfo.markdown,
             PopoMarkdown = markdownInfo.popoMarkdown,

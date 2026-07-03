@@ -31,11 +31,11 @@ namespace Caly.Core.ViewModels;
 public sealed partial class DocumentViewModel
 {
     [ObservableProperty]
-    private MinerUDocument? _minerUDocument;
+    private StructureDocument? _structureDocument;
 
-    partial void OnMinerUDocumentChanged(MinerUDocument? value)
+    partial void OnStructureDocumentChanged(StructureDocument? value)
     {
-        OnPropertyChanged(nameof(HasMinerUDocument));
+        OnPropertyChanged(nameof(HasStructureDocument));
         OnPropertyChanged(nameof(HasMinerUZip));
 
         // Defensively ensure newly added pages get blocks assigned
@@ -51,14 +51,14 @@ public sealed partial class DocumentViewModel
 
     /// <summary>
     /// When new pages are added to the collection, assign their MinerU blocks
-    /// if a MinerUDocument is already loaded. Handles lazy/late page creation.
+    /// if a StructureDocument is already loaded. Handles lazy/late page creation.
     /// </summary>
     private void OnPagesCollectionChangedForBlocks(object? sender, NotifyCollectionChangedEventArgs e)
     {
         if (e.Action != NotifyCollectionChangedAction.Add || e.NewItems is null)
             return;
 
-        var doc = MinerUDocument;
+        var doc = StructureDocument;
         if (doc is null)
             return;
 
@@ -72,9 +72,9 @@ public sealed partial class DocumentViewModel
     }
 
     /// <summary>
-    /// Gets whether a MinerUDocument has been loaded (for UI visibility binding).
+    /// Gets whether a StructureDocument has been loaded (for UI visibility binding).
     /// </summary>
-    public bool HasMinerUDocument => MinerUDocument is not null;
+    public bool HasStructureDocument => StructureDocument is not null;
 
     [ObservableProperty]
     private AnalysisViewModel? _analysisViewModel;
@@ -96,7 +96,7 @@ public sealed partial class DocumentViewModel
 
     /// <summary>
     /// Tree root for hierarchical Popo display (Column 3).
-    /// Wraps MinerUDocument.TreeRoot into a TreeNodeViewModel for TreeView binding.
+    /// Wraps StructureDocument.TreeRoot into a TreeNodeViewModel for TreeView binding.
     /// </summary>
     [ObservableProperty]
     private TreeNodeViewModel? _popoTreeRoot;
@@ -154,7 +154,7 @@ public sealed partial class DocumentViewModel
         if (ProjectPath is null && LocalPath is null)
             return;
 
-        MinerUDocument? minerUDoc = null;
+        StructureDocument? minerUDoc = null;
 
         // Phase 1: Check project's popo/ directory
         if (ProjectPath is not null)
@@ -169,7 +169,7 @@ public sealed partial class DocumentViewModel
                     try
                     {
                         var json = File.ReadAllText(popoJsonPath);
-                        minerUDoc = System.Text.Json.JsonSerializer.Deserialize<MinerUDocument>(json, PopoJsonService.MineruDocumentOptions);
+                        minerUDoc = System.Text.Json.JsonSerializer.Deserialize<StructureDocument>(json, PopoJsonService.StructureDocumentOptions);
                     }
                     catch
                     {
@@ -203,7 +203,7 @@ public sealed partial class DocumentViewModel
         // Phase 2: Check standard outputs/ directory (sibling to PDF)
         if (minerUDoc is null && LocalPath is not null)
         {
-            minerUDoc = PopoJsonService.LoadMinerUDocument(LocalPath);
+            minerUDoc = PopoJsonService.LoadStructureDocument(LocalPath);
         }
 
         if (minerUDoc is null)

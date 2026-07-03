@@ -350,20 +350,20 @@ public class PopoJsonServiceTests
     #region Save/Load Round-Trip Tests
 
     [Fact]
-    public void SaveMinerUDocumentToProject_And_LoadBack()
+    public void SaveStructureDocumentToProject_And_LoadBack()
     {
         var projectPath = Path.Combine(Path.GetTempPath(), "caly-popo-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(projectPath);
 
         try
         {
-            var doc = new Caly.Core.Models.MinerUDocument
+            var doc = new Caly.Core.Models.StructureDocument
             {
                 ModelName = "test_model",
                 DocId = "test_doc"
             };
 
-            PopoJsonService.SaveMinerUDocumentToProject(doc, projectPath);
+            PopoJsonService.SaveStructureDocumentToProject(doc, projectPath);
 
             var popoDir = Path.Combine(projectPath, "popo");
             Assert.True(Directory.Exists(popoDir));
@@ -371,7 +371,7 @@ public class PopoJsonServiceTests
             var popoJsonPath = Path.Combine(popoDir, "popo.json");
             Assert.True(File.Exists(popoJsonPath));
 
-            var loaded = PopoJsonService.LoadMinerUDocumentFromProject(projectPath);
+            var loaded = PopoJsonService.LoadStructureDocumentFromProject(projectPath);
             Assert.NotNull(loaded);
             Assert.Equal("test_model", loaded!.ModelName);
             Assert.Equal("test_doc", loaded.DocId);
@@ -384,16 +384,16 @@ public class PopoJsonServiceTests
     }
 
     [Fact]
-    public void LoadMinerUDocumentFromProject_ReturnsNullForNonExistentProject()
+    public void LoadStructureDocumentFromProject_ReturnsNullForNonExistentProject()
     {
-        var result = PopoJsonService.LoadMinerUDocumentFromProject("/nonexistent/path");
+        var result = PopoJsonService.LoadStructureDocumentFromProject("/nonexistent/path");
         Assert.Null(result);
     }
 
     [Fact]
-    public void LoadMinerUDocumentFromProject_ReturnsNullForNullPath()
+    public void LoadStructureDocumentFromProject_ReturnsNullForNullPath()
     {
-        var result = PopoJsonService.LoadMinerUDocumentFromProject(null);
+        var result = PopoJsonService.LoadStructureDocumentFromProject(null);
         Assert.Null(result);
     }
 

@@ -65,11 +65,11 @@ public static class PopoJsonService
     };
 
     /// <summary>
-    /// JSON serializer options for MinerUDocument serialization/deserialization.
-    /// Uses reflection-based resolver because MinerUDocument uses [ObservableProperty]
+    /// JSON serializer options for StructureDocument serialization/deserialization.
+    /// Uses reflection-based resolver because StructureDocument uses [ObservableProperty]
     /// whose generated properties are not visible to the JSON source generator.
     /// </summary>
-    internal static readonly JsonSerializerOptions MineruDocumentOptions = new()
+    internal static readonly JsonSerializerOptions StructureDocumentOptions = new()
     {
         WriteIndented = true,
         PropertyNameCaseInsensitive = true,
@@ -150,10 +150,10 @@ public static class PopoJsonService
     }
 
     /// <summary>
-    /// Loads a MinerUDocument from a project's popo/ directory.
+    /// Loads a StructureDocument from a project's popo/ directory.
     /// Looks for popo.json in the project's popo/ subdirectory only.
     /// </summary>
-    public static MinerUDocument? LoadMinerUDocumentFromProject(string? projectPath)
+    public static StructureDocument? LoadStructureDocumentFromProject(string? projectPath)
     {
         if (string.IsNullOrEmpty(projectPath))
             return null;
@@ -169,7 +169,7 @@ public static class PopoJsonService
             try
             {
                 var json = File.ReadAllText(popoJsonPath);
-                return JsonSerializer.Deserialize<MinerUDocument>(json, MineruDocumentOptions);
+                return JsonSerializer.Deserialize<StructureDocument>(json, StructureDocumentOptions);
             }
             catch
             {
@@ -181,9 +181,9 @@ public static class PopoJsonService
     }
 
     /// <summary>
-    /// Saves a MinerUDocument to a project's popo/ directory.
+    /// Saves a StructureDocument to a project's popo/ directory.
     /// </summary>
-    public static void SaveMinerUDocumentToProject(MinerUDocument doc, string projectPath)
+    public static void SaveStructureDocumentToProject(StructureDocument doc, string projectPath)
     {
         if (string.IsNullOrEmpty(projectPath))
             return;
@@ -192,18 +192,18 @@ public static class PopoJsonService
         Directory.CreateDirectory(popoDir);
 
         var popoJsonPath = Path.Combine(popoDir, "popo.json");
-        var json = JsonSerializer.Serialize(doc, MineruDocumentOptions);
+        var json = JsonSerializer.Serialize(doc, StructureDocumentOptions);
         File.WriteAllText(popoJsonPath, json);
     }
 
     /// <summary>
-    /// Loads a complete MinerUDocument from JSON files.
+    /// Loads a complete StructureDocument from JSON files.
     /// </summary>
-    public static MinerUDocument? LoadMinerUDocument(string pdfPath, string modelName = DefaultModelName)
+    public static StructureDocument? LoadStructureDocument(string pdfPath, string modelName = DefaultModelName)
     {
         var (normalizedJson, inferenceJson, treeJson) = FindPopoJsonPaths(pdfPath, modelName);
 
-        var doc = new MinerUDocument();
+        var doc = new StructureDocument();
         var loaded = false;
 
         // Load normalized JSON (pages-based structure)
@@ -247,9 +247,9 @@ public static class PopoJsonService
     /// Loads normalization JSON (label_normalization.py output).
     /// Format: { "model": "...", "doc_id": "...", "pages": { "1": [ {...}, ... ], ... } }
     /// </summary>
-    internal static MinerUDocument LoadNormalizationJson(string jsonPath)
+    internal static StructureDocument LoadNormalizationJson(string jsonPath)
     {
-        var doc = new MinerUDocument();
+        var doc = new StructureDocument();
         var json = File.ReadAllText(jsonPath);
         var root = JsonDocument.Parse(json);
         var elem = root.RootElement;
@@ -458,7 +458,7 @@ public static class PopoJsonService
     }
 
     // Extension method for MinerUDocument to populate PagesBlocks from InferenceBlocks
-    private static void PopulatePagesBlocksFromInference(this MinerUDocument doc)
+    private static void PopulatePagesBlocksFromInference(this StructureDocument doc)
     {
         var pages = new Dictionary<int, List<MinerUBlock>>();
 
@@ -482,7 +482,7 @@ public static class PopoJsonService
     /// Searches for popo_result.json, extract/ JSON files, standard outputs/ structure,
     /// or falls back to MinerU middle.json format.
     /// </summary>
-    public static MinerUDocument? TryParseMinerUResultDir(string resultDir)
+    public static StructureDocument? TryParseMinerUResultDir(string resultDir)
     {
         if (!Directory.Exists(resultDir))
             return null;
@@ -548,7 +548,7 @@ public static class PopoJsonService
     ///   outputs/inference/{model}/{docId}.json
     ///   outputs/build_tree/{model}/{docId}.json
     /// </summary>
-    private static MinerUDocument? LoadFromOutputsDirectory(string outputsDir)
+    private static StructureDocument? LoadFromOutputsDirectory(string outputsDir)
     {
         // Find the first available JSON file to determine docId and model
         string? docId = null;
@@ -575,7 +575,7 @@ public static class PopoJsonService
         if (docId is null)
             return null;
 
-        var doc = new MinerUDocument { DocId = docId, ModelName = modelName ?? DefaultModelName };
+        var doc = new StructureDocument { DocId = docId, ModelName = modelName ?? DefaultModelName };
 
         // Load normalization
         var (normalized, inference, tree) = FindPopoJsonPathsInOutputs(outputsDir, modelName ?? DefaultModelName, docId);
@@ -657,7 +657,7 @@ public static class PopoJsonService
     /// avoiding double deserialization. If the root has a "result" property, it's the
     /// PopoTaskResultResponse wrapper format; otherwise, it's a direct MinerUDocument.
     /// </summary>
-    static MinerUDocument? TryParsePopoResultJson(string jsonPath)
+    static StructureDocument? TryParsePopoResultJson(string jsonPath)
     {
         if (!File.Exists(jsonPath))
             return null;
@@ -675,12 +675,12 @@ public static class PopoJsonService
             {
                 // PopoTaskResultResponse wrapper format (popo_result.json):
                 //   { task_id, status, result: { doc_id, status, message, tree: {...} } }
-                // Use MineruDocumentOptions (reflection-based) because AnalysisTreeNode also uses
+                // Use StructureDocumentOptions (reflection-based) because AnalysisTreeNode also uses
                 // [ObservableProperty] — the JSON source generator can't see its generated properties.
-                var wrapped = JsonSerializer.Deserialize<PopoTaskResultResponse>(json, MineruDocumentOptions);
+                var wrapped = JsonSerializer.Deserialize<PopoTaskResultResponse>(json, StructureDocumentOptions);
                 if (wrapped?.Result?.Tree is not null)
                 {
-                    return BuildMinerUDocumentFromTree(
+                    return BuildStructureDocumentFromTree(
                         wrapped.Result.Tree,
                         wrapped.Result.DocId,
                         DefaultModelName);
@@ -690,7 +690,7 @@ public static class PopoJsonService
             {
                 // Direct MinerUDocument format (popo.json):
                 //   { docId, modelName, pagesBlocks, treeRoot, ... }
-                var minerUDoc = JsonSerializer.Deserialize<MinerUDocument>(json, MineruDocumentOptions);
+                var minerUDoc = JsonSerializer.Deserialize<StructureDocument>(json, StructureDocumentOptions);
                 if (minerUDoc is not null && (minerUDoc.GetAllBlocks().Count > 0 || minerUDoc.TreeRoot is not null))
                     return minerUDoc;
             }
@@ -704,18 +704,18 @@ public static class PopoJsonService
     }
 
     /// <summary>
-    /// Builds a MinerUDocument from a tree root returned by the Popo API.
+    /// Builds a StructureDocument from a tree root returned by the Popo API.
     /// Flattens the tree into per-page blocks, populates TreeRoot, and builds aggregation map.
     /// </summary>
     /// <param name="treeRoot">The root node of the document tree from the Popo API.</param>
     /// <param name="docId">Document ID.</param>
     /// <param name="modelName">Model name (optional, used as task/model identifier).</param>
-    public static MinerUDocument BuildMinerUDocumentFromTree(
+    public static StructureDocument BuildStructureDocumentFromTree(
         AnalysisTreeNode treeRoot,
         string docId,
         string modelName = "mineru")
     {
-        var doc = new MinerUDocument
+        var doc = new StructureDocument
         {
             DocId = docId,
             ModelName = modelName,

@@ -212,7 +212,7 @@ public sealed class PopoService : IDisposable
     /// The Popo API returns JSON in the format: { task_id, status, result: { doc_id, tree: {...} } }.
     /// Parses the tree and builds a MinerUDocument directly.
     /// </summary>
-    public async Task<MinerUDocument?> DownloadAndParseResultAsync(string taskId, string sourceDocId, CancellationToken ct = default)
+    public async Task<StructureDocument?> DownloadAndParseResultAsync(string taskId, string sourceDocId, CancellationToken ct = default)
     {
         using var response = await _httpClient.GetAsync($"{_baseUrl}/tasks/{taskId}/result", ct);
         response.EnsureSuccessStatusCode();
@@ -233,17 +233,17 @@ public sealed class PopoService : IDisposable
         File.WriteAllText(jsonPath, json);
 
         // Parse the wrapped response
-        // Use MineruDocumentOptions (reflection-based) because AnalysisTreeNode also uses
+        // Use StructureDocumentOptions (reflection-based) because AnalysisTreeNode also uses
         // [ObservableProperty] — the JSON source generator can't see its generated properties.
-        var resultResponse = JsonSerializer.Deserialize<PopoTaskResultResponse>(json, PopoJsonService.MineruDocumentOptions);
+        var resultResponse = JsonSerializer.Deserialize<PopoTaskResultResponse>(json, PopoJsonService.StructureDocumentOptions);
         if (resultResponse?.Result?.Tree is null)
         {
             throw new PopoServiceException(
                 $"Popo result missing tree. Status: {resultResponse?.Result?.Status}, Error: {resultResponse?.Error}");
         }
 
-        // Build MinerUDocument from the API tree
-        var minerUDoc = PopoJsonService.BuildMinerUDocumentFromTree(
+        // Build StructureDocument from the API tree
+        var minerUDoc = PopoJsonService.BuildStructureDocumentFromTree(
             resultResponse.Result.Tree,
             sourceDocId,
             resultResponse.TaskId);
@@ -252,7 +252,7 @@ public sealed class PopoService : IDisposable
     }
 
     /// <summary>
-    /// Full processing flow: submit -> poll -> download result -> build MinerUDocument.
+    /// Full processing flow: submit -> poll -> download result -> build StructureDocument.
     /// </summary>
     /// <param name="zipPath">Path to the MinerU ZIP file.</param>
     /// <param name="sourceDocId">Document ID for result caching.</param>
@@ -285,7 +285,7 @@ public sealed class PopoService : IDisposable
 
         return new PopoProcessResult
         {
-            MinerUDocument = minerUDoc
+            StructureDocument = minerUDoc
         };
     }
 
@@ -370,7 +370,7 @@ public static class PopoProcessStatusExtensions
 /// </summary>
 public class PopoProcessResult
 {
-    public MinerUDocument? MinerUDocument { get; init; }
+    public StructureDocument? StructureDocument { get; init; }
 }
 
 /// <summary>

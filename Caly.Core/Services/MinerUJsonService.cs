@@ -40,7 +40,7 @@ public static class MinerUJsonService
     /// This is a separate stage from Popo post-processing and may return a
     /// MinerUDocument built from MinerU middle.json output.
     /// </summary>
-    public static MinerUDocument? LoadMinerUResultFromProject(string? projectPath)
+    public static StructureDocument? LoadMinerUResultFromProject(string? projectPath)
     {
         if (string.IsNullOrEmpty(projectPath))
             return null;
@@ -130,7 +130,7 @@ public static class MinerUJsonService
     /// Parses MinerU middle.json output into a MinerUDocument.
     /// Supports both the "pages" flat block list and optional "tree" hierarchical structure.
     /// </summary>
-    public static MinerUDocument? TryParseMinerUMiddleJson(string jsonPath)
+    public static StructureDocument? TryParseMinerUMiddleJson(string jsonPath)
     {
         if (!File.Exists(jsonPath))
             return null;
@@ -141,7 +141,7 @@ public static class MinerUJsonService
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
-            var minerUDoc = new MinerUDocument
+            var minerUDoc = new StructureDocument
             {
                 DocId = GetStringProperty(root, "doc_id") ?? string.Empty,
                 ModelName = GetStringProperty(root, "model_name") ?? "mineru"
@@ -299,7 +299,7 @@ public static class MinerUJsonService
     /// Parses a MinerU result zip file and extracts MinerUDocument.
     /// Searches for *_middle.json in the extracted files.
     /// </summary>
-    public static MinerUDocument? TryParseMinerUZip(string zipPath)
+    public static StructureDocument? TryParseMinerUZip(string zipPath)
     {
         if (!File.Exists(zipPath))
             return null;
@@ -323,7 +323,7 @@ public static class MinerUJsonService
     /// </summary>
     /// <param name="extractedDir">Path to the extracted directory containing MinerU output files.</param>
     /// <returns>A MinerUDocument if parsing succeeds, otherwise null.</returns>
-    public static MinerUDocument? TryParseMinerUFromExtractedDir(string extractedDir)
+    public static StructureDocument? TryParseMinerUFromExtractedDir(string extractedDir)
     {
         if (!Directory.Exists(extractedDir))
             return null;

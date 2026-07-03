@@ -221,16 +221,16 @@ public sealed partial class DocumentViewModel
                 OnPopoProgress,
                 _popoCts.Token);
 
-            if (result.MinerUDocument is not null)
+            if (result.StructureDocument is not null)
             {
                 // Build hierarchical tree for Column 3 (matches popo_result.json tree structure)
-                if (result.MinerUDocument.TreeRoot is not null)
+                if (result.StructureDocument.TreeRoot is not null)
                 {
-                    PopoTreeRoot = new TreeNodeViewModel(result.MinerUDocument.TreeRoot);
+                    PopoTreeRoot = new TreeNodeViewModel(result.StructureDocument.TreeRoot);
                 }
 
                 // Populate flat blocks for backward compatibility
-                var allBlocks = result.MinerUDocument.GetAllBlocks();
+                var allBlocks = result.StructureDocument.GetAllBlocks();
                 PopoBlocks.Clear();
                 foreach (var block in allBlocks)
                 {
@@ -240,7 +240,7 @@ public sealed partial class DocumentViewModel
                 // Persist to project popo/popo.json so TryLoadPopoData can auto-load next time
                 if (ProjectPath is not null)
                 {
-                    PopoJsonService.SaveMinerUDocumentToProject(result.MinerUDocument, ProjectPath);
+                    PopoJsonService.SaveStructureDocumentToProject(result.StructureDocument, ProjectPath);
                 }
             }
 
