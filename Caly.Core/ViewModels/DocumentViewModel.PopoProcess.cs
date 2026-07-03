@@ -226,7 +226,7 @@ public sealed partial class DocumentViewModel
                 // Build hierarchical tree for Column 3 (matches popo_result.json tree structure)
                 if (result.StructureDocument.TreeRoot is not null)
                 {
-                    PopoTreeRoot = new TreeNodeViewModel(result.StructureDocument.TreeRoot, result.ArtifactsDirectory);
+                    PopoTreeRoot = new TreeNodeViewModel(result.StructureDocument.TreeRoot, result.ArtifactsDirectory, result.StructureDocument);
                 }
 
                 // Populate flat blocks for backward compatibility

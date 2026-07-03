@@ -39,6 +39,7 @@ public partial class TreeNodeViewModel : ObservableObject
 {
     private readonly AnalysisTreeNode _node;
     private readonly string? _artifactsDirectory;
+    private readonly System.Collections.Generic.Dictionary<int, MinerUBlock?>? _blockLookup;
 
     /// <summary>
     /// Callback invoked when this tree node is selected.
@@ -47,13 +48,24 @@ public partial class TreeNodeViewModel : ObservableObject
     /// </summary>
     public Action<int?>? OnBlockSelected { get; set; }
 
-    public TreeNodeViewModel(AnalysisTreeNode node, string? artifactsDirectory = null)
+    public TreeNodeViewModel(AnalysisTreeNode node, string? artifactsDirectory = null, StructureDocument? structureDocument = null)
     {
         _node = node;
         _artifactsDirectory = artifactsDirectory;
+
+        // Build a lookup dictionary from block ID to MinerUBlock for accurate image matching
+        if (structureDocument is not null)
+        {
+            _blockLookup = new System.Collections.Generic.Dictionary<int, MinerUBlock?>();
+            foreach (var block in structureDocument.GetAllBlocks())
+            {
+                _blockLookup[block.Id] = block;
+            }
+        }
+
         foreach (var child in node.Children)
         {
-            Children.Add(new TreeNodeViewModel(child, artifactsDirectory));
+            Children.Add(new TreeNodeViewModel(child, artifactsDirectory, structureDocument));
         }
     }
 
@@ -76,7 +88,7 @@ public partial class TreeNodeViewModel : ObservableObject
 
     /// <summary>
     /// Bitmap image for display (only for image nodes).
-    /// Uses Content or Metadata to match the correct image file.
+    /// Uses BlockIds to look up the MinerUBlock and get the actual image filename.
     /// </summary>
     public Bitmap? ImageBitmap
     {
@@ -88,11 +100,8 @@ public partial class TreeNodeViewModel : ObservableObject
             if (_cachedBitmap is not null)
                 return _cachedBitmap;
 
-            // Try to find image file in artifacts directory
-            // MinerU stores images in subdirectories like images/ or figure/
-            var imageExtensions = new[] { ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp" };
-
             // Get all image files once
+            var imageExtensions = new[] { ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp" };
             var allImageFiles = Directory.GetFiles(_artifactsDirectory, "*.*", SearchOption.AllDirectories)
                 .Where(f => imageExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()))
                 .ToList();
@@ -100,7 +109,41 @@ public partial class TreeNodeViewModel : ObservableObject
             if (allImageFiles.Count == 0)
                 return null;
 
-            // Strategy 1: Match by Content (filename reference in MinerU/Popo data)
+            // Strategy 1: Use BlockIds to look up MinerUBlock and get image filename
+            if (_blockLookup is not null && BlockIds.Count > 0)
+            {
+                foreach (var blockId in BlockIds)
+                {
+                    if (_blockLookup.TryGetValue(blockId, out var block) && block is not null)
+                    {
+                        var imageContent = block.Content;
+                        if (!string.IsNullOrEmpty(imageContent))
+                        {
+                            // Try matching by filename
+                            var contentName = Path.GetFileName(imageContent);
+                            foreach (var file in allImageFiles)
+                            {
+                                if (Path.GetFileName(file).Equals(contentName, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    try { _cachedBitmap = new Bitmap(file); return _cachedBitmap; }
+                                    catch { }
+                                }
+                            }
+                            // Try matching by full path
+                            foreach (var file in allImageFiles)
+                            {
+                                if (file.Contains(imageContent))
+                                {
+                                    try { _cachedBitmap = new Bitmap(file); return _cachedBitmap; }
+                                    catch { }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Strategy 2: Match by Content (filename reference in MinerU/Popo data)
             if (!string.IsNullOrEmpty(Content))
             {
                 var contentName = Path.GetFileName(Content);
@@ -112,18 +155,9 @@ public partial class TreeNodeViewModel : ObservableObject
                         catch { }
                     }
                 }
-                // Also try full content as path
-                foreach (var file in allImageFiles)
-                {
-                    if (file.Contains(Content))
-                    {
-                        try { _cachedBitmap = new Bitmap(file); return _cachedBitmap; }
-                        catch { }
-                    }
-                }
             }
 
-            // Strategy 2: Match by Metadata
+            // Strategy 3: Match by Metadata
             if (!string.IsNullOrEmpty(Metadata))
             {
                 var metaName = Path.GetFileName(Metadata);
@@ -137,7 +171,7 @@ public partial class TreeNodeViewModel : ObservableObject
                 }
             }
 
-            // Strategy 3: Match by BlockIds - image filenames often contain the block ID
+            // Strategy 4: Match by BlockIds in filename
             if (BlockIds.Count > 0)
             {
                 foreach (var blockId in BlockIds)
@@ -154,7 +188,7 @@ public partial class TreeNodeViewModel : ObservableObject
                 }
             }
 
-            // Strategy 4: Use Title to match
+            // Strategy 5: Match by Title
             if (!string.IsNullOrEmpty(Title))
             {
                 foreach (var file in allImageFiles)
@@ -168,7 +202,7 @@ public partial class TreeNodeViewModel : ObservableObject
                 }
             }
 
-            // Fallback: return first image (for simple cases)
+            // Fallback: return first image
             foreach (var file in allImageFiles)
             {
                 try { _cachedBitmap = new Bitmap(file); return _cachedBitmap; }

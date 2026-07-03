@@ -55,7 +55,7 @@ public partial class AnalysisViewModel : ViewModelBase
         // Build tree view model and wire selection to page block highlighting
         if (structureDocument.TreeRoot is not null)
         {
-            var treeRoot = new TreeNodeViewModel(structureDocument.TreeRoot, artifactsDirectory);
+            var treeRoot = new TreeNodeViewModel(structureDocument.TreeRoot, artifactsDirectory, structureDocument);
             WireTreeSelection(treeRoot, this);
             TreeRoot = treeRoot;
         }
