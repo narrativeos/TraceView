@@ -41,6 +41,7 @@ public partial class TreeNodeViewModel : ObservableObject
     private readonly string? _artifactsDirectory;
     private readonly System.Collections.Generic.Dictionary<int, MinerUBlock?>? _blockLookup;
     private readonly int _imageIndex; // Index among all image nodes (for order-based matching)
+    private readonly System.Collections.Generic.Dictionary<string, string>? _imagePathMap; // bbox key -> image_path
 
     /// <summary>
     /// Callback invoked when this tree node is selected.
@@ -70,6 +71,12 @@ public partial class TreeNodeViewModel : ObservableObject
             }
         }
 
+        // Build bbox-to-image_path map from middle.json for image matching
+        if (artifactsDirectory is not null)
+        {
+            _imagePathMap = BuildImagePathMap(artifactsDirectory);
+        }
+
         // Assign image indices to children in document order
         int childImageIndex = Type == "image" ? imageIndex + 1 : imageIndex;
         foreach (var child in node.Children)
@@ -78,6 +85,113 @@ public partial class TreeNodeViewModel : ObservableObject
                 childImageIndex++;
             Children.Add(new TreeNodeViewModel(child, artifactsDirectory, structureDocument, childImageIndex));
         }
+    }
+
+    /// <summary>
+    /// Builds a map from normalized bbox key to image_path by parsing the middle.json.
+    /// </summary>
+    private static System.Collections.Generic.Dictionary<string, string>? BuildImagePathMap(string artifactsDir)
+    {
+        // Look for *_middle.json in the artifacts directory
+        var middleJsons = Directory.GetFiles(artifactsDir, "*_middle.json", SearchOption.AllDirectories);
+        if (middleJsons.Length == 0)
+            return null;
+
+        var map = new System.Collections.Generic.Dictionary<string, string>();
+        foreach (var jsonPath in middleJsons)
+        {
+            try
+            {
+                var json = File.ReadAllText(jsonPath);
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                ParseMiddleJsonForImages(doc.RootElement, map);
+            }
+            catch { }
+        }
+        return map.Count > 0 ? map : null;
+    }
+
+    private static void ParseMiddleJsonForImages(System.Text.Json.JsonElement elem, System.Collections.Generic.Dictionary<string, string> map)
+    {
+        // Handle both dict and array roots
+        if (elem.ValueKind == System.Text.Json.JsonValueKind.Object)
+        {
+            // Try pdf_info array (MinerU middle.json format)
+            if (elem.TryGetProperty("pdf_info", out var pdfInfo))
+            {
+                foreach (var page in pdfInfo.EnumerateArray())
+                {
+                    if (page.TryGetProperty("para_blocks", out var blocks))
+                    {
+                        foreach (var block in blocks.EnumerateArray())
+                        {
+                            ExtractImagePathFromBlock(block, map);
+                        }
+                    }
+                }
+            }
+            // Try direct object with blocks
+            else if (elem.TryGetProperty("blocks", out var directBlocks))
+            {
+                foreach (var block in directBlocks.EnumerateArray())
+                {
+                    ExtractImagePathFromBlock(block, map);
+                }
+            }
+        }
+        else if (elem.ValueKind == System.Text.Json.JsonValueKind.Array)
+        {
+            foreach (var item in elem.EnumerateArray())
+            {
+                ExtractImagePathFromBlock(item, map);
+            }
+        }
+    }
+
+    private static void ExtractImagePathFromBlock(System.Text.Json.JsonElement block, System.Collections.Generic.Dictionary<string, string> map)
+    {
+        if (block.TryGetProperty("type", out var type) && type.GetString() == "image")
+        {
+            // Get bbox
+            if (block.TryGetProperty("bbox", out var bbox))
+            {
+                var bboxStr = string.Join(",", bbox.EnumerateArray().Select(v => v.GetInt32()));
+                // Search nested blocks for image_path
+                string? imagePath = null;
+                if (block.TryGetProperty("blocks", out var nestedBlocks))
+                {
+                    imagePath = FindImagePathInBlocks(nestedBlocks);
+                }
+                if (imagePath is not null && !map.ContainsKey(bboxStr))
+                {
+                    map[bboxStr] = imagePath;
+                }
+            }
+        }
+    }
+
+    private static string? FindImagePathInBlocks(System.Text.Json.JsonElement blocks)
+    {
+        foreach (var block in blocks.EnumerateArray())
+        {
+            if (block.TryGetProperty("lines", out var lines))
+            {
+                foreach (var line in lines.EnumerateArray())
+                {
+                    if (line.TryGetProperty("spans", out var spans))
+                    {
+                        foreach (var span in spans.EnumerateArray())
+                        {
+                            if (span.TryGetProperty("image_path", out var imgPath))
+                            {
+                                return imgPath.GetString();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return null;
     }
 
     public string Type => _node.Type;
@@ -167,7 +281,55 @@ public partial class TreeNodeViewModel : ObservableObject
                 }
             }
 
-            // Strategy 3: Order-based matching
+            // Strategy 3: Bbox-based matching using middle.json image_path map
+            // Match Popo tree node's normalized bbox against middle.json's absolute bboxes
+            if (_imagePathMap is not null && _node.Location.Count > 0)
+            {
+                var loc = _node.Location[0];
+                var normX = loc.Bbox.X; // normalized 0-1
+                var normY = loc.Bbox.Y; // normalized 0-1
+                // Find the best matching bbox from the map
+                double bestScore = double.MaxValue;
+                string? bestImagePath = null;
+                foreach (var (absBboxStr, imagePath) in _imagePathMap)
+                {
+                    var parts = absBboxStr.Split(',').Select(int.Parse).ToArray();
+                    if (parts.Length == 4)
+                    {
+                        var absX1 = parts[0];
+                        var absY1 = parts[1];
+                        var absX2 = parts[2];
+                        var absY2 = parts[3];
+                        // Find page dimensions from the bbox values
+                        var pageW = 3900.0;
+                        var pageH = 5600.0;
+                        var absNormX = absX1 / pageW;
+                        var absNormY = absY1 / pageH;
+                        var dx = normX - absNormX;
+                        var dy = normY - absNormY;
+                        var score = dx * dx + dy * dy;
+                        if (score < bestScore)
+                        {
+                            bestScore = score;
+                            bestImagePath = imagePath;
+                        }
+                    }
+                }
+                if (bestImagePath is not null && bestScore < 0.01)
+                {
+                    var imageName = Path.GetFileName(bestImagePath);
+                    foreach (var file in allImageFiles)
+                    {
+                        if (Path.GetFileName(file).Equals(imageName, StringComparison.OrdinalIgnoreCase))
+                        {
+                            try { _cachedBitmap = new Bitmap(file); return _cachedBitmap; }
+                            catch { }
+                        }
+                    }
+                }
+            }
+
+            // Strategy 4: Order-based matching
             // When BlockIds are empty and Content is empty (common in Popo API output),
             // match by the image index among all image nodes in the tree.
             if (_imageIndex >= 0 && _imageIndex < allImageFiles.Count)
