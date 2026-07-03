@@ -2,9 +2,12 @@
                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                 xmlns:vm="using:Caly.Core.ViewModels"
                 x:Class="Caly.Core.Controls.TreeViewControl"
-                x:DataType="vm:AnalysisViewModel">
+                x:DataType="vm:AnalysisViewModel"
+                ClipToBounds="True">
 
-    <TreeView ItemsSource="{Binding TreeRootChildren}">
+    <TreeView ItemsSource="{Binding TreeRootChildren}"
+              HorizontalAlignment="Stretch"
+              ScrollViewer.HorizontalScrollBarVisibility="Disabled">
         <TreeView.ItemTemplate>
             <TreeDataTemplate x:DataType="vm:TreeNodeViewModel"
                               ItemsSource="{Binding Children}">
@@ -14,10 +17,8 @@
                         BorderThickness="1,1,1,1"
                         BorderBrush="{Binding TypeColorHex}"
                         Background="{StaticResource SystemControlBackgroundChromeLowBrush}"
-                        MaxWidth="Infinity"
                         HorizontalAlignment="Stretch">
-                    <Grid ColumnDefinitions="Auto,*"
-                          MaxWidth="Infinity">
+                    <Grid ColumnDefinitions="Auto,*">
                         <!-- Type Icon -->
                         <TextBlock Grid.Column="0"
                                    Text="{Binding TypeIcon}"
@@ -26,11 +27,9 @@
                                    Margin="0,0,6,0"/>
 
                         <!-- Card Content -->
-                        <StackPanel Grid.Column="1" Spacing="4"
-                                    MaxWidth="Infinity">
+                        <StackPanel Grid.Column="1" Spacing="4">
                             <!-- Header: Type + Level + Blocks + Pages -->
-                            <StackPanel Orientation="Horizontal" Spacing="4"
-                                        MaxWidth="Infinity">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
                                 <TextBlock Text="{Binding Type}"
                                            FontWeight="Bold"
                                            FontSize="12"
@@ -79,18 +78,15 @@
                                        TextTrimming="CharacterEllipsis"/>
 
                             <!-- Meta info row -->
-                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,2,0,0"
-                                        MaxWidth="Infinity">
+                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,2,0,0">
                                 <!-- Block IDs -->
-                                <StackPanel Orientation="Horizontal" Spacing="2"
-                                            MaxWidth="Infinity">
-                                    <TextBlock Text="🔗" FontSize="9"/>
-                                    <TextBlock Text="{Binding BlockIdsDisplay}"
-                                               FontSize="9"
-                                               Opacity="0.5"
-                                               MaxLines="1"
-                                               TextTrimming="CharacterEllipsis"/>
-                                </StackPanel>
+                                <TextBlock FontSize="9"
+                                           Opacity="0.5"
+                                           MaxLines="1"
+                                           TextTrimming="CharacterEllipsis">
+                                    <Run Text="🔗"/>
+                                    <Run Text="{Binding BlockIdsDisplay}"/>
+                                </TextBlock>
 
                                 <!-- Location count -->
                                 <StackPanel Orientation="Horizontal" Spacing="2"
