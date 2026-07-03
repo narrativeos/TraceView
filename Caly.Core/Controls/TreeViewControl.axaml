@@ -6,8 +6,9 @@
                 ClipToBounds="True">
 
     <TreeView ItemsSource="{Binding TreeRootChildren}"
-              HorizontalAlignment="Stretch"
-              ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+               HorizontalAlignment="Stretch"
+               ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+               ClipToBounds="True">
         <TreeView.ItemTemplate>
             <TreeDataTemplate x:DataType="vm:TreeNodeViewModel"
                               ItemsSource="{Binding Children}">
@@ -17,8 +18,10 @@
                         BorderThickness="1,1,1,1"
                         BorderBrush="{Binding TypeColorHex}"
                         Background="{StaticResource SystemControlBackgroundChromeLowBrush}"
-                        HorizontalAlignment="Stretch">
-                    <Grid ColumnDefinitions="Auto,*">
+                        HorizontalAlignment="Stretch"
+                        ClipToBounds="True">
+                    <Grid ColumnDefinitions="Auto,*"
+                          ClipToBounds="True">
                         <!-- Type Icon -->
                         <TextBlock Grid.Column="0"
                                    Text="{Binding TypeIcon}"
@@ -75,7 +78,9 @@
                                        Opacity="0.8"
                                        MaxLines="3"
                                        TextWrapping="Wrap"
-                                       TextTrimming="CharacterEllipsis"/>
+                                       TextTrimming="CharacterEllipsis"
+                                       HorizontalAlignment="Stretch"
+                                       TextAlignment="Left"/>
 
                             <!-- Meta info row -->
                             <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,2,0,0">

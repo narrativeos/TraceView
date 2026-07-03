@@ -492,57 +492,71 @@
                                         </StackPanel>
                                     </Border>
 
-                                     <!-- Blocks List: shown only when not processing and no error -->
-                                     <ScrollViewer IsVisible="{Binding ShowPopoBlocksList}">
-                                         <TreeView ItemsSource="{Binding PopoTreeRootChildren}"
-                                                   BorderThickness="0"
-                                                   Background="Transparent">
+                                      <!-- Blocks List: shown only when not processing and no error -->
+                                      <ScrollViewer IsVisible="{Binding ShowPopoBlocksList}"
+                                                    HorizontalScrollBarVisibility="Disabled">
+                                          <TreeView ItemsSource="{Binding PopoTreeRootChildren}"
+                                                    BorderThickness="0"
+                                                    Background="Transparent"
+                                                    ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                                              <TreeView.ItemTemplate>
                                                  <TreeDataTemplate x:DataType="vm:TreeNodeViewModel"
                                                                    ItemsSource="{Binding Children}">
-                                                     <Border Padding="6,4"
-                                                             Margin="0,1"
-                                                             CornerRadius="3"
-                                                             Background="{DynamicResource SystemChromeMediumLowColor}">
-                                                         <StackPanel Spacing="2">
+                                                      <Border Padding="6,4"
+                                                              Margin="0,1"
+                                                              CornerRadius="3"
+                                                              Background="{DynamicResource SystemChromeMediumLowColor}"
+                                                              HorizontalAlignment="Stretch">
+                                                          <StackPanel Spacing="2"
+                                                                      HorizontalAlignment="Stretch">
                                                              <!-- Type badge + title -->
-                                                             <StackPanel Orientation="Horizontal"
-                                                                         Spacing="6">
-                                                                 <Border Padding="2,0"
+                                                             <Grid ColumnDefinitions="Auto,*,Auto">
+                                                                 <Border Grid.Column="0"
+                                                                         Padding="2,0"
                                                                          CornerRadius="2"
-                                                                         Background="{Binding TypeColorHex}">
+                                                                         Background="{Binding TypeColorHex}"
+                                                                         Margin="4,0,6,0">
                                                                      <TextBlock Text="{Binding Type}"
                                                                                 FontSize="9"
                                                                                 FontWeight="SemiBold"
                                                                                 Foreground="White"
                                                                                 TextAlignment="Center"/>
-                                                                 </Border>
-                                                                 <TextBlock Text="{Binding DisplayTitle}"
-                                                                            FontSize="11"
-                                                                            FontWeight="SemiBold"
-                                                                            MaxLines="1"
-                                                                            TextTrimming="CharacterEllipsis"
-                                                                            VerticalAlignment="Center"/>
-                                                                 <TextBlock Text="{Binding PageRange}"
-                                                                            FontSize="9"
-                                                                            Foreground="#4FC3F7"
-                                                                            VerticalAlignment="Center"/>
-                                                             </StackPanel>
+                                                                  </Border>
+                                                                   <TextBlock Grid.Column="1"
+                                                                              Text="{Binding DisplayTitle}"
+                                                                              FontSize="11"
+                                                                              FontWeight="SemiBold"
+                                                                              MaxLines="1"
+                                                                              TextTrimming="CharacterEllipsis"
+                                                                              VerticalAlignment="Center"
+                                                                              HorizontalAlignment="Stretch"
+                                                                              TextAlignment="Left"/>
+                                                                  <TextBlock Grid.Column="2"
+                                                                             Text="{Binding PageRange}"
+                                                                             FontSize="9"
+                                                                             Foreground="#4FC3F7"
+                                                                             VerticalAlignment="Center"
+                                                                             Margin="6,0,4,0"/>
+                                                              </Grid>
 
-                                                             <!-- Content preview (collapsed) -->
-                                                             <TextBlock Text="{Binding ContentPreview}"
-                                                                        FontSize="10"
-                                                                        Opacity="0.7"
-                                                                        MaxLines="2"
-                                                                        TextTrimming="CharacterEllipsis"
-                                                                        IsVisible="{Binding !IsContentExpanded}"/>
+                                                              <!-- Content preview (collapsed) -->
+                                                              <TextBlock Text="{Binding ContentPreview}"
+                                                                         FontSize="10"
+                                                                         Opacity="0.7"
+                                                                         MaxLines="2"
+                                                                         TextTrimming="CharacterEllipsis"
+                                                                         IsVisible="{Binding !IsContentExpanded}"
+                                                                         HorizontalAlignment="Stretch"
+                                                                         TextAlignment="Left"/>
 
-                                                             <!-- Full content (expanded) -->
-                                                             <TextBlock Text="{Binding DisplayContent}"
-                                                                        FontSize="10"
-                                                                        Opacity="0.8"
-                                                                        TextWrapping="Wrap"
-                                                                        IsVisible="{Binding IsContentExpanded}"/>
+                                                              <!-- Full content (expanded) -->
+                                                              <TextBlock Text="{Binding DisplayContent}"
+                                                                         FontSize="10"
+                                                                         Opacity="0.8"
+                                                                         TextWrapping="Wrap"
+                                                                         IsVisible="{Binding IsContentExpanded}"
+                                                                         HorizontalAlignment="Stretch"
+                                                                         TextAlignment="Left"/>
 
                                                              <!-- Expand/Collapse button for long content -->
                                                              <Button Command="{Binding ToggleContentExpandCommand}"
