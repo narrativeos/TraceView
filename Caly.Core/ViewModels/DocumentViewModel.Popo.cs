@@ -183,7 +183,7 @@ public sealed partial class DocumentViewModel
                     var extractDir = Path.Combine(popoDir, "extract");
                     if (Directory.Exists(extractDir))
                     {
-                        minerUDoc = PopoJsonService.TryParseMinerUResultDir(extractDir);
+                        minerUDoc = PopoJsonService.TryParsePopoResultDir(extractDir);
                     }
                 }
 
@@ -192,7 +192,7 @@ public sealed partial class DocumentViewModel
                 {
                     foreach (var subDir in Directory.GetDirectories(popoDir, "result_*"))
                     {
-                        minerUDoc = PopoJsonService.TryParseMinerUResultDir(subDir);
+                        minerUDoc = PopoJsonService.TryParsePopoResultDir(subDir);
                         if (minerUDoc is not null)
                             break;
                     }

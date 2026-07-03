@@ -21,6 +21,7 @@
 using Avalonia;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
+using System.Collections.Generic;
 
 namespace Caly.Core.Models;
 
@@ -108,6 +109,14 @@ public partial class MinerUBlock : ObservableObject
     /// </summary>
     [ObservableProperty]
     private int _tableMerge = -1;
+
+    /// <summary>
+    /// Original tree node block IDs from AnalysisTreeNode.BlockIds.
+    /// Populated by FlattenTreeNodes when building from tree structure.
+    /// Used for tree node ↔ block overlay cross-highlighting.
+    /// </summary>
+    [ObservableProperty]
+    private List<int> _originalBlockIds = new();
 
     /// <summary>
     /// Computed property: returns color based on Type.

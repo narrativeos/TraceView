@@ -22,6 +22,7 @@ using Avalonia;
 using Avalonia.Media;
 using Caly.Core.Models;
 using CommunityToolkit.Mvvm.ComponentModel;
+using System.Collections.Generic;
 
 namespace Caly.Core.ViewModels;
 
@@ -48,6 +49,11 @@ public partial class BlockViewModel : ObservableObject
     public int Level => _block.Level;
     public int Image => _block.Image;
     public int TableMerge => _block.TableMerge;
+
+    /// <summary>
+    /// Original tree node block IDs for tree↔page cross-highlighting.
+    /// </summary>
+    public List<int> OriginalBlockIds => _block.OriginalBlockIds;
 
     public Color TypeColor => _block.TypeColor;
 

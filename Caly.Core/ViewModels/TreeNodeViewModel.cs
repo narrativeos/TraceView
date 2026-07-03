@@ -18,6 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+using System;
 using Avalonia.Collections;
 using Avalonia.Media;
 using Caly.Core.Models;
@@ -35,6 +36,13 @@ namespace Caly.Core.ViewModels;
 public partial class TreeNodeViewModel : ObservableObject
 {
     private readonly AnalysisTreeNode _node;
+
+    /// <summary>
+    /// Callback invoked when this tree node is selected.
+    /// Passes the first original block ID for page overlay highlighting.
+    /// Set by AnalysisViewModel during tree construction.
+    /// </summary>
+    public Action<int?>? OnBlockSelected { get; set; }
 
     public TreeNodeViewModel(AnalysisTreeNode node)
     {
@@ -251,5 +259,16 @@ public partial class TreeNodeViewModel : ObservableObject
     private void ToggleSelect()
     {
         IsSelected = !IsSelected;
+
+        // Notify AnalysisViewModel to highlight corresponding page blocks
+        if (IsSelected)
+        {
+            var firstId = BlockIds.Count > 0 ? BlockIds[0] : (int?)null;
+            OnBlockSelected?.Invoke(firstId);
+        }
+        else
+        {
+            OnBlockSelected?.Invoke(null);
+        }
     }
 }

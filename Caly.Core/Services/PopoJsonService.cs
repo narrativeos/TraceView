@@ -457,7 +457,7 @@ public static class PopoJsonService
         return new Rect(0, 0, 0, 0);
     }
 
-    // Extension method for MinerUDocument to populate PagesBlocks from InferenceBlocks
+    // Extension method for StructureDocument to populate PagesBlocks from InferenceBlocks
     private static void PopulatePagesBlocksFromInference(this StructureDocument doc)
     {
         var pages = new Dictionary<int, List<MinerUBlock>>();
@@ -482,7 +482,7 @@ public static class PopoJsonService
     /// Searches for popo_result.json, extract/ JSON files, standard outputs/ structure,
     /// or falls back to MinerU middle.json format.
     /// </summary>
-    public static StructureDocument? TryParseMinerUResultDir(string resultDir)
+    public static StructureDocument? TryParsePopoResultDir(string resultDir)
     {
         if (!Directory.Exists(resultDir))
             return null;
@@ -509,7 +509,7 @@ public static class PopoJsonService
                     return result;
             }
 
-            // 2b: Try other JSON files as Popo-serialized MinerUDocument format
+            // 2b: Try other JSON files as Popo-serialized StructureDocument format
             var otherJsonFiles = Directory.GetFiles(extractDir, "*.json", SearchOption.AllDirectories)
                 .Where(f => !Path.GetFileName(f).EndsWith("_middle.json", StringComparison.OrdinalIgnoreCase));
             foreach (var jsonFile in otherJsonFiles)
@@ -543,7 +543,7 @@ public static class PopoJsonService
     }
 
     /// <summary>
-    /// Loads a MinerUDocument from the standard Popo outputs/ directory structure:
+    /// Loads a StructureDocument from the standard Popo outputs/ directory structure:
     ///   outputs/label_normalization/{model}/{docId}.json
     ///   outputs/inference/{model}/{docId}.json
     ///   outputs/build_tree/{model}/{docId}.json
@@ -646,16 +646,17 @@ public static class PopoJsonService
     }
 
     /// <summary>
-    /// Tries to parse a single JSON file as a Popo-serialized MinerUDocument.
+    /// <summary>
+    /// Tries to parse a single JSON file as a Popo-serialized StructureDocument.
     /// Handles two formats:
-    ///   1. Direct MinerUDocument JSON (e.g., popo.json)
+    ///   1. Direct StructureDocument JSON (e.g., popo.json)
     ///   2. PopoTaskResultResponse wrapper (e.g., result_*/popo_result.json)
     ///      which contains task_id/status/result.tree.
     /// Callers should route MinerU *_middle.json files to TryParseMinerUMiddleJson directly.
     ///
     /// Performance note: uses JsonDocument.Parse to inspect the root structure first,
     /// avoiding double deserialization. If the root has a "result" property, it's the
-    /// PopoTaskResultResponse wrapper format; otherwise, it's a direct MinerUDocument.
+    /// PopoTaskResultResponse wrapper format; otherwise, it's a direct StructureDocument.
     /// </summary>
     static StructureDocument? TryParsePopoResultJson(string jsonPath)
     {
@@ -688,7 +689,7 @@ public static class PopoJsonService
             }
             else
             {
-                // Direct MinerUDocument format (popo.json):
+                // Direct StructureDocument format (popo.json):
                 //   { docId, modelName, pagesBlocks, treeRoot, ... }
                 var minerUDoc = JsonSerializer.Deserialize<StructureDocument>(json, StructureDocumentOptions);
                 if (minerUDoc is not null && (minerUDoc.GetAllBlocks().Count > 0 || minerUDoc.TreeRoot is not null))
@@ -727,7 +728,7 @@ public static class PopoJsonService
         int blockId = 0;
 
         // Flatten the tree recursively, skipping the root node itself
-        FlattenTreeNodes(treeRoot, pageBlocks, allBlocks, ref blockId);
+        ExpandTreeToBlocks(treeRoot, pageBlocks, allBlocks, ref blockId);
 
         doc.PagesBlocks = pageBlocks;
         doc.InferenceBlocks = allBlocks;
@@ -738,9 +739,11 @@ public static class PopoJsonService
 
     /// <summary>
     /// Recursively flattens tree nodes into MinerUBlock objects, grouped by page.
+    /// When a tree node has multiple locations (bboxes), creates one block per location.
+    /// All blocks from the same tree node share the same OriginalBlockIds for cross-referencing.
     /// Skips the root node (level 0, type "root") and non-content nodes.
     /// </summary>
-    private static void FlattenTreeNodes(
+    private static void ExpandTreeToBlocks(
         AnalysisTreeNode node,
         Dictionary<int, List<MinerUBlock>> pageBlocks,
         List<MinerUBlock> allBlocks,
@@ -751,31 +754,38 @@ public static class PopoJsonService
 
         if (!isRoot && node.Location.Count > 0)
         {
-            var firstLoc = node.Location[0];
-            int page = firstLoc.Page;
+            // Create one block per location entry, preserving original block_ids for cross-reference
+            var originalIds = new List<int>(node.BlockIds);
 
-            var block = new MinerUBlock
+            for (int i = 0; i < node.Location.Count; i++)
             {
-                Id = blockId,
-                Page = page,
-                Type = node.Type,
-                Content = !string.IsNullOrEmpty(node.Content) ? node.Content : node.Title,
-                Bbox = firstLoc.Bbox,
-                TitleLevel = node.Level
-            };
+                var loc = node.Location[i];
+                int page = loc.Page;
 
-            if (!pageBlocks.ContainsKey(page))
-                pageBlocks[page] = new List<MinerUBlock>();
+                var block = new MinerUBlock
+                {
+                    Id = blockId,
+                    Page = page,
+                    Type = node.Type,
+                    Content = !string.IsNullOrEmpty(node.Content) ? node.Content : node.Title,
+                    Bbox = loc.Bbox,
+                    TitleLevel = node.Level,
+                    OriginalBlockIds = originalIds
+                };
 
-            pageBlocks[page].Add(block);
-            allBlocks.Add(block);
-            blockId++;
+                if (!pageBlocks.ContainsKey(page))
+                    pageBlocks[page] = new List<MinerUBlock>();
+
+                pageBlocks[page].Add(block);
+                allBlocks.Add(block);
+                blockId++;
+            }
         }
 
         // Recurse into children
         foreach (var child in node.Children)
         {
-            FlattenTreeNodes(child, pageBlocks, allBlocks, ref blockId);
+            ExpandTreeToBlocks(child, pageBlocks, allBlocks, ref blockId);
         }
     }
 

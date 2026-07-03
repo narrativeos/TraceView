@@ -46,10 +46,12 @@ public partial class AnalysisViewModel : ViewModelBase
             AllBlocks.Add(new BlockViewModel(block));
         }
 
-        // Build tree view model
+        // Build tree view model and wire selection to page block highlighting
         if (structureDocument.TreeRoot is not null)
         {
-            TreeRoot = new TreeNodeViewModel(structureDocument.TreeRoot);
+            var treeRoot = new TreeNodeViewModel(structureDocument.TreeRoot);
+            WireTreeSelection(treeRoot, this);
+            TreeRoot = treeRoot;
         }
 
         // Load aggregations
@@ -168,6 +170,42 @@ public partial class AnalysisViewModel : ViewModelBase
         else
         {
             SelectedBlockId = null;
+        }
+    }
+
+    /// <summary>
+    /// Recursively wires tree node selection to page block highlighting.
+    /// When a tree node is selected, its first original block ID is used to
+    /// highlight the corresponding MinerUBlock on the PDF page overlay.
+    /// </summary>
+    private static void WireTreeSelection(TreeNodeViewModel node, AnalysisViewModel vm)
+    {
+        node.OnBlockSelected = (blockId) =>
+        {
+            if (blockId.HasValue)
+            {
+                // Search by OriginalBlockIds first (tree-sourced blocks),
+                // fall back to direct Id match (inference-sourced blocks)
+                foreach (var block in vm.AllBlocks)
+                {
+                    if (block.OriginalBlockIds.Contains(blockId.Value))
+                    {
+                        vm.SelectedBlockId = block.Id;
+                        return;
+                    }
+                }
+                // Fallback: direct Id match
+                vm.SelectedBlockId = blockId.Value;
+            }
+            else
+            {
+                vm.SelectedBlockId = null;
+            }
+        };
+
+        foreach (var child in node.Children)
+        {
+            WireTreeSelection(child, vm);
         }
     }
 
