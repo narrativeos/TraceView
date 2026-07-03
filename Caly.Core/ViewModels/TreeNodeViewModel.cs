@@ -40,8 +40,6 @@ public partial class TreeNodeViewModel : ObservableObject
     private readonly AnalysisTreeNode _node;
     private readonly string? _artifactsDirectory;
     private readonly System.Collections.Generic.Dictionary<int, MinerUBlock?>? _blockLookup;
-    private readonly int _imageIndex; // Index among all image nodes (for order-based matching)
-    private readonly List<ImageMapEntry>? _imagePathMap; // Image map entries from middle.json
 
     /// <summary>
     /// Callback invoked when this tree node is selected.
@@ -51,15 +49,9 @@ public partial class TreeNodeViewModel : ObservableObject
     public Action<int?>? OnBlockSelected { get; set; }
 
     public TreeNodeViewModel(AnalysisTreeNode node, string? artifactsDirectory = null, StructureDocument? structureDocument = null)
-        : this(node, artifactsDirectory, structureDocument, -1)
-    {
-    }
-
-    private TreeNodeViewModel(AnalysisTreeNode node, string? artifactsDirectory, StructureDocument? structureDocument, int imageIndex)
     {
         _node = node;
         _artifactsDirectory = artifactsDirectory;
-        _imageIndex = imageIndex;
 
         // Build a lookup dictionary from block ID to MinerUBlock for accurate image matching
         if (structureDocument is not null)
@@ -71,167 +63,10 @@ public partial class TreeNodeViewModel : ObservableObject
             }
         }
 
-        // Build image map from middle.json for image matching
-        if (artifactsDirectory is not null)
-        {
-            _imagePathMap = BuildImagePathMap(artifactsDirectory);
-        }
-
-        // Assign image indices to children in document order
-        int childImageIndex = Type == "image" ? imageIndex + 1 : imageIndex;
         foreach (var child in node.Children)
         {
-            if (child.Type == "image")
-                childImageIndex++;
-            Children.Add(new TreeNodeViewModel(child, artifactsDirectory, structureDocument, childImageIndex));
+            Children.Add(new TreeNodeViewModel(child, artifactsDirectory, structureDocument));
         }
-    }
-
-    /// <summary>
-    /// Image map entry containing image_path and page dimensions.
-    /// </summary>
-    private sealed class ImageMapEntry
-    {
-        public string ImagePath;
-        public int PageIdx;
-        public double PageWidth;
-        public double PageHeight;
-        public double BboxX1; // Absolute x1
-        public double BboxY1; // Absolute y1
-        public double BboxX2; // Absolute x2
-        public double BboxY2; // Absolute y2
-
-        public ImageMapEntry(string imagePath, int pageIdx, double pageWidth, double pageHeight, double x1, double y1, double x2, double y2)
-        {
-            ImagePath = imagePath;
-            PageIdx = pageIdx;
-            PageWidth = pageWidth;
-            PageHeight = pageHeight;
-            BboxX1 = x1;
-            BboxY1 = y1;
-            BboxX2 = x2;
-            BboxY2 = y2;
-        }
-    }
-
-    /// <summary>
-    /// Builds a list of image map entries by parsing the middle.json.
-    /// </summary>
-    private static List<ImageMapEntry>? BuildImagePathMap(string artifactsDir)
-    {
-        var middleJsons = Directory.GetFiles(artifactsDir, "*_middle.json", SearchOption.AllDirectories);
-        if (middleJsons.Length == 0)
-            return null;
-
-        var entries = new List<ImageMapEntry>();
-        foreach (var jsonPath in middleJsons)
-        {
-            try
-            {
-                var json = File.ReadAllText(jsonPath);
-                using var doc = System.Text.Json.JsonDocument.Parse(json);
-                ParseMiddleJsonForImages(doc.RootElement, entries);
-            }
-            catch { }
-        }
-        return entries.Count > 0 ? entries : null;
-    }
-
-    private static void ParseMiddleJsonForImages(System.Text.Json.JsonElement elem, List<ImageMapEntry> entries)
-    {
-        if (elem.ValueKind == System.Text.Json.JsonValueKind.Object)
-        {
-            if (elem.TryGetProperty("pdf_info", out var pdfInfo))
-            {
-                foreach (var page in pdfInfo.EnumerateArray())
-                {
-                    var pageIdx = 0;
-                    if (page.TryGetProperty("page_idx", out var pi))
-                        pageIdx = pi.GetInt32();
-
-                    var pageW = 1000.0;
-                    var pageH = 1000.0;
-                    if (page.TryGetProperty("page_size", out var ps))
-                    {
-                        var psArr = ps.EnumerateArray().Select(v => v.GetDouble()).ToArray();
-                        if (psArr.Length >= 2)
-                        {
-                            pageW = psArr[0];
-                            pageH = psArr[1];
-                        }
-                    }
-
-                    if (page.TryGetProperty("para_blocks", out var blocks))
-                    {
-                        foreach (var block in blocks.EnumerateArray())
-                        {
-                            ExtractImagePathFromBlock(block, entries, pageIdx, pageW, pageH);
-                        }
-                    }
-                }
-            }
-            else if (elem.TryGetProperty("blocks", out var directBlocks))
-            {
-                foreach (var block in directBlocks.EnumerateArray())
-                {
-                    ExtractImagePathFromBlock(block, entries, 0, 1000.0, 1000.0);
-                }
-            }
-        }
-        else if (elem.ValueKind == System.Text.Json.JsonValueKind.Array)
-        {
-            foreach (var item in elem.EnumerateArray())
-            {
-                ExtractImagePathFromBlock(item, entries, 0, 1000.0, 1000.0);
-            }
-        }
-    }
-
-    private static void ExtractImagePathFromBlock(System.Text.Json.JsonElement block, List<ImageMapEntry> entries, int pageIdx, double pageW, double pageH)
-    {
-        if (block.TryGetProperty("type", out var type) && type.GetString() == "image")
-        {
-            if (block.TryGetProperty("bbox", out var bbox))
-            {
-                var bboxArr = bbox.EnumerateArray().Select(v => v.GetDouble()).ToArray();
-                if (bboxArr.Length >= 4)
-                {
-                    string? imagePath = null;
-                    if (block.TryGetProperty("blocks", out var nestedBlocks))
-                    {
-                        imagePath = FindImagePathInBlocks(nestedBlocks);
-                    }
-                    if (imagePath is not null)
-                    {
-                        entries.Add(new ImageMapEntry(imagePath, pageIdx, pageW, pageH, bboxArr[0], bboxArr[1], bboxArr[2], bboxArr[3]));
-                    }
-                }
-            }
-        }
-    }
-
-    private static string? FindImagePathInBlocks(System.Text.Json.JsonElement blocks)
-    {
-        foreach (var block in blocks.EnumerateArray())
-        {
-            if (block.TryGetProperty("lines", out var lines))
-            {
-                foreach (var line in lines.EnumerateArray())
-                {
-                    if (line.TryGetProperty("spans", out var spans))
-                    {
-                        foreach (var span in spans.EnumerateArray())
-                        {
-                            if (span.TryGetProperty("image_path", out var imgPath))
-                            {
-                                return imgPath.GetString();
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        return null;
     }
 
     public string Type => _node.Type;
@@ -319,58 +154,6 @@ public partial class TreeNodeViewModel : ObservableObject
                         catch { }
                     }
                 }
-            }
-
-            // Strategy 3: Bbox-based matching using middle.json image_path map
-            // Match Popo tree node's normalized bbox against middle.json's absolute bboxes
-            if (_imagePathMap is not null && _node.Location.Count > 0)
-            {
-                var loc = _node.Location[0];
-                var normX = loc.Bbox.X; // normalized 0-1
-                var normY = loc.Bbox.Y; // normalized 0-1
-                var treePage = loc.Page; // page number from Popo tree (1-based)
-                // Find the best matching entry
-                double bestScore = double.MaxValue;
-                ImageMapEntry? bestEntry = null;
-                foreach (var entry in _imagePathMap)
-                {
-                    // Match by page first (Popo uses 1-based page numbers, middle.json uses 0-based page_idx)
-                    if (entry.PageIdx + 1 != treePage)
-                        continue;
-                    var absNormX = entry.BboxX1 / entry.PageWidth;
-                    var absNormY = entry.BboxY1 / entry.PageHeight;
-                    var dx = normX - absNormX;
-                    var dy = normY - absNormY;
-                    var score = dx * dx + dy * dy;
-                    if (score < bestScore)
-                    {
-                        bestScore = score;
-                        bestEntry = entry;
-                    }
-                }
-                // If we found a close match (within threshold)
-                if (bestEntry is not null && bestScore < 0.01)
-                {
-                    var imageName = Path.GetFileName(bestEntry.ImagePath);
-                    foreach (var file in allImageFiles)
-                    {
-                        if (Path.GetFileName(file).Equals(imageName, StringComparison.OrdinalIgnoreCase))
-                        {
-                            try { _cachedBitmap = new Bitmap(file); return _cachedBitmap; }
-                            catch { }
-                        }
-                    }
-                }
-            }
-
-            // Strategy 4: Order-based matching
-            // When BlockIds are empty and Content is empty (common in Popo API output),
-            // match by the image index among all image nodes in the tree.
-            if (_imageIndex >= 0 && _imageIndex < allImageFiles.Count)
-            {
-                var file = allImageFiles[_imageIndex];
-                try { _cachedBitmap = new Bitmap(file); return _cachedBitmap; }
-                catch { }
             }
 
             // No fallback - return null if image not found
