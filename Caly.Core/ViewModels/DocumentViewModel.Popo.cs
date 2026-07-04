@@ -124,21 +124,6 @@ public sealed partial class DocumentViewModel
         }
     }
 
-    /// <summary>
-    /// Recursively checks if any node in the tree has a non-empty ImgPath.
-    /// </summary>
-    private static bool HasImgPathInTree(AnalysisTreeNode node)
-    {
-        if (!string.IsNullOrEmpty(node.ImgPath))
-            return true;
-        foreach (var child in node.Children)
-        {
-            if (HasImgPathInTree(child))
-                return true;
-        }
-        return false;
-    }
-
     private static int CountDescendants(TreeNodeViewModel node)
     {
         int count = 0;
@@ -163,8 +148,7 @@ public sealed partial class DocumentViewModel
 
     /// <summary>
     /// Attempts to load Popo analysis data for the currently opened document.
-    /// Checks in order: 1) project popo/popo.json, 2) project popo/extract/,
-    /// 3) project popo/result_* subdirectories, 4) standard outputs/ directory.
+    /// Only loads from result_*/popo_result.json in the project's popo/ directory.
     /// Called silently after the document is successfully opened.
     /// </summary>
     internal void TryLoadPopoData()
@@ -174,71 +158,26 @@ public sealed partial class DocumentViewModel
 
         StructureDocument? minerUDoc = null;
 
-        // Phase 1: Check project's popo/ directory
+        // Phase 1: Check project's popo/result_* directories (Popo service output)
         if (ProjectPath is not null)
         {
             var popoDir = Path.Combine(ProjectPath, "popo");
             if (Directory.Exists(popoDir))
             {
-                // 1a: Try popo.json first
-                var popoJsonPath = Path.Combine(popoDir, "popo.json");
-                if (File.Exists(popoJsonPath))
+                foreach (var subDir in Directory.GetDirectories(popoDir, "result_*"))
                 {
-                    try
-                    {
-                        var json = File.ReadAllText(popoJsonPath);
-                        minerUDoc = System.Text.Json.JsonSerializer.Deserialize<StructureDocument>(json, PopoJsonService.StructureDocumentOptions);
-                    }
-                    catch
-                    {
-                        // Ignore parse errors
-                    }
+                    minerUDoc = PopoJsonService.TryParsePopoResultDir(subDir);
+                    if (minerUDoc is not null)
+                        break;
                 }
 
-                // 1b: Try extract subdirectory
+                // Fallback: Try extract subdirectory
                 if (minerUDoc is null)
                 {
                     var extractDir = Path.Combine(popoDir, "extract");
                     if (Directory.Exists(extractDir))
                     {
                         minerUDoc = PopoJsonService.TryParsePopoResultDir(extractDir);
-                    }
-                }
-
-                // 1c: Try result_* subdirectories (Popo service output)
-                if (minerUDoc is null)
-                {
-                    foreach (var subDir in Directory.GetDirectories(popoDir, "result_*"))
-                    {
-                        minerUDoc = PopoJsonService.TryParsePopoResultDir(subDir);
-                        if (minerUDoc is not null)
-                            break;
-                    }
-                }
-
-                // 1d: If loaded from popo.json but tree lacks ImgPath, try to enrich from result_*/popo_result.json
-                if (minerUDoc is not null && minerUDoc.TreeRoot is not null)
-                {
-                    var hasImgPath = HasImgPathInTree(minerUDoc.TreeRoot);
-                    if (!hasImgPath)
-                    {
-                        foreach (var subDir in Directory.GetDirectories(popoDir, "result_*"))
-                        {
-                            var resultJson = Path.Combine(subDir, "popo_result.json");
-                            if (File.Exists(resultJson))
-                            {
-                                var resultDoc = PopoJsonService.TryParsePopoResultDir(subDir);
-                                if (resultDoc?.TreeRoot is not null && HasImgPathInTree(resultDoc.TreeRoot))
-                                {
-                                    // Replace the tree with one that has img_path
-                                    minerUDoc.TreeRoot = resultDoc.TreeRoot;
-                                    minerUDoc.BuildAggregationMap();
-                                    // Re-save popo.json with enriched tree so next load doesn't need enrichment
-                                    PopoJsonService.SaveStructureDocumentToProject(minerUDoc, ProjectPath);
-                                    break;
-                                }
-                            }
-                        }
                     }
                 }
             }
