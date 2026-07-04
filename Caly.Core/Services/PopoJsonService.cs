@@ -422,6 +422,10 @@ public static class PopoJsonService
             }
         }
 
+        // Parse img_path (Popo API returns relative path like "images/xxx.jpg")
+        if (elem.TryGetProperty("img_path", out var imgPathElem))
+            node.ImgPath = imgPathElem.GetString() ?? string.Empty;
+
         // Parse block_ids
         if (elem.TryGetProperty("block_ids", out var idsElem))
         {

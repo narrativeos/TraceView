@@ -88,29 +88,65 @@ public partial class TreeNodeViewModel : ObservableObject
 
     /// <summary>
     /// Bitmap image for display (only for image nodes).
-    /// Uses BlockIds to look up MinerUBlock, or falls back to order-based matching.
+    /// Loads the image using:
+    ///   1. _node.ImgPath (from popo_result.json) - resolved relative to _artifactsDirectory
+    ///   2. Falls back to block-lookup matching (legacy MinerU format)
     /// </summary>
     public Bitmap? ImageBitmap
     {
         get
         {
-            if (Type != "image" || _artifactsDirectory is null)
+            if (Type != "image")
                 return null;
 
             if (_cachedBitmap is not null)
                 return _cachedBitmap;
 
-            // Get all image files once
-            var imageExtensions = new[] { ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp" };
-            var allImageFiles = Directory.GetFiles(_artifactsDirectory, "*.*", SearchOption.AllDirectories)
-                .Where(f => imageExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()))
-                .OrderBy(f => f) // Sort for consistent order
-                .ToList();
+            // Strategy 1: Use ImgPath from popo_result.json (most reliable)
+            if (!string.IsNullOrEmpty(_node.ImgPath))
+            {
+                var imgFileName = Path.GetFileName(_node.ImgPath);
+                if (!string.IsNullOrEmpty(imgFileName) && _artifactsDirectory is not null)
+                {
+                    var imageExtensions = new[] { ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp" };
+                    var ext = Path.GetExtension(imgFileName).ToLowerInvariant();
+                    if (imageExtensions.Contains(ext))
+                    {
+                        // Search for the filename in artifacts directory
+                        var allImageFiles = Directory.GetFiles(_artifactsDirectory, "*.*", SearchOption.AllDirectories)
+                            .Where(f => imageExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()))
+                            .ToList();
 
-            if (allImageFiles.Count == 0)
+                        foreach (var file in allImageFiles)
+                        {
+                            if (Path.GetFileName(file).Equals(imgFileName, StringComparison.OrdinalIgnoreCase))
+                            {
+                                try
+                                {
+                                    _cachedBitmap = new Bitmap(file);
+                                    return _cachedBitmap;
+                                }
+                                catch { }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (_artifactsDirectory is null)
                 return null;
 
-            // Strategy 1: Use BlockIds to look up MinerUBlock and get image filename
+            // Get all image files once
+            var imageExtensions2 = new[] { ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp" };
+            var allImageFiles2 = Directory.GetFiles(_artifactsDirectory, "*.*", SearchOption.AllDirectories)
+                .Where(f => imageExtensions2.Contains(Path.GetExtension(f).ToLowerInvariant()))
+                .OrderBy(f => f)
+                .ToList();
+
+            if (allImageFiles2.Count == 0)
+                return null;
+
+            // Strategy 2: Use BlockIds to look up MinerUBlock and get image filename
             if (_blockLookup is not null && BlockIds.Count > 0)
             {
                 foreach (var blockId in BlockIds)
@@ -121,7 +157,7 @@ public partial class TreeNodeViewModel : ObservableObject
                         if (!string.IsNullOrEmpty(imageContent))
                         {
                             var contentName = Path.GetFileName(imageContent);
-                            foreach (var file in allImageFiles)
+                            foreach (var file in allImageFiles2)
                             {
                                 if (Path.GetFileName(file).Equals(contentName, StringComparison.OrdinalIgnoreCase))
                                 {
@@ -129,7 +165,7 @@ public partial class TreeNodeViewModel : ObservableObject
                                     catch { }
                                 }
                             }
-                            foreach (var file in allImageFiles)
+                            foreach (var file in allImageFiles2)
                             {
                                 if (file.Contains(imageContent))
                                 {
@@ -142,11 +178,11 @@ public partial class TreeNodeViewModel : ObservableObject
                 }
             }
 
-            // Strategy 2: Match by Content
+            // Strategy 3: Match by Content
             if (!string.IsNullOrEmpty(Content))
             {
                 var contentName = Path.GetFileName(Content);
-                foreach (var file in allImageFiles)
+                foreach (var file in allImageFiles2)
                 {
                     if (Path.GetFileName(file).Equals(contentName, StringComparison.OrdinalIgnoreCase))
                     {
@@ -156,7 +192,6 @@ public partial class TreeNodeViewModel : ObservableObject
                 }
             }
 
-            // No fallback - return null if image not found
             return null;
         }
     }
@@ -164,7 +199,7 @@ public partial class TreeNodeViewModel : ObservableObject
     /// <summary>
     /// Whether a valid image is available for display.
     /// </summary>
-    public bool HasImage => Type == "image" && _artifactsDirectory is not null;
+    public bool HasImage => Type == "image" && (!string.IsNullOrEmpty(_node.ImgPath) || _artifactsDirectory is not null);
 
     /// <summary>
     /// Whether the image bitmap was successfully loaded.
@@ -182,7 +217,13 @@ public partial class TreeNodeViewModel : ObservableObject
             if (Type != "image")
                 return string.Empty;
 
-            // Try to get filename from MinerUBlock
+            // Strategy 1: Use ImgPath from popo_result.json
+            if (!string.IsNullOrEmpty(_node.ImgPath))
+            {
+                return $"[图片] {Path.GetFileName(_node.ImgPath)}";
+            }
+
+            // Strategy 2: Try to get filename from MinerUBlock
             if (_blockLookup is not null && BlockIds.Count > 0)
             {
                 foreach (var blockId in BlockIds)
@@ -195,13 +236,13 @@ public partial class TreeNodeViewModel : ObservableObject
                 }
             }
 
-            // Try Content
+            // Strategy 3: Try Content
             if (!string.IsNullOrEmpty(Content))
             {
                 return $"[图片] {Path.GetFileName(Content)}";
             }
 
-            // Try Metadata
+            // Strategy 4: Try Metadata
             if (!string.IsNullOrEmpty(Metadata))
             {
                 return $"[图片] {Path.GetFileName(Metadata)}";

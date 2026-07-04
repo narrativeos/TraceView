@@ -75,6 +75,13 @@ public partial class AnalysisTreeNode : ObservableObject
     private List<int> _blockIds = new();
 
     /// <summary>
+    /// Image path returned by the Popo API (relative path like "images/xxx.jpg").
+    /// Only populated for image-type nodes when loaded from popo_result.json.
+    /// </summary>
+    [ObservableProperty]
+    private string _imgPath = string.Empty;
+
+    /// <summary>
     /// Child nodes list (recursive).
     /// </summary>
     [ObservableProperty]
