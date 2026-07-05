@@ -359,8 +359,15 @@ public static class MinerUJsonService
     {
         var block = new MinerUBlock();
 
+        // Support both "id" and "index" fields (different MinerU versions use different field names)
         if (elem.TryGetProperty("id", out var idElem))
+        {
             block.Id = GetIntValue(idElem, block.Id);
+        }
+        else if (elem.TryGetProperty("index", out var indexElem))
+        {
+            block.Id = GetIntValue(indexElem, block.Id);
+        }
 
         if (elem.TryGetProperty("page", out var pageElem))
             block.Page = GetIntValue(pageElem, block.Page);

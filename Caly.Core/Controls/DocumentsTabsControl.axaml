@@ -382,9 +382,9 @@
                                                             <StackPanel Orientation="Horizontal"
                                                                         Spacing="4">
                                                                 <TextBlock Text="{Binding Id, StringFormat='#{0}'}"
-                                                                           FontSize="10"
+                                                                           FontSize="11"
                                                                            FontWeight="Bold"
-                                                                           Opacity="0.7"/>
+                                                                           Foreground="{DynamicResource SystemAccentColor}"/>
                                                                 <TextBlock Text="{Binding TypeLabel}"
                                                                            FontSize="10"
                                                                            FontWeight="SemiBold"/>
