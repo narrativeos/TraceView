@@ -96,6 +96,7 @@ public partial class TreeNodeViewModel : ObservableObject
     {
         get
         {
+            System.Diagnostics.Debug.WriteLine($"[ImageBitmap] GETTER called: Type={Type}, IsImage={IsImage}, cached={_cachedBitmap is not null}");
             if (Type != "image")
                 return null;
 
@@ -103,9 +104,11 @@ public partial class TreeNodeViewModel : ObservableObject
                 return _cachedBitmap;
 
             // Strategy 1: Use ImgPath from popo_result.json (most reliable)
+            System.Diagnostics.Debug.WriteLine($"[ImageBitmap] ImgPath='{_node.ImgPath}', isEmpty={string.IsNullOrEmpty(_node.ImgPath)}, artifactsDir={_artifactsDirectory}");
             if (!string.IsNullOrEmpty(_node.ImgPath))
             {
                 var imgFileName = Path.GetFileName(_node.ImgPath);
+                System.Diagnostics.Debug.WriteLine($"[ImageBitmap] fileName={imgFileName}");
                 if (!string.IsNullOrEmpty(imgFileName) && _artifactsDirectory is not null)
                 {
                     var imageExtensions = new[] { ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp" };
@@ -116,19 +119,25 @@ public partial class TreeNodeViewModel : ObservableObject
                         var allImageFiles = Directory.GetFiles(_artifactsDirectory, "*.*", SearchOption.AllDirectories)
                             .Where(f => imageExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()))
                             .ToList();
+                        System.Diagnostics.Debug.WriteLine($"[ImageBitmap] Found {allImageFiles.Count} image files in artifacts dir");
 
                         foreach (var file in allImageFiles)
                         {
                             if (Path.GetFileName(file).Equals(imgFileName, StringComparison.OrdinalIgnoreCase))
                             {
+                                System.Diagnostics.Debug.WriteLine($"[ImageBitmap] Match found: {file}");
                                 try
                                 {
                                     _cachedBitmap = new Bitmap(file);
                                     return _cachedBitmap;
                                 }
-                                catch { }
+                                catch (Exception ex)
+                                {
+                                    System.Diagnostics.Debug.WriteLine($"[ImageBitmap] Failed to load: {ex.Message}");
+                                }
                             }
                         }
+                        System.Diagnostics.Debug.WriteLine($"[ImageBitmap] No match found for {imgFileName}");
                     }
                 }
             }
@@ -207,8 +216,8 @@ public partial class TreeNodeViewModel : ObservableObject
     public bool HasImageBitmap => _cachedBitmap is not null;
 
     /// <summary>
-    /// Image path text for display when image is not found.
-    /// Shows the expected image filename from MinerUBlock or Content.
+    /// Image path text for display.
+    /// Always shows the image path (from ImgPath, MinerUBlock, Content, or Metadata).
     /// </summary>
     public string ImagePathText
     {
@@ -217,13 +226,13 @@ public partial class TreeNodeViewModel : ObservableObject
             if (Type != "image")
                 return string.Empty;
 
-            // Strategy 1: Use ImgPath from popo_result.json
+            // Strategy 1: Use ImgPath from popo_result.json (always show if available)
             if (!string.IsNullOrEmpty(_node.ImgPath))
             {
-                return $"[图片] {Path.GetFileName(_node.ImgPath)}";
+                return _node.ImgPath;
             }
 
-            // Strategy 2: Try to get filename from MinerUBlock
+            // Strategy 2: Try to get path from MinerUBlock
             if (_blockLookup is not null && BlockIds.Count > 0)
             {
                 foreach (var blockId in BlockIds)
@@ -231,7 +240,7 @@ public partial class TreeNodeViewModel : ObservableObject
                     if (_blockLookup.TryGetValue(blockId, out var block) && block is not null
                         && !string.IsNullOrEmpty(block.Content))
                     {
-                        return $"[图片] {Path.GetFileName(block.Content)}";
+                        return block.Content;
                     }
                 }
             }
@@ -239,13 +248,13 @@ public partial class TreeNodeViewModel : ObservableObject
             // Strategy 3: Try Content
             if (!string.IsNullOrEmpty(Content))
             {
-                return $"[图片] {Path.GetFileName(Content)}";
+                return Content;
             }
 
             // Strategy 4: Try Metadata
             if (!string.IsNullOrEmpty(Metadata))
             {
-                return $"[图片] {Path.GetFileName(Metadata)}";
+                return Metadata;
             }
 
             return "[图片未找到]";

@@ -21,6 +21,7 @@
 using System;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Mime;
@@ -280,20 +281,12 @@ public sealed class PopoService : IDisposable
 
         onProgress?.Invoke(PopoProcessStatus.ParsingResult, 85);
 
-        // Step 4: Extract images from ZIP for display
-        var artifactsDir = Path.Combine(_cacheDirectory, $"images_{sourceDocId}");
-        try
-        {
-            if (!Directory.Exists(artifactsDir))
-            {
-                Directory.CreateDirectory(artifactsDir);
-                ZipFile.ExtractToDirectory(zipPath, artifactsDir, overwriteFiles: true);
-            }
-        }
-        catch
-        {
-            artifactsDir = null;
-        }
+        // Step 4: Use MinerU extracted directory as the image source instead of re-extracting from ZIP.
+        // The popo_result.json contains img_path like "images/xxx.jpg", which is relative to the
+        // hybrid_auto directory. By pointing to the MinerU extract directory, we avoid duplicating
+        // image files and save disk space.
+        // Directory structure: ~/.TraceView/{docId}/mineru/extract_{docId}/{docId}/hybrid_auto/images/
+        var artifactsDir = FindMinerUImagesDirectory(sourceDocId);
 
         onProgress?.Invoke(PopoProcessStatus.Completed, 100);
 
@@ -302,6 +295,58 @@ public sealed class PopoService : IDisposable
             StructureDocument = minerUDoc,
             ArtifactsDirectory = artifactsDir
         };
+    }
+
+    #endregion
+
+    #region MinerU Images Directory
+
+    /// <summary>
+    /// Finds the MinerU extracted images directory for a given document ID.
+    /// The directory structure is: ~/.TraceView/{docId}/mineru/extract_{docId}/{docId}/hybrid_auto/
+    /// This is the directory where popo_result.json's img_path (e.g., "images/xxx.jpg") is relative to.
+    /// </summary>
+    private string? FindMinerUImagesDirectory(string docId)
+    {
+        try
+        {
+            var cacheBase = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".TraceView", docId);
+            var mineruCacheDir = Path.Combine(cacheBase, "mineru");
+            var extractedDir = Path.Combine(mineruCacheDir, $"extract_{docId}");
+
+            if (!Directory.Exists(extractedDir))
+                return null;
+
+            // The ZIP extracts to: extract_{docId}/{docId}/hybrid_auto/
+            var hybridAutoDir = Path.Combine(extractedDir, docId, "hybrid_auto");
+
+            if (Directory.Exists(hybridAutoDir))
+            {
+                // Verify there are actually images in the images subdirectory
+                var imagesDir = Path.Combine(hybridAutoDir, "images");
+                if (Directory.Exists(imagesDir))
+                {
+                    var imageFilesInHybrid = Directory.GetFiles(imagesDir, "*.*", SearchOption.TopDirectoryOnly)
+                        .Where(f => Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
+                        .ToList();
+                    if (imageFilesInHybrid.Count > 0)
+                        return hybridAutoDir;
+                }
+            }
+
+            // Fallback: try the extract directory directly (some ZIP structures may be flat)
+            var imageFilesInExtract = Directory.GetFiles(extractedDir, "*.*", SearchOption.AllDirectories)
+                .Where(f => Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
+                .ToList();
+            if (imageFilesInExtract.Count > 0)
+                return extractedDir;
+        }
+        catch
+        {
+            // Ignore errors finding the MinerU images directory
+        }
+
+        return null;
     }
 
     #endregion

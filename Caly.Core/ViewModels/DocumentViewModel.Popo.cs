@@ -25,7 +25,6 @@ using CommunityToolkit.Mvvm.Input;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.IO;
-using System.IO.Compression;
 using System.Linq;
 using System;
 
@@ -192,23 +191,69 @@ public sealed partial class DocumentViewModel
         if (minerUDoc is null)
             return;
 
-        // Find artifacts directory for image display
-        // Try in order: 1) popo/images (Popo service output), 2) popo/extract, 3) MinerU cache, 4) extract from ZIP
+        // Find artifacts directory for image display.
+        // Uses the MinerU extracted directory because popo_result.json's img_path (e.g., "images/xxx.jpg")
+        // is relative to the hybrid_auto directory. This avoids duplicating image files.
         string? artifactsDir = null;
         if (ProjectPath is not null)
         {
-            // 1: Try popo/images first (Popo service extracts images here)
-            var popoImagesDir = Path.Combine(ProjectPath, "popo", "images");
-            if (Directory.Exists(popoImagesDir))
+            // Get docId
+            string? docId = LocalPath is not null
+                ? System.IO.Path.GetFileNameWithoutExtension(LocalPath)
+                : null;
+
+            if (docId is null)
             {
-                var imageFiles = System.IO.Directory.GetFiles(popoImagesDir, "*.*", System.IO.SearchOption.AllDirectories)
-                    .Where(f => System.IO.Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
-                    .ToList();
-                if (imageFiles.Count > 0)
-                    artifactsDir = popoImagesDir;
+                var mineruDir = Path.Combine(ProjectPath, "mineru");
+                if (Directory.Exists(mineruDir))
+                {
+                    var zipFiles = Directory.GetFiles(mineruDir, "*_mineru.zip");
+                    if (zipFiles.Length > 0)
+                    {
+                        var fileName = Path.GetFileNameWithoutExtension(zipFiles[0]);
+                        docId = fileName.EndsWith("_mineru") ? fileName[..^7] : fileName;
+                    }
+                }
             }
 
-            // 2: Try popo/extract
+            // 1: Try MinerU cache hybrid_auto directory (~/.TraceView/{docId}/mineru/extract_{docId}/{docId}/hybrid_auto/)
+            // This is the primary source because popo_result.json's img_path is relative to this directory.
+            if (docId is not null)
+            {
+                var cacheBase = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".TraceView", docId);
+                var mineruCacheDir = Path.Combine(cacheBase, "mineru");
+                var extractedDir = Path.Combine(mineruCacheDir, $"extract_{docId}");
+
+                // The ZIP extracts to: extract_{docId}/{docId}/hybrid_auto/
+                var hybridAutoDir = Path.Combine(extractedDir, docId, "hybrid_auto");
+
+                if (Directory.Exists(hybridAutoDir))
+                {
+                    var imagesDir = Path.Combine(hybridAutoDir, "images");
+                    if (Directory.Exists(imagesDir))
+                    {
+                        var imageFiles = System.IO.Directory.GetFiles(imagesDir, "*.*", System.IO.SearchOption.TopDirectoryOnly)
+                            .Where(f => System.IO.Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
+                            .ToList();
+                        if (imageFiles.Count > 0)
+                        {
+                            artifactsDir = hybridAutoDir;
+                        }
+                    }
+                }
+
+                // Fallback: try the extract directory directly (some ZIP structures may be flat)
+                if (artifactsDir is null && Directory.Exists(extractedDir))
+                {
+                    var imageFiles = System.IO.Directory.GetFiles(extractedDir, "*.*", System.IO.SearchOption.AllDirectories)
+                        .Where(f => System.IO.Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
+                        .ToList();
+                    if (imageFiles.Count > 0)
+                        artifactsDir = extractedDir;
+                }
+            }
+
+            // 2: Try popo/extract as fallback
             if (artifactsDir is null)
             {
                 var extractDir = Path.Combine(ProjectPath, "popo", "extract");
@@ -222,45 +267,7 @@ public sealed partial class DocumentViewModel
                 }
             }
 
-            // 3: Try MinerU cache extract directory (~/.TraceView/{docName}/mineru/extract_{docId}/)
-            if (artifactsDir is null)
-            {
-                string? docId = LocalPath is not null
-                    ? System.IO.Path.GetFileNameWithoutExtension(LocalPath)
-                    : null;
-
-                if (docId is null)
-                {
-                    var mineruDir = Path.Combine(ProjectPath, "mineru");
-                    if (Directory.Exists(mineruDir))
-                    {
-                        var zipFiles = Directory.GetFiles(mineruDir, "*_mineru.zip");
-                        if (zipFiles.Length > 0)
-                        {
-                            var fileName = Path.GetFileNameWithoutExtension(zipFiles[0]);
-                            docId = fileName.EndsWith("_mineru") ? fileName[..^7] : fileName;
-                        }
-                    }
-                }
-
-                if (docId is not null)
-                {
-                    var cacheBase = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".TraceView", docId);
-                    var mineruCacheDir = Path.Combine(cacheBase, "mineru");
-                    var extractedDir = Path.Combine(mineruCacheDir, $"extract_{docId}");
-
-                    if (Directory.Exists(extractedDir))
-                    {
-                        var imageFiles = System.IO.Directory.GetFiles(extractedDir, "*.*", System.IO.SearchOption.AllDirectories)
-                            .Where(f => System.IO.Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
-                            .ToList();
-                        if (imageFiles.Count > 0)
-                            artifactsDir = extractedDir;
-                    }
-                }
-            }
-
-            // 4: Try all popo/ subdirectories for images
+            // 3: Try all popo/ subdirectories for images
             if (artifactsDir is null)
             {
                 var popoDir = Path.Combine(ProjectPath, "popo");
@@ -277,48 +284,12 @@ public sealed partial class DocumentViewModel
                     }
                 }
             }
-
-            // 5: Extract from MinerU ZIP as last resort
-            if (artifactsDir is null)
-            {
-                string? docId = LocalPath is not null
-                    ? System.IO.Path.GetFileNameWithoutExtension(LocalPath)
-                    : null;
-
-                if (docId is null)
-                {
-                    var mineruDir = Path.Combine(ProjectPath, "mineru");
-                    if (Directory.Exists(mineruDir))
-                    {
-                        var zipFiles = Directory.GetFiles(mineruDir, "*_mineru.zip");
-                        if (zipFiles.Length > 0)
-                        {
-                            var fileName = Path.GetFileNameWithoutExtension(zipFiles[0]);
-                            docId = fileName.EndsWith("_mineru") ? fileName[..^7] : fileName;
-                        }
-                    }
-                }
-
-                if (docId is not null)
-                {
-                    var zipPath = MinerUJsonService.FindMinerUZipInProject(ProjectPath, docId);
-                    if (zipPath is not null)
-                    {
-                        try
-                        {
-                            if (!Directory.Exists(popoImagesDir))
-                                Directory.CreateDirectory(popoImagesDir);
-                            System.IO.Compression.ZipFile.ExtractToDirectory(zipPath, popoImagesDir, overwriteFiles: true);
-                            artifactsDir = popoImagesDir;
-                        }
-                        catch { }
-                    }
-                }
-            }
         }
 
         // Show the analysis column when Popo data is loaded
         ShowAnalysisColumn = true;
+
+        System.Diagnostics.Debug.WriteLine($"[TryLoadPopoData] artifactsDir={artifactsDir}, TreeRoot={minerUDoc.TreeRoot is not null}");
 
         // Populate block_ids from middle.json for tree nodes (Popo API returns empty block_ids)
         if (minerUDoc.TreeRoot is not null && artifactsDir is not null)

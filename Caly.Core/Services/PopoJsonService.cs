@@ -680,15 +680,19 @@ public static class PopoJsonService
             {
                 // PopoTaskResultResponse wrapper format (popo_result.json):
                 //   { task_id, status, result: { doc_id, status, message, tree: {...} } }
-                // Use StructureDocumentOptions (reflection-based) because AnalysisTreeNode also uses
-                // [ObservableProperty] — the JSON source generator can't see its generated properties.
-                var wrapped = JsonSerializer.Deserialize<PopoTaskResultResponse>(json, StructureDocumentOptions);
-                if (wrapped?.Result?.Tree is not null)
+                // Use JsonDocument to extract the tree and doc_id, then use ParseTreeNode
+                // to correctly parse img_path (which reflection-based deserialization misses).
+                if (root.TryGetProperty("result", out var resultElem) &&
+                    resultElem.TryGetProperty("tree", out var treeElem))
                 {
-                    return BuildStructureDocumentFromTree(
-                        wrapped.Result.Tree,
-                        wrapped.Result.DocId,
-                        DefaultModelName);
+                    var treeRoot = ParseTreeNode(treeElem);
+                    if (treeRoot is not null)
+                    {
+                        var docId = resultElem.TryGetProperty("doc_id", out var docIdElem)
+                            ? docIdElem.GetString() ?? string.Empty
+                            : string.Empty;
+                        return BuildStructureDocumentFromTree(treeRoot, docId, DefaultModelName);
+                    }
                 }
             }
             else

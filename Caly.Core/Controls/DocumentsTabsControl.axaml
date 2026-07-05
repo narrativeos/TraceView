@@ -545,25 +545,26 @@
                                                                              Margin="6,0,4,0"/>
                                                               </Grid>
 
-                                                              <!-- Image display for image nodes -->
-                                                              <Border IsVisible="{Binding IsImage}"
-                                                                      MaxHeight="200"
-                                                                      CornerRadius="3"
-                                                                      ClipToBounds="True"
-                                                                      Margin="0,2,0,0">
-                                                                  <Grid>
-                                                                      <Image Source="{Binding ImageBitmap}"
-                                                                             Stretch="Uniform"
-                                                                             HorizontalAlignment="Stretch"
-                                                                             VerticalAlignment="Stretch"/>
-                                                                      <TextBlock Text="{Binding ImagePathText}"
-                                                                                 FontSize="10"
-                                                                                 Foreground="#FF9800"
-                                                                                 TextWrapping="Wrap"
-                                                                                 VerticalAlignment="Center"
-                                                                                 HorizontalAlignment="Center"/>
-                                                                  </Grid>
-                                                              </Border>
+                                                               <!-- Image display for image nodes -->
+                                                               <Border IsVisible="{Binding IsImage}"
+                                                                       MaxHeight="200"
+                                                                       CornerRadius="3"
+                                                                       ClipToBounds="True"
+                                                                       Margin="0,2,0,0">
+                                                                   <Grid>
+                                                                       <Image Source="{Binding ImageBitmap}"
+                                                                              Stretch="Uniform"
+                                                                              HorizontalAlignment="Stretch"
+                                                                              VerticalAlignment="Stretch"/>
+                                                                       <TextBlock Text="{Binding ImagePathText}"
+                                                                                  FontSize="10"
+                                                                                  Foreground="#FF9800"
+                                                                                  TextWrapping="Wrap"
+                                                                                  VerticalAlignment="Center"
+                                                                                  HorizontalAlignment="Center"
+                                                                                  IsVisible="{Binding !HasImageBitmap}"/>
+                                                                   </Grid>
+                                                               </Border>
 
                                                               <!-- Content preview (collapsed, non-image nodes) -->
                                                               <TextBlock Text="{Binding ContentPreview}"
