@@ -57,9 +57,11 @@ public class MinerUJsonServiceTests
 
             Assert.NotNull(result);
             Assert.NotEmpty(result!.GetAllBlocks());
-            Assert.Equal(2, result.GetAllBlocks().Count);
+            // Only preproc_blocks is parsed (para_blocks is skipped to avoid duplication)
+            Assert.Equal(1, result.GetAllBlocks().Count);
             Assert.Contains(result.GetAllBlocks(), b => b.Content.Contains("hello"));
-            Assert.Contains(result.GetAllBlocks(), b => b.Content.Contains("world"));
+            // "world" from para_blocks should NOT be parsed
+            Assert.All(result.GetAllBlocks(), b => Assert.DoesNotContain("world", b.Content));
         }
         finally
         {

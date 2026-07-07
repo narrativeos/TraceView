@@ -235,7 +235,10 @@ public static class MinerUJsonService
                         : 0.0;
 
                     var blocks = new List<MinerUBlock>();
-                    foreach (var sectionName in new[] { "preproc_blocks", "para_blocks", "discarded_blocks" })
+                    // Only parse preproc_blocks to avoid duplication with para_blocks.
+                    // preproc_blocks contains the raw blocks with nested structure (e.g., image_body + image_footnote),
+                    // while para_blocks is a semantic merge of adjacent blocks (duplicates for overlay purposes).
+                    foreach (var sectionName in new[] { "preproc_blocks", "discarded_blocks" })
                     {
                         if (!pageInfoElem.TryGetProperty(sectionName, out var sectionElem) || sectionElem.ValueKind != JsonValueKind.Array)
                             continue;
