@@ -130,6 +130,8 @@ internal sealed class JsonSettingsService : ISettingsService
                         _current.IsMaximised = false;
                         _current.Width = (int)w.Width;
                         _current.Height = (int)w.Height;
+                        _current.Left = (int)w.Position.X;
+                        _current.Top = (int)w.Position.Y;
                         break;
 
                     case WindowState.Maximized:

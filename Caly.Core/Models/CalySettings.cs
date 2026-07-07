@@ -43,6 +43,10 @@ public sealed class CalySettings
 
     public int Height { get; set; }
 
+    public int Left { get; set; }
+
+    public int Top { get; set; }
+
     public bool IsMaximised { get; set; }
 
     public int PaneSize { get; set; }
