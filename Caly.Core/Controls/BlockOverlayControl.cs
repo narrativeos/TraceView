@@ -47,6 +47,22 @@ public sealed class BlockOverlayControl : Control
     public static readonly StyledProperty<int?> HighlightBlockIdProperty =
         AvaloniaProperty.Register<BlockOverlayControl, int?>(nameof(HighlightBlockId));
 
+    /// <summary>
+    /// Additional block IDs to highlight (from MinerU Blocks column selection).
+    /// When a user selects a block in the MinerU Blocks column, its RelatedBlockIds are set here
+    /// to highlight the corresponding preproc_blocks on the PDF overlay.
+    /// Uses IReadOnlySet<int> for O(1) Contains performance in the render loop.
+    /// </summary>
+    public static readonly StyledProperty<System.Collections.Generic.IReadOnlySet<int>?> RelatedHighlightBlockIdsProperty =
+        AvaloniaProperty.Register<BlockOverlayControl, System.Collections.Generic.IReadOnlySet<int>?>(nameof(RelatedHighlightBlockIds));
+
+    /// <summary>
+    /// Destination type of the selected block ("para" = adopted/green, "discarded" = red).
+    /// Used to determine the highlight color for related blocks.
+    /// </summary>
+    public static readonly StyledProperty<string?> RelatedHighlightDestinationTypeProperty =
+        AvaloniaProperty.Register<BlockOverlayControl, string?>(nameof(RelatedHighlightDestinationType));
+
     public static readonly StyledProperty<bool> ShowLabelsProperty =
         AvaloniaProperty.Register<BlockOverlayControl, bool>(nameof(ShowLabels), true);
 
@@ -75,8 +91,8 @@ public sealed class BlockOverlayControl : Control
     static BlockOverlayControl()
     {
         AffectsRender<BlockOverlayControl>(BlocksProperty, VisibleAreaProperty,
-            HighlightBlockIdProperty, ShowLabelsProperty, PageSizeProperty,
-            PpiScaleProperty, ZoomLevelProperty);
+            HighlightBlockIdProperty, RelatedHighlightBlockIdsProperty, RelatedHighlightDestinationTypeProperty,
+            ShowLabelsProperty, PageSizeProperty, PpiScaleProperty, ZoomLevelProperty);
     }
 
     public IReadOnlyList<MinerUBlock>? Blocks
@@ -95,6 +111,18 @@ public sealed class BlockOverlayControl : Control
     {
         get => GetValue(HighlightBlockIdProperty);
         set => SetValue(HighlightBlockIdProperty, value);
+    }
+
+    public System.Collections.Generic.IReadOnlySet<int>? RelatedHighlightBlockIds
+    {
+        get => GetValue(RelatedHighlightBlockIdsProperty);
+        set => SetValue(RelatedHighlightBlockIdsProperty, value);
+    }
+
+    public string? RelatedHighlightDestinationType
+    {
+        get => GetValue(RelatedHighlightDestinationTypeProperty);
+        set => SetValue(RelatedHighlightDestinationTypeProperty, value);
     }
 
     public bool ShowLabels
@@ -187,11 +215,33 @@ public sealed class BlockOverlayControl : Control
     private static readonly ImmutableSolidColorBrush CaptionStroke = new(Colors.Gray, 0.85);
     private static readonly ImmutableSolidColorBrush DefaultStroke = new(Colors.LightGray, 0.85);
 
+    // Destination-based stroke colors (to show block fate)
+    // Adopted (para): green solid border
+    private static readonly ImmutableSolidColorBrush AdoptedStroke = new(Color.Parse(MinerUConstants.AdoptedColor), 1.0);
+    // Discarded: red solid border
+    private static readonly ImmutableSolidColorBrush DiscardedStroke = new(Color.Parse(MinerUConstants.DiscardedColor), 1.0);
+
     // Highlight stroke (yellow/amber)
-    private static readonly ImmutableSolidColorBrush HighlightStroke = new(Color.Parse("#FFD600"), 1.0);
+    private static readonly ImmutableSolidColorBrush HighlightStroke = new(Color.Parse(MinerUConstants.HighlightColor), 1.0);
 
     private static readonly ImmutablePen DefaultPen = new(DefaultStroke, 1.5);
     private static readonly ImmutablePen HighlightPen = new(HighlightStroke, 3.0);
+
+    // Destination-based pens
+    private static readonly ImmutablePen AdoptedPen = new(AdoptedStroke, 2.0);
+    private static readonly ImmutablePen DiscardedPen = new(DiscardedStroke, 1.5);
+
+    // Cached related-highlight brushes (avoid per-frame allocation in GetRelatedHighlightStyle)
+    private static readonly ImmutablePen AdoptedHighlightPen = new(
+        new ImmutableSolidColorBrush(Color.Parse(MinerUConstants.AdoptedColor), 1.0), 3.0);
+    private static readonly ImmutablePen DiscardedHighlightPen = new(
+        new ImmutableSolidColorBrush(Color.Parse(MinerUConstants.DiscardedColor), 1.0), 3.0);
+    private static readonly ImmutableSolidColorBrush AdoptedHighlightFill = new(
+        Color.Parse(MinerUConstants.AdoptedColor), 0.50);
+    private static readonly ImmutableSolidColorBrush DiscardedHighlightFill = new(
+        Color.Parse(MinerUConstants.DiscardedColor), 0.50);
+    private static readonly ImmutableSolidColorBrush DefaultRelatedHighlightFill = new(
+        Color.Parse(MinerUConstants.HighlightColor), 0.50);
 
     // Cached pens per type (avoid per-frame allocation)
     private static readonly ImmutablePen TitlePen = new(TitleStroke, 1.5);
@@ -316,50 +366,84 @@ public sealed class BlockOverlayControl : Control
         return new PdfRectangle(x0, y1, x1, y0);
     }
 
-    private static (ImmutableSolidColorBrush fill, ImmutablePen pen) GetBlockStyle(MinerUBlock block, bool isHighlighted, bool isHovered)
+    private static (ImmutableSolidColorBrush fill, ImmutablePen pen) GetHighlightStyle(MinerUBlock block)
     {
-        ImmutableSolidColorBrush fill;
-        ImmutablePen pen;
+        return block.Type switch
+        {
+            "title" => (TitleHighlightFill, HighlightPen),
+            "text" => (TextHighlightFill, HighlightPen),
+            "image" => (ImageHighlightFill, HighlightPen),
+            "table" => (TableHighlightFill, HighlightPen),
+            "caption" => (CaptionHighlightFill, HighlightPen),
+            _ => (DefaultHighlightFill, HighlightPen)
+        };
+    }
 
-        if (isHighlighted)
+    private static (ImmutableSolidColorBrush fill, ImmutablePen pen) GetHoverStyle(MinerUBlock block)
+    {
+        return block.Type switch
         {
-            pen = HighlightPen;
-            fill = block.Type switch
-            {
-                "title" => TitleHighlightFill,
-                "text" => TextHighlightFill,
-                "image" => ImageHighlightFill,
-                "table" => TableHighlightFill,
-                "caption" => CaptionHighlightFill,
-                _ => DefaultHighlightFill
-            };
-        }
-        else if (isHovered)
-        {
-            (fill, pen) = block.Type switch
-            {
-                "title" => (TitleHoverFill, TitleHoverPen),
-                "text" => (TextHoverFill, TextHoverPen),
-                "image" => (ImageHoverFill, ImageHoverPen),
-                "table" => (TableHoverFill, TableHoverPen),
-                "caption" => (CaptionHoverFill, CaptionHoverPen),
-                _ => (DefaultHoverFill, DefaultHoverPen)
-            };
-        }
-        else
-        {
-            (fill, pen) = block.Type switch
-            {
-                "title" => (TitleFill, TitlePen),
-                "text" => (TextFill, TextPen),
-                "image" => (ImageFill, ImagePen),
-                "table" => (TableFill, TablePen),
-                "caption" => (CaptionFill, CaptionPen),
-                _ => (DefaultFill, DefaultPen)
-            };
-        }
+            "title" => (TitleHoverFill, TitleHoverPen),
+            "text" => (TextHoverFill, TextHoverPen),
+            "image" => (ImageHoverFill, ImageHoverPen),
+            "table" => (TableHoverFill, TableHoverPen),
+            "caption" => (CaptionHoverFill, CaptionHoverPen),
+            _ => (DefaultHoverFill, DefaultHoverPen)
+        };
+    }
 
-        return (fill, pen);
+    private static (ImmutableSolidColorBrush fill, ImmutablePen pen) GetRelatedHighlightStyle(MinerUBlock block, string? destinationType)
+    {
+        // Use the selected block's destination type to determine highlight color.
+        // Uses pre-allocated static brushes to avoid per-frame allocation.
+        return destinationType switch
+        {
+            MinerUConstants.DestPara => (AdoptedHighlightFill, AdoptedHighlightPen),
+            MinerUConstants.DestDiscarded => (DiscardedHighlightFill, DiscardedHighlightPen),
+            _ => (DefaultRelatedHighlightFill, HighlightPen)
+        };
+    }
+
+    private static ImmutablePen GetDefaultPen(MinerUBlock block)
+    {
+        // First check destination-based pen (para/discarded), then fall back to type-based pen
+        var destPen = block.DestinationType switch
+        {
+            MinerUConstants.DestPara => AdoptedPen,
+            MinerUConstants.DestDiscarded => DiscardedPen,
+            _ => null
+        };
+
+        if (destPen is not null)
+            return destPen;
+
+        return block.Type switch
+        {
+            "title" => TitlePen,
+            "text" => TextPen,
+            "image" => ImagePen,
+            "table" => TablePen,
+            "caption" => CaptionPen,
+            _ => DefaultPen
+        };
+    }
+
+    private static ImmutableSolidColorBrush GetDefaultFill(MinerUBlock block)
+    {
+        return block.Type switch
+        {
+            "title" => TitleFill,
+            "text" => TextFill,
+            "image" => ImageFill,
+            "table" => TableFill,
+            "caption" => CaptionFill,
+            _ => DefaultFill
+        };
+    }
+
+    private static (ImmutableSolidColorBrush fill, ImmutablePen pen) GetDefaultStyle(MinerUBlock block)
+    {
+        return (GetDefaultFill(block), GetDefaultPen(block));
     }
 
     public override void Render(DrawingContext context)
@@ -389,8 +473,29 @@ public sealed class BlockOverlayControl : Control
                 continue;
 
             bool isHighlighted = HighlightBlockId.HasValue && block.Id == HighlightBlockId.Value;
+            // Also highlight blocks whose IDs are in RelatedHighlightBlockIds (from MinerU column selection)
+            bool isRelatedHighlighted = RelatedHighlightBlockIds != null && RelatedHighlightBlockIds.Contains(block.Id);
             bool isHovered = i == _hoveredBlockIndex;
-            var (fill, pen) = GetBlockStyle(block, isHighlighted, isHovered);
+
+            ImmutableSolidColorBrush fill = DefaultFill;
+            ImmutablePen pen = DefaultPen;
+            if (isHovered)
+            {
+                (fill, pen) = GetHoverStyle(block);
+            }
+            else if (isRelatedHighlighted)
+            {
+                // Use destination-type-based highlight color (green for adopted, red for discarded)
+                (fill, pen) = GetRelatedHighlightStyle(block, RelatedHighlightDestinationType);
+            }
+            else if (isHighlighted)
+            {
+                (fill, pen) = GetHighlightStyle(block);
+            }
+            else
+            {
+                (fill, pen) = GetDefaultStyle(block);
+            }
 
             context.DrawGeometry(fill, pen, geometry);
 

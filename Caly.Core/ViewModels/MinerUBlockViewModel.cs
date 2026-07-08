@@ -18,7 +18,9 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+using Avalonia.Media;
 using Caly.Core.Models;
+using Caly.Core.Utilities;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace Caly.Core.ViewModels;
@@ -45,6 +47,75 @@ public partial class MinerUBlockViewModel : ObservableObject
     public int Level => _block.Level;
     public int Image => _block.Image;
     public double[] Bbox => _block.Bbox;
+
+    /// <summary>
+    /// Related block IDs for cross-highlighting between MinerU Blocks column and PDF overlay.
+    /// Returns a read-only view to prevent external modification.
+    /// </summary>
+    public System.Collections.Generic.IReadOnlyList<int> RelatedBlockIds => _block.RelatedBlockIds;
+
+    /// <summary>
+    /// Destination type: "para" (adopted), "discarded" (rejected), or empty.
+    /// </summary>
+    public string DestinationType => _block.DestinationType;
+
+    /// <summary>
+    /// Block source: "para" (adopted), "discarded" (rejected), or empty.
+    /// </summary>
+    public string BlockSource => _block.BlockSource;
+
+    /// <summary>
+    /// Whether this block is from para_blocks (adopted/merged).
+    /// </summary>
+    public bool IsParaBlock => BlockSource == MinerUConstants.SourcePara;
+
+    /// <summary>
+    /// Whether this block is from discarded_blocks (rejected).
+    /// </summary>
+    public bool IsDiscardedBlock => BlockSource == MinerUConstants.SourceDiscarded;
+
+    /// <summary>
+    /// Display badge text for the block's fate.
+    /// </summary>
+    public string? SourceBadgeText
+    {
+        get
+        {
+            return BlockSource switch
+            {
+                MinerUConstants.SourcePara => MinerUConstants.AdoptedBadge,
+                MinerUConstants.SourceDiscarded => MinerUConstants.DiscardedBadge,
+                _ => null
+            };
+        }
+    }
+
+    /// <summary>
+    /// Whether this block has a source badge to display (para or discarded).
+    /// </summary>
+    public bool HasSourceBadge => !string.IsNullOrEmpty(BlockSource);
+
+    /// <summary>
+    /// Border brush color based on block source.
+    /// Uses pre-allocated static brushes from MinerUConstants to avoid per-access allocation.
+    /// </summary>
+    public IBrush BorderBrush
+    {
+        get
+        {
+            return BlockSource switch
+            {
+                MinerUConstants.SourcePara => MinerUConstants.AdoptedBrush,
+                MinerUConstants.SourceDiscarded => MinerUConstants.DiscardedBrush,
+                _ => MinerUConstants.DefaultBrush
+            };
+        }
+    }
+
+    /// <summary>
+    /// Badge background color. Reuses the same brush as BorderBrush.
+    /// </summary>
+    public IBrush BadgeBackground => BorderBrush;
 
     /// <summary>
     /// Gets a short preview of the content for display in the list.

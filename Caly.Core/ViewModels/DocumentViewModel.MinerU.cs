@@ -117,6 +117,86 @@ public sealed partial class DocumentViewModel
     [ObservableProperty]
     private bool _showAnalysisColumn = false;
 
+    /// <summary>
+    /// Currently selected MinerU block ID for cross-highlighting with the PDF overlay.
+    /// When set, the BlockOverlayControl highlights all blocks whose IDs are in the
+    /// RelatedBlockIds of the selected block.
+    /// </summary>
+    [ObservableProperty]
+    private int? _selectedMinerUBlockId;
+
+    // Cached reference to the currently selected block to avoid O(n) searches on each property access.
+    private MinerUBlockViewModel? _cachedSelectedBlock;
+
+    /// <summary>
+    /// Dictionary for O(1) block lookup by ID. Rebuilt whenever MinerUBlocks collection changes.
+    /// </summary>
+    private System.Collections.Generic.Dictionary<int, MinerUBlockViewModel> _blockIdMap = new();
+
+    /// <summary>
+    /// Gets the RelatedBlockIds of the currently selected MinerU block.
+    /// Used to bind to BlockOverlayControl.RelatedHighlightBlockIds for cross-highlighting.
+    /// Returns a HashSet-backed IReadOnlySet for O(1) Contains performance in the render loop.
+    /// </summary>
+    public System.Collections.Generic.IReadOnlySet<int>? SelectedMinerUBlockRelatedIds
+    {
+        get
+        {
+            if (_cachedSelectedBlock is null)
+                return null;
+            var related = _cachedSelectedBlock.RelatedBlockIds;
+            return related.Count > 0 ? (System.Collections.Generic.IReadOnlySet<int>)new System.Collections.Generic.HashSet<int>(related) : null;
+        }
+    }
+
+    /// <summary>
+    /// Gets the DestinationType of the currently selected MinerU block.
+    /// Used to determine highlight color: "para" = green, "discarded" = red.
+    /// </summary>
+    public string? SelectedMinerUBlockDestinationType
+    {
+        get
+        {
+            _cachedSelectedBlock ??= FindSelectedBlock();
+            return _cachedSelectedBlock?.DestinationType;
+        }
+    }
+
+    private MinerUBlockViewModel? FindSelectedBlock()
+    {
+        if (SelectedMinerUBlockId is not int id)
+            return null;
+        return _blockIdMap.TryGetValue(id, out var block) ? block : null;
+    }
+
+    /// <summary>
+    /// Clears selection cache and rebuilds the block ID map after MinerUBlocks collection is replaced.
+    /// Call this after MinerUBlocks.Clear() or when the collection is repopulated.
+    /// </summary>
+    internal void ResetMinerUSelectionAndCache()
+    {
+        _cachedSelectedBlock = null;
+        SelectedMinerUBlockId = null;
+        RebuildBlockIdMap();
+        OnPropertyChanged(nameof(SelectedMinerUBlockRelatedIds));
+        OnPropertyChanged(nameof(SelectedMinerUBlockDestinationType));
+    }
+
+    /// <summary>
+    /// Rebuilds the block ID map after MinerUBlocks collection is populated.
+    /// Uses a loop instead of ToDictionary to handle duplicate IDs gracefully (last-one-wins).
+    /// Duplicate IDs can occur when the same block ID appears in both para_blocks and discarded_blocks.
+    /// </summary>
+    internal void RebuildBlockIdMap()
+    {
+        var dict = new System.Collections.Generic.Dictionary<int, MinerUBlockViewModel>(MinerUBlocks.Count);
+        foreach (var block in MinerUBlocks)
+        {
+            dict[block.Id] = block; // Last-one-wins for duplicate IDs
+        }
+        _blockIdMap = dict;
+    }
+
 
     #endregion
 
@@ -151,6 +231,31 @@ public sealed partial class DocumentViewModel
     private void ToggleAnalysisColumn()
     {
         ShowAnalysisColumn = !ShowAnalysisColumn;
+    }
+
+    /// <summary>
+    /// Selects a MinerU block for cross-highlighting with the PDF overlay.
+    /// When a block is selected, its RelatedBlockIds are highlighted on the PDF overlay.
+    /// Clicking the same block again deselects it (toggles off).
+    /// </summary>
+    [RelayCommand]
+    private void SelectMinerUBlock(int blockId)
+    {
+        // Toggle: if the same block is clicked again, deselect
+        if (SelectedMinerUBlockId == blockId)
+        {
+            SelectedMinerUBlockId = null;
+            _cachedSelectedBlock = null;
+        }
+        else
+        {
+            SelectedMinerUBlockId = blockId;
+            // Use dictionary for O(1) lookup instead of LINQ FirstOrDefault
+            _cachedSelectedBlock = _blockIdMap.TryGetValue(blockId, out var block) ? block : null;
+        }
+        // Notify UI that computed properties have changed
+        OnPropertyChanged(nameof(SelectedMinerUBlockRelatedIds));
+        OnPropertyChanged(nameof(SelectedMinerUBlockDestinationType));
     }
 
     /// <summary>
@@ -438,24 +543,19 @@ public sealed partial class DocumentViewModel
             var allBlocks = minerUDoc.GetAllBlocks();
 
             // MinerUBlocks: MinerUBlockViewModel for middle column (raw MinerU data)
-            var newMinerUViewModels = allBlocks.Select(block => new MinerUBlockViewModel(
-                new MinerUMiddlePageBlock
-                {
-                    Id = block.Id,
-                    Page = block.Page,
-                    Type = block.Type,
-                    Content = block.Content,
-                    SourceLabel = block.SourceLabel,
-                    Contd = block.Contd,
-                    Level = block.Level,
-                    Image = block.Image,
-                    Bbox = new double[] { block.Bbox.X, block.Bbox.Y, block.Bbox.Right, block.Bbox.Bottom }
-                })).ToList();
+            var newMinerUViewModels = allBlocks.Select(block => ToMinerUBlockViewModel(block)).ToList();
+
+            // Clear selection cache before replacing collection (avoids stale reference)
+            _cachedSelectedBlock = null;
+            SelectedMinerUBlockId = null;
 
             // Replace collections in bulk
             MinerUBlocks.Clear();
             foreach (var b in newMinerUViewModels)
                 MinerUBlocks.Add(b);
+
+            // Rebuild the block ID map for O(1) lookups
+            RebuildBlockIdMap();
 
             System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] Collections populated: MinerUBlocks={MinerUBlocks.Count}");
         }
@@ -516,23 +616,18 @@ public sealed partial class DocumentViewModel
         }
 
         // Populate MinerUBlocks (middle column)
+        // Clear selection cache before replacing collection (avoids stale reference)
+        _cachedSelectedBlock = null;
+        SelectedMinerUBlockId = null;
+
         MinerUBlocks.Clear();
         foreach (var block in minerUDoc.GetAllBlocks())
         {
-            MinerUBlocks.Add(new MinerUBlockViewModel(
-                new MinerUMiddlePageBlock
-                {
-                    Id = block.Id,
-                    Page = block.Page,
-                    Type = block.Type,
-                    Content = block.Content,
-                    SourceLabel = block.SourceLabel,
-                    Contd = block.Contd,
-                    Level = block.Level,
-                    Image = block.Image,
-                    Bbox = new double[] { block.Bbox.X, block.Bbox.Y, block.Bbox.Right, block.Bbox.Bottom }
-                }));
+            MinerUBlocks.Add(ToMinerUBlockViewModel(block));
         }
+
+        // Rebuild the block ID map for O(1) lookups
+        RebuildBlockIdMap();
 
         MinerUStatus = MinerUParseStatus.Completed;
         MinerUProgress = 100;
@@ -540,6 +635,30 @@ public sealed partial class DocumentViewModel
 
         // Show the MinerU column when data is loaded
         ShowMinerUColumn = true;
+    }
+
+    /// <summary>
+    /// Converts a MinerUBlock to a MinerUBlockViewModel for UI binding.
+    /// Extracted to avoid code duplication across LoadStructureDocument and TryLoadMinerUData.
+    /// </summary>
+    private MinerUBlockViewModel ToMinerUBlockViewModel(MinerUBlock block)
+    {
+        return new MinerUBlockViewModel(
+            new MinerUMiddlePageBlock
+            {
+                Id = block.Id,
+                Page = block.Page,
+                Type = block.Type,
+                Content = block.Content,
+                SourceLabel = block.SourceLabel,
+                Contd = block.Contd,
+                Level = block.Level,
+                Image = block.Image,
+                Bbox = new double[] { block.Bbox.X, block.Bbox.Y, block.Bbox.Right, block.Bbox.Bottom },
+                BlockSource = block.BlockSource,
+                DestinationType = block.DestinationType,
+                RelatedBlockIds = new System.Collections.Generic.List<int>(block.RelatedBlockIds)
+            });
     }
 
     #endregion

@@ -216,4 +216,25 @@ public sealed partial class DocumentsTabsControl : UserControl
         vm.OpenCommand.Execute(null);
         e.Handled = true;
     }
+
+    /// <summary>
+    /// Handles click on a MinerU block in the middle column.
+    /// Uses FindAncestor to reliably locate the DocumentsTabsControl and execute SelectMinerUBlockCommand.
+    /// </summary>
+    private void MinerUBlock_OnPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is not Border border || border.DataContext is not MinerUBlockViewModel blockVm)
+            return;
+
+        // Use FindAncestor for a more robust approach that works regardless of template structure
+        var tabsControl = border.FindAncestorOfType<DocumentsTabsControl>();
+        if (tabsControl?.DataContext is not MainViewModel mainVm)
+            return;
+
+        if (mainVm.SelectedDocument is DocumentViewModel currentDoc)
+        {
+            currentDoc.SelectMinerUBlockCommand?.Execute(blockVm.Id);
+            e.Handled = true;
+        }
+    }
 }

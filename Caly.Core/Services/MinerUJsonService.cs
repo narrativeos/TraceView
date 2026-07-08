@@ -20,6 +20,7 @@
 
 using Avalonia;
 using Caly.Core.Models;
+using Caly.Core.Utilities;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -235,19 +236,70 @@ public static class MinerUJsonService
                         : 0.0;
 
                     var blocks = new List<MinerUBlock>();
-                    // Only parse preproc_blocks to avoid duplication with para_blocks.
-                    // preproc_blocks contains the raw blocks with nested structure (e.g., image_body + image_footnote),
-                    // while para_blocks is a semantic merge of adjacent blocks (duplicates for overlay purposes).
-                    foreach (var sectionName in new[] { "preproc_blocks", "discarded_blocks" })
+                    // Parse para_blocks (semantic paragraphs) and discarded_blocks for the MinerU Blocks column.
+                    // This allows users to see which blocks were adopted/merged (para_blocks) vs rejected (discarded_blocks),
+                    // providing a clear contrast with the PDF overlay layer which uses preproc_blocks (raw detection).
+                    var paraBlocks = new List<MinerUBlock>();
+                    var discardedBlocks = new List<MinerUBlock>();
+                    // Global ID counter to ensure unique IDs across all sections (para/discarded/preproc).
+                    // Without this, blocks from different sections that lack explicit IDs would get duplicate IDs.
+                    int nextBlockId = 1;
+                    
+                    if (pageInfoElem.TryGetProperty("para_blocks", out var paraElem) && paraElem.ValueKind == JsonValueKind.Array)
                     {
-                        if (!pageInfoElem.TryGetProperty(sectionName, out var sectionElem) || sectionElem.ValueKind != JsonValueKind.Array)
-                            continue;
-
-                        foreach (var blockElem in sectionElem.EnumerateArray())
+                        foreach (var blockElem in paraElem.EnumerateArray())
                         {
-                            blocks.AddRange(MapMinerUPageSectionToBlocks(blockElem, pageNum, pageWidth, pageHeight));
+                            var paraList = MapMinerUPageSectionToBlocks(blockElem, pageNum, pageWidth, pageHeight);
+                            foreach (var b in paraList)
+                            {
+                                if (b.Id <= 0)
+                                    b.Id = nextBlockId++;
+                                b.BlockSource = MinerUConstants.SourcePara;
+                                paraBlocks.Add(b);
+                            }
                         }
                     }
+                    
+                    if (pageInfoElem.TryGetProperty("discarded_blocks", out var discardedElem) && discardedElem.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var blockElem in discardedElem.EnumerateArray())
+                        {
+                            var discList = MapMinerUPageSectionToBlocks(blockElem, pageNum, pageWidth, pageHeight);
+                            foreach (var b in discList)
+                            {
+                                if (b.Id <= 0)
+                                    b.Id = nextBlockId++;
+                                b.BlockSource = MinerUConstants.SourceDiscarded;
+                                discardedBlocks.Add(b);
+                            }
+                        }
+                    }
+                    
+                    // Build reverse mapping: for each preproc_block, find which para/discarded block it belongs to
+                    // This will be used for cross-highlighting between PDF overlay and MinerU Blocks column
+                    if (pageInfoElem.TryGetProperty("preproc_blocks", out var preprocElem) && preprocElem.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var blockElem in preprocElem.EnumerateArray())
+                        {
+                            var preprocList = MapMinerUPageSectionToBlocks(blockElem, pageNum, pageWidth, pageHeight);
+                            foreach (var preprocBlock in preprocList)
+                            {
+                                if (preprocBlock.Id <= 0)
+                                    preprocBlock.Id = nextBlockId++;
+                                // Find the closest para_block or discarded_block by bbox overlap
+                                var matched = FindMatchingBlock(preprocBlock, paraBlocks, discardedBlocks);
+                                if (matched != null)
+                                {
+                                    preprocBlock.DestinationType = matched.BlockSource;
+                                    preprocBlock.RelatedBlockIds.Add(matched.Id);
+                                    matched.RelatedBlockIds.Add(preprocBlock.Id);
+                                }
+                            }
+                        }
+                    }
+                    
+                    blocks.AddRange(paraBlocks);
+                    blocks.AddRange(discardedBlocks);
 
                     if (blocks.Count > 0)
                     {
@@ -317,6 +369,12 @@ public static class MinerUJsonService
         {
             System.Diagnostics.Debug.WriteLine($"[MinerUJson] Failed to parse MinerU zip: {ex.Message}");
             throw new MinerUServiceException($"Failed to parse MinerU output: {ex.Message}", ex);
+        }
+        finally
+        {
+            // Clean up temporary extraction directory
+            try { Directory.Delete(tempDir, true); }
+            catch { /* Best-effort cleanup, ignore errors */ }
         }
     }
 
@@ -622,6 +680,75 @@ public static class MinerUJsonService
             JsonValueKind.String when double.TryParse(elem.GetString(), out var value) => value,
             _ => defaultValue
         };
+    }
+
+    /// <summary>
+    /// Finds the matching para_block or discarded_block for a preproc_block based on bbox overlap.
+    /// Returns the block with the largest overlap ratio (prefer para_blocks over discarded_blocks),
+    /// or null if no significant overlap found (>= MinerUConstants.MinimumOverlapRatio threshold).
+    /// Uses > for comparison to prefer earlier (first) matches when ratios are equal.
+    /// </summary>
+    static MinerUBlock? FindMatchingBlock(MinerUBlock preprocBlock, List<MinerUBlock> paraBlocks, List<MinerUBlock> discardedBlocks)
+    {
+        MinerUBlock? best = null;
+        double bestRatio = MinerUConstants.MinimumOverlapRatio;
+
+        // First, search para_blocks (higher priority - adopted blocks)
+        foreach (var b in paraBlocks)
+        {
+            var ratio = CalculateOverlapRatio(preprocBlock, b);
+            if (ratio > bestRatio)
+            {
+                bestRatio = ratio;
+                best = b;
+            }
+        }
+
+        // Then search discarded_blocks (lower priority - only if no para match found)
+        if (best is null)
+        {
+            foreach (var b in discardedBlocks)
+            {
+                var ratio = CalculateOverlapRatio(preprocBlock, b);
+                if (ratio > bestRatio)
+                {
+                    bestRatio = ratio;
+                    best = b;
+                }
+            }
+        }
+
+        return best;
+    }
+
+    /// <summary>
+    /// Calculates the overlap ratio between two blocks (overlap area / preprocBlock area).
+    /// </summary>
+    static double CalculateOverlapRatio(MinerUBlock a, MinerUBlock b)
+    {
+        var aX1 = a.Bbox.X;
+        var aY1 = a.Bbox.Y;
+        var aX2 = a.Bbox.Right;
+        var aY2 = a.Bbox.Bottom;
+        
+        var bX1 = b.Bbox.X;
+        var bY1 = b.Bbox.Y;
+        var bX2 = b.Bbox.Right;
+        var bY2 = b.Bbox.Bottom;
+        
+        // Calculate overlap rectangle
+        var overlapX1 = Math.Max(aX1, bX1);
+        var overlapY1 = Math.Max(aY1, bY1);
+        var overlapX2 = Math.Min(aX2, bX2);
+        var overlapY2 = Math.Min(aY2, bY2);
+        
+        if (overlapX1 >= overlapX2 || overlapY1 >= overlapY2)
+            return 0.0;
+        
+        var overlapArea = (overlapX2 - overlapX1) * (overlapY2 - overlapY1);
+        var aArea = (aX2 - aX1) * (aY2 - aY1);
+        
+        return aArea > 0 ? overlapArea / aArea : 0.0;
     }
 
     #endregion

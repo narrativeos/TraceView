@@ -119,6 +119,30 @@ public partial class MinerUBlock : ObservableObject
     private List<int> _originalBlockIds = new();
 
     /// <summary>
+    /// Block source indicator: "para" (from para_blocks), "discarded" (from discarded_blocks),
+    /// or empty string (from preproc_blocks or unknown source).
+    /// Used in MinerU Blocks column to show whether the block was adopted or discarded.
+    /// </summary>
+    [ObservableProperty]
+    private string _blockSource = string.Empty;
+
+    /// <summary>
+    /// Destination type for preproc_blocks: "para" (merged into para_blocks),
+    /// "discarded" (placed in discarded_blocks), or empty string (could not be matched).
+    /// Used in PDF overlay to color-code block fate.
+    /// </summary>
+    [ObservableProperty]
+    private string _destinationType = string.Empty;
+
+    /// <summary>
+    /// Related block IDs for cross-highlighting between MinerU Blocks column and PDF overlay.
+    /// - For para_blocks: contains the preproc_block IDs that were merged into this paragraph
+    /// - For preproc_blocks: contains the para_block/discarded_block ID it belongs to
+    /// </summary>
+    [ObservableProperty]
+    private List<int> _relatedBlockIds = new();
+
+    /// <summary>
     /// Computed property: returns color based on Type.
     /// </summary>
     public Color TypeColor => Type switch

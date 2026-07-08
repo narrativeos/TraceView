@@ -83,6 +83,31 @@ public class MinerUMiddlePageBlock
     /// </summary>
     [JsonPropertyName("table_merge")]
     public int TableMerge { get; set; } = -1;
+
+    /// <summary>
+    /// Block source indicator: "para" (from para_blocks/adopted), 
+    /// "discarded" (from discarded_blocks/rejected), or empty (unknown).
+    /// NOT serialized to JSON - set during parsing.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string BlockSource { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Destination type for preproc_blocks: "adopted" (merged into para_blocks),
+    /// "discarded" (placed in discarded_blocks), or "unknown" (could not be matched).
+    /// NOT serialized to JSON - set during parsing.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string DestinationType { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Related block IDs for cross-highlighting between MinerU Blocks column and PDF overlay.
+    /// - For para_blocks: contains the preproc_block IDs that were merged into this paragraph
+    /// - For preproc_blocks: contains the para_block/discarded_block ID it belongs to
+    /// NOT serialized to JSON - set during parsing.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public System.Collections.Generic.List<int> RelatedBlockIds { get; set; } = new();
 }
 
 /// <summary>

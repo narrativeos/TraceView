@@ -369,37 +369,52 @@
                                         </StackPanel>
                                     </Border>
 
-                                    <!-- Blocks List: shown when not parsing -->
-                                    <ScrollViewer IsVisible="{Binding !IsMinerUParsing}">
-                                        <ItemsControl ItemsSource="{Binding MinerUBlocks}">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate x:DataType="vm:MinerUBlockViewModel">
-                                                    <Border Padding="6"
-                                                            Margin="0,2"
-                                                            Background="{DynamicResource SystemChromeMediumLowColor}"
-                                                            CornerRadius="3">
-                                                        <StackPanel Spacing="3">
-                                                            <StackPanel Orientation="Horizontal"
-                                                                        Spacing="4">
-                                                                <TextBlock Text="{Binding Id, StringFormat='#{0}'}"
-                                                                           FontSize="11"
-                                                                           FontWeight="Bold"
-                                                                           Foreground="{DynamicResource SystemAccentColor}"/>
-                                                                <TextBlock Text="{Binding TypeLabel}"
-                                                                           FontSize="10"
-                                                                           FontWeight="SemiBold"/>
-                                                            </StackPanel>
-                                                            <TextBlock Text="{Binding ContentPreview}"
-                                                                       FontSize="10"
-                                                                       TextWrapping="Wrap"
-                                                                       Opacity="0.8"
-                                                                       MaxLines="3"/>
-                                                        </StackPanel>
-                                                    </Border>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                    </ScrollViewer>
+                                      <!-- Blocks List: shown when not parsing -->
+                                      <ScrollViewer IsVisible="{Binding !IsMinerUParsing}">
+                                          <ItemsControl ItemsSource="{Binding MinerUBlocks}">
+                                              <ItemsControl.ItemTemplate>
+                                                  <DataTemplate x:DataType="vm:MinerUBlockViewModel">
+                                                      <Border Padding="6"
+                                                              Margin="0,2"
+                                                              Background="{DynamicResource SystemChromeMediumLowColor}"
+                                                              CornerRadius="3"
+                                                              BorderThickness="1.5"
+                                                              BorderBrush="{Binding BorderBrush}"
+                                                              PointerPressed="MinerUBlock_OnPointerPressed">
+                                                          <StackPanel Spacing="3">
+                                                              <StackPanel Orientation="Horizontal"
+                                                                          Spacing="4">
+                                                                  <TextBlock Text="{Binding Id, StringFormat='#{0}'}"
+                                                                             FontSize="11"
+                                                                             FontWeight="Bold"
+                                                                             Foreground="{DynamicResource SystemAccentColor}"/>
+                                                                  <TextBlock Text="{Binding TypeLabel}"
+                                                                             FontSize="10"
+                                                                             FontWeight="SemiBold"/>
+                                                                  <!-- Source Badge: only visible for para/discarded blocks -->
+                                                                  <Border Padding="2,1"
+                                                                          CornerRadius="2"
+                                                                          IsVisible="{Binding HasSourceBadge}"
+                                                                          Background="{Binding BadgeBackground}"
+                                                                          Opacity="0.8">
+                                                                      <TextBlock Text="{Binding SourceBadgeText}"
+                                                                                 FontSize="9"
+                                                                                 Foreground="White"
+                                                                                 TextAlignment="Center"
+                                                                                 VerticalAlignment="Center"/>
+                                                                  </Border>
+                                                              </StackPanel>
+                                                              <TextBlock Text="{Binding ContentPreview}"
+                                                                         FontSize="10"
+                                                                         TextWrapping="Wrap"
+                                                                         Opacity="0.8"
+                                                                         MaxLines="3"/>
+                                                          </StackPanel>
+                                                      </Border>
+                                                  </DataTemplate>
+                                              </ItemsControl.ItemTemplate>
+                                          </ItemsControl>
+                                      </ScrollViewer>
                                 </DockPanel>
                             </Border>
 
