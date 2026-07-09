@@ -93,6 +93,11 @@ public sealed partial class DocumentViewModel
     private ObservableCollection<MinerUBlockViewModel> _minerUBlocks = new();
 
     /// <summary>
+    /// Cached artifacts directory for image loading in MinerU blocks.
+    /// </summary>
+    private string? _minerUArtifactsDirectory;
+
+    /// <summary>
     /// Raw MinerU middle JSON data (for reference).
     /// </summary>
     [ObservableProperty]
@@ -523,6 +528,7 @@ public sealed partial class DocumentViewModel
     {
         System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] StructureDocument has {minerUDoc.GetAllBlocks().Count} blocks, TreeRoot={minerUDoc.TreeRoot != null}");
 
+        _minerUArtifactsDirectory = artifactsDirectory;
         StructureDocument = minerUDoc;
         AnalysisViewModel = new AnalysisViewModel(minerUDoc, artifactsDirectory);
 
@@ -543,7 +549,7 @@ public sealed partial class DocumentViewModel
             var allBlocks = minerUDoc.GetAllBlocks();
 
             // MinerUBlocks: MinerUBlockViewModel for middle column (raw MinerU data)
-            var newMinerUViewModels = allBlocks.Select(block => ToMinerUBlockViewModel(block)).ToList();
+            var newMinerUViewModels = allBlocks.Select(block => ToMinerUBlockViewModel(block, _minerUArtifactsDirectory)).ToList();
 
             // Clear selection cache before replacing collection (avoids stale reference)
             _cachedSelectedBlock = null;
@@ -597,14 +603,21 @@ public sealed partial class DocumentViewModel
         if (middleJsonFiles.Length == 0)
             return;
 
-        var minerUDoc = MinerUJsonService.TryParseMinerUMiddleJson(middleJsonFiles[0]);
+        var middleJsonPath = middleJsonFiles[0];
+        // Derive artifacts directory: the images/ folder is typically in the same directory as middle.json
+        var artifactsDir = Path.GetDirectoryName(middleJsonPath);
+
+        var minerUDoc = MinerUJsonService.TryParseMinerUMiddleJson(middleJsonPath);
         if (minerUDoc is null)
             return;
+
+        // Cache artifacts directory for image loading in MinerUBlockViewModel
+        _minerUArtifactsDirectory = artifactsDir;
 
         // Set StructureDocument first — subscribes the Pages.CollectionChanged handler
         // so any pages added later will automatically get blocks assigned.
         StructureDocument = minerUDoc;
-        AnalysisViewModel = new AnalysisViewModel(minerUDoc);
+        AnalysisViewModel = new AnalysisViewModel(minerUDoc, artifactsDir);
 
         // Assign blocks to existing pages (the CollectionChanged handler only covers future additions)
         foreach (var page in Pages)
@@ -623,7 +636,7 @@ public sealed partial class DocumentViewModel
         MinerUBlocks.Clear();
         foreach (var block in minerUDoc.GetAllBlocks())
         {
-            MinerUBlocks.Add(ToMinerUBlockViewModel(block));
+            MinerUBlocks.Add(ToMinerUBlockViewModel(block, _minerUArtifactsDirectory));
         }
 
         // Rebuild the block ID map for O(1) lookups
@@ -641,7 +654,7 @@ public sealed partial class DocumentViewModel
     /// Converts a MinerUBlock to a MinerUBlockViewModel for UI binding.
     /// Extracted to avoid code duplication across LoadStructureDocument and TryLoadMinerUData.
     /// </summary>
-    private MinerUBlockViewModel ToMinerUBlockViewModel(MinerUBlock block)
+    private MinerUBlockViewModel ToMinerUBlockViewModel(MinerUBlock block, string? artifactsDirectory)
     {
         return new MinerUBlockViewModel(
             new MinerUMiddlePageBlock
@@ -658,7 +671,7 @@ public sealed partial class DocumentViewModel
                 BlockSource = block.BlockSource,
                 DestinationType = block.DestinationType,
                 RelatedBlockIds = new System.Collections.Generic.List<int>(block.RelatedBlockIds)
-            });
+            }, artifactsDirectory);
     }
 
     #endregion

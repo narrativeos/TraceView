@@ -19,9 +19,13 @@
 // SOFTWARE.
 
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using Caly.Core.Models;
 using Caly.Core.Utilities;
 using CommunityToolkit.Mvvm.ComponentModel;
+using System;
+using System.IO;
+using System.Linq;
 
 namespace Caly.Core.ViewModels;
 
@@ -32,10 +36,13 @@ namespace Caly.Core.ViewModels;
 public partial class MinerUBlockViewModel : ObservableObject
 {
     private readonly MinerUMiddlePageBlock _block;
+    private readonly string? _artifactsDirectory;
+    private Bitmap? _cachedBitmap;
 
-    public MinerUBlockViewModel(MinerUMiddlePageBlock block)
+    public MinerUBlockViewModel(MinerUMiddlePageBlock block, string? artifactsDirectory = null)
     {
         _block = block;
+        _artifactsDirectory = artifactsDirectory;
     }
 
     public int Id => _block.Id;
@@ -162,6 +169,92 @@ public partial class MinerUBlockViewModel : ObservableObject
                 "caption" => "Gray",
                 _ => "Default"
             };
+        }
+    }
+
+    /// <summary>
+    /// Whether this block represents an image.
+    /// </summary>
+    public bool IsImage => Type == "image";
+
+    /// <summary>
+    /// Bitmap image for display (only for image blocks).
+    /// Loads the image from the artifacts directory using the Content field as the image path.
+    /// </summary>
+    public Bitmap? ImageBitmap
+    {
+        get
+        {
+            if (Type != "image")
+                return null;
+
+            if (_cachedBitmap is not null)
+                return _cachedBitmap;
+
+            if (_artifactsDirectory is null || string.IsNullOrEmpty(Content))
+                return null;
+
+            // Get the image filename from Content (e.g., "images/20/20_0.png" or just "20_0.png")
+            var imageFileName = Path.GetFileName(Content);
+            if (string.IsNullOrEmpty(imageFileName))
+                return null;
+
+            var imageExtensions = new[] { ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp" };
+            var ext = Path.GetExtension(imageFileName).ToLowerInvariant();
+            if (!imageExtensions.Contains(ext))
+                return null;
+
+            // Search for the filename in artifacts directory
+            try
+            {
+                var allImageFiles = Directory.GetFiles(_artifactsDirectory, "*.*", SearchOption.AllDirectories)
+                    .Where(f => imageExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()))
+                    .ToList();
+
+                foreach (var file in allImageFiles)
+                {
+                    if (Path.GetFileName(file).Equals(imageFileName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        try
+                        {
+                            _cachedBitmap = new Bitmap(file);
+                            return _cachedBitmap;
+                        }
+                        catch
+                        {
+                            // Try next file
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // Directory access failed
+            }
+
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Whether the image bitmap was successfully loaded.
+    /// </summary>
+    public bool HasImageBitmap => _cachedBitmap is not null;
+
+    /// <summary>
+    /// Image path text for display when image cannot be loaded.
+    /// </summary>
+    public string ImagePathText
+    {
+        get
+        {
+            if (Type != "image")
+                return string.Empty;
+
+            if (!string.IsNullOrEmpty(Content))
+                return Content;
+
+            return "[图片未找到]";
         }
     }
 

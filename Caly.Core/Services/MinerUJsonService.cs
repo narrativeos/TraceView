@@ -433,7 +433,14 @@ public static class MinerUJsonService
         if (elem.TryGetProperty("page", out var pageElem))
             block.Page = GetIntValue(pageElem, block.Page);
 
+        // First try direct "content" field
         block.Content = GetStringProperty(elem, "content") ?? string.Empty;
+
+        // If content is empty, try to extract from lines/spans (handles image_body, image_footnote etc.)
+        if (string.IsNullOrEmpty(block.Content))
+        {
+            block.Content = ExtractMinerUContent(elem);
+        }
 
         // Determine type from source_label or type field
         var minerUType = GetStringProperty(elem, "source_label")
@@ -523,9 +530,21 @@ public static class MinerUJsonService
                 {
                     foreach (var spanElem in spansElem.EnumerateArray())
                     {
+                        // Try text content first
                         var content = GetStringProperty(spanElem, "content");
                         if (!string.IsNullOrEmpty(content))
+                        {
                             parts.Add(content);
+                        }
+                        // For image spans, extract image_path instead
+                        else
+                        {
+                            var imagePath = GetStringProperty(spanElem, "image_path");
+                            if (!string.IsNullOrEmpty(imagePath))
+                            {
+                                parts.Add(imagePath);
+                            }
+                        }
                     }
                 }
             }
@@ -550,9 +569,9 @@ public static class MinerUJsonService
         {
             "paragraph_title" or "title" or "section_title" => "title",
             "paragraph" or "text" or "plain_text" or "body_text" => "text",
-            "figure" or "image" or "picture" or "photo" => "image",
+            "figure" or "image" or "picture" or "photo" or "image_body" => "image",
             "table" or "tabular" => "table",
-            "figure_footnote" or "table_footnote" or "caption" or "image_caption" or "table_caption" => "caption",
+            "figure_footnote" or "table_footnote" or "caption" or "image_caption" or "table_caption" or "image_footnote" => "caption",
             "header" or "footnote" or "footer" => "text",
             "equation" or "formula" => "text",
             "list" or "list_item" => "text",

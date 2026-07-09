@@ -404,11 +404,35 @@
                                                                                  VerticalAlignment="Center"/>
                                                                   </Border>
                                                               </StackPanel>
+
+                                                              <!-- Image display for image blocks -->
+                                                              <Border IsVisible="{Binding IsImage}"
+                                                                      MaxHeight="200"
+                                                                      CornerRadius="3"
+                                                                      ClipToBounds="True"
+                                                                      Margin="0,2,0,0">
+                                                                  <Grid>
+                                                                      <Image Source="{Binding ImageBitmap}"
+                                                                             Stretch="Uniform"
+                                                                             HorizontalAlignment="Stretch"
+                                                                             VerticalAlignment="Stretch"/>
+                                                                      <TextBlock Text="{Binding ImagePathText}"
+                                                                                 FontSize="10"
+                                                                                 Foreground="#FF9800"
+                                                                                 TextWrapping="Wrap"
+                                                                                 VerticalAlignment="Center"
+                                                                                 HorizontalAlignment="Center"
+                                                                                 IsVisible="{Binding !HasImageBitmap}"/>
+                                                                  </Grid>
+                                                              </Border>
+
+                                                              <!-- Content preview for non-image blocks -->
                                                               <TextBlock Text="{Binding ContentPreview}"
                                                                          FontSize="10"
                                                                          TextWrapping="Wrap"
                                                                          Opacity="0.8"
-                                                                         MaxLines="3"/>
+                                                                         MaxLines="3"
+                                                                         IsVisible="{Binding !IsImage}"/>
                                                           </StackPanel>
                                                       </Border>
                                                   </DataTemplate>
