@@ -348,7 +348,13 @@ public sealed partial class DocumentsTabsControl : UserControl
 
         connControl.ShowConnections = true;
         connControl.PreprocBlocks = currentPage.PreprocBlocks;
-        connControl.MinerUBlocks = docVm.MinerUBlocks;
+        
+        // Filter MinerUBlocks to only include blocks for the current page
+        // This ensures connection lines are drawn correctly when switching pages
+        var currentPageBlocks = docVm.MinerUBlocks
+            .Where(b => b.Page == currentPage.PageNumber)
+            .ToList();
+        connControl.MinerUBlocks = currentPageBlocks;
         connControl.PageSize = currentPage.Size;
         connControl.ZoomLevel = docVm.ZoomLevel;
         connControl.SelectedBlockId = docVm.SelectedMinerUBlockId;
