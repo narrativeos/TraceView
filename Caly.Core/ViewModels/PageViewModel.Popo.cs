@@ -29,6 +29,13 @@ public sealed partial class PageViewModel
     [ObservableProperty]
     private IReadOnlyList<MinerUBlock>? _minerUBlocks;
 
+    /// <summary>
+    /// Preproc blocks (raw detection blocks) for this page.
+    /// These are shown on the PDF overlay and connected to para/discarded blocks via connection lines.
+    /// </summary>
+    [ObservableProperty]
+    private IReadOnlyList<MinerUBlock>? _preprocBlocks;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(MinerUBlocks))]
     private bool _hasMinerUBlocks;

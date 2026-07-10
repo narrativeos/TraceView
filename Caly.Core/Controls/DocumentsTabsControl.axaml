@@ -290,6 +290,7 @@
                     <!-- Three-column layout: PDF | MinerU Blocks | Popo Blocks -->
                     <SplitView.Content>
                         <Grid>
+                            <Grid Name="PART_ThreeColumnGrid">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="{Binding ShowMinerUColumn, Converter={StaticResource BoolToGridLengthConverter}}"/>
@@ -297,7 +298,8 @@
                             </Grid.ColumnDefinitions>
 
                             <!-- Column 1: PDF Document -->
-                            <controls:DocumentControl Grid.Column="0"/>
+                            <controls:DocumentControl Grid.Column="0"
+                                                     Name="PART_DocumentControl"/>
 
                             <!-- GridSplitter between PDF and MinerU -->
                             <GridSplitter Grid.Column="0"
@@ -370,7 +372,9 @@
                                     </Border>
 
                                       <!-- Blocks List: shown when not parsing -->
-                                      <ScrollViewer IsVisible="{Binding !IsMinerUParsing}">
+                                      <ScrollViewer Name="PART_MinerUScrollViewer"
+                                                    IsVisible="{Binding !IsMinerUParsing}"
+                                                    ScrollChanged="OnMinerUScrollChanged">
                                           <ItemsControl ItemsSource="{Binding MinerUBlocks}">
                                               <ItemsControl.ItemTemplate>
                                                   <DataTemplate x:DataType="vm:MinerUBlockViewModel">
@@ -651,6 +655,14 @@
                                 </DockPanel>
                             </Border>
 
+                            <!-- Connection Lines overlay between PDF and MinerU columns -->
+                            <controls:ConnectionLinesControl 
+                                Grid.Column="0"
+                                Grid.ColumnSpan="2"
+                                Name="PART_ConnectionLinesControl"
+                                IsVisible="True"
+                                IsHitTestVisible="False"/>
+                        </Grid>
                         </Grid>
                     </SplitView.Content>
 

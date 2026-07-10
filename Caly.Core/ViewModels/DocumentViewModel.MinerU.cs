@@ -432,8 +432,6 @@ public sealed partial class DocumentViewModel
 
             var result = await service.BuildParseResultFromZipAsync(zipPath, LocalPath, OnMinerUProgress, _minerUCts.Token);
 
-            System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] Parse completed: StructureDocument={result.StructureDocument != null}, ZipPath={result.ZipPath}, ArtifactsDir={result.ArtifactsDirectory}");
-
             // Load result into Popo properties
             LoadParseResult(result);
 
@@ -507,13 +505,8 @@ public sealed partial class DocumentViewModel
     /// </summary>
     private void LoadParseResult(MinerUParseResult result)
     {
-        System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] LoadParseResult called, StructureDocument={result.StructureDocument != null}");
-
         if (result.StructureDocument is null)
-        {
-            System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] LoadParseResult: StructureDocument is NULL, returning early!");
             return;
-        }
 
         LoadStructureDocument(result.StructureDocument, result.ArtifactsDirectory);
     }
@@ -526,21 +519,16 @@ public sealed partial class DocumentViewModel
     /// </summary>
     private void LoadStructureDocument(StructureDocument minerUDoc, string? artifactsDirectory = null)
     {
-        System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] StructureDocument has {minerUDoc.GetAllBlocks().Count} blocks, TreeRoot={minerUDoc.TreeRoot != null}");
-
         _minerUArtifactsDirectory = artifactsDirectory;
         StructureDocument = minerUDoc;
         AnalysisViewModel = new AnalysisViewModel(minerUDoc, artifactsDirectory);
-
-        System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] StructureDocument and AnalysisViewModel set");
 
         // Assign blocks to each page view model
         foreach (var page in Pages)
         {
             page.MinerUBlocks = minerUDoc.GetBlocksForPage(page.PageNumber);
+            page.PreprocBlocks = minerUDoc.GetPreprocBlocksForPage(page.PageNumber);
         }
-
-        System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] Blocks assigned to {Pages.Count} page view models");
 
 
         // Build block collections in memory first, then replace
@@ -562,14 +550,10 @@ public sealed partial class DocumentViewModel
 
             // Rebuild the block ID map for O(1) lookups
             RebuildBlockIdMap();
-
-            System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] Collections populated: MinerUBlocks={MinerUBlocks.Count}");
         }
 
         // Auto-open the Popo analysis pane
         IsPopoPaneOpen = true;
-
-        System.Diagnostics.Debug.WriteLine($"[MinerU ViewModel DEBUG] LoadStructureDocument completed: HasStructureDocument={HasStructureDocument}, MinerUBlocks={MinerUBlocks.Count}");
     }
 
     /// <summary>
@@ -626,6 +610,10 @@ public sealed partial class DocumentViewModel
             {
                 page.MinerUBlocks = minerUDoc.GetBlocksForPage(page.PageNumber);
             }
+            if (page.PreprocBlocks is null)
+            {
+                page.PreprocBlocks = minerUDoc.GetPreprocBlocksForPage(page.PageNumber);
+            }
         }
 
         // Populate MinerUBlocks (middle column)
@@ -660,6 +648,7 @@ public sealed partial class DocumentViewModel
             new MinerUMiddlePageBlock
             {
                 Id = block.Id,
+                BlockId = block.BlockId,
                 Page = block.Page,
                 Type = block.Type,
                 Content = block.Content,
@@ -670,7 +659,8 @@ public sealed partial class DocumentViewModel
                 Bbox = new double[] { block.Bbox.X, block.Bbox.Y, block.Bbox.Right, block.Bbox.Bottom },
                 BlockSource = block.BlockSource,
                 DestinationType = block.DestinationType,
-                RelatedBlockIds = new System.Collections.Generic.List<int>(block.RelatedBlockIds)
+                RelatedBlockIds = new System.Collections.Generic.List<int>(block.RelatedBlockIds),
+                SourceBlockIds = new System.Collections.Generic.List<string>(block.SourceBlockIds)
             }, artifactsDirectory);
     }
 

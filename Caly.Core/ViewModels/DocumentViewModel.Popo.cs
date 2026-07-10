@@ -66,9 +66,16 @@ public sealed partial class DocumentViewModel
 
         foreach (var item in e.NewItems)
         {
-            if (item is PageViewModel page && page.MinerUBlocks is null)
+            if (item is PageViewModel page)
             {
-                page.MinerUBlocks = doc.GetBlocksForPage(page.PageNumber);
+                if (page.MinerUBlocks is null)
+                {
+                    page.MinerUBlocks = doc.GetBlocksForPage(page.PageNumber);
+                }
+                if (page.PreprocBlocks is null)
+                {
+                    page.PreprocBlocks = doc.GetPreprocBlocksForPage(page.PageNumber);
+                }
             }
         }
     }
@@ -191,6 +198,14 @@ public sealed partial class DocumentViewModel
         if (minerUDoc is null)
             return;
 
+
+        // Preserve PreprocBlocks from the existing MinerU data (loaded by TryLoadMinerUData)
+        // PopoJsonService does not parse preproc_blocks, so we need to merge them
+        if (StructureDocument?.PreprocBlocks is not null && StructureDocument.PreprocBlocks.Count > 0)
+        {
+            minerUDoc.PreprocBlocks = StructureDocument.PreprocBlocks;
+        }
+
         // Find artifacts directory for image display.
         // Uses the MinerU extracted directory because popo_result.json's img_path (e.g., "images/xxx.jpg")
         // is relative to the hybrid_auto directory. This avoids duplicating image files.
@@ -288,8 +303,6 @@ public sealed partial class DocumentViewModel
 
         // Show the analysis column when Popo data is loaded
         ShowAnalysisColumn = true;
-
-        System.Diagnostics.Debug.WriteLine($"[TryLoadPopoData] artifactsDir={artifactsDir}, TreeRoot={minerUDoc.TreeRoot is not null}");
 
         // Populate block_ids from middle.json for tree nodes (Popo API returns empty block_ids)
         if (minerUDoc.TreeRoot is not null && artifactsDir is not null)

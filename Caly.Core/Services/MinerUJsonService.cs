@@ -275,8 +275,25 @@ public static class MinerUJsonService
                         }
                     }
                     
+                    // Build a lookup map from block_id to block for fast matching
+                    var paraBlockById = new Dictionary<string, MinerUBlock>();
+                    foreach (var b in paraBlocks)
+                    {
+                        if (!string.IsNullOrEmpty(b.BlockId))
+                            paraBlockById[b.BlockId] = b;
+                    }
+                    var discardedBlockById = new Dictionary<string, MinerUBlock>();
+                    foreach (var b in discardedBlocks)
+                    {
+                        if (!string.IsNullOrEmpty(b.BlockId))
+                            discardedBlockById[b.BlockId] = b;
+                    }
+
                     // Build reverse mapping: for each preproc_block, find which para/discarded block it belongs to
-                    // This will be used for cross-highlighting between PDF overlay and MinerU Blocks column
+                    // Use block_id (UUID) as the primary alignment key between PDF overlay and MinerU Blocks column.
+                    // The new MinerU middle.json structure includes block_id in each block and block_ids array in para_blocks
+                    // referencing the source preproc_block IDs. This provides exact matching without bbox overlap heuristics.
+                    var pagePreprocBlocks = new List<MinerUBlock>();
                     if (pageInfoElem.TryGetProperty("preproc_blocks", out var preprocElem) && preprocElem.ValueKind == JsonValueKind.Array)
                     {
                         foreach (var blockElem in preprocElem.EnumerateArray())
@@ -286,16 +303,59 @@ public static class MinerUJsonService
                             {
                                 if (preprocBlock.Id <= 0)
                                     preprocBlock.Id = nextBlockId++;
-                                // Find the closest para_block or discarded_block by bbox overlap
-                                var matched = FindMatchingBlock(preprocBlock, paraBlocks, discardedBlocks);
+
+                                // Try to match using block_id first (exact match via block_ids array in para_blocks)
+                                MinerUBlock? matched = null;
+
+                                // Strategy 1: Check if any para_block's SourceBlockIds contains this preprocBlock's BlockId
+                                if (!string.IsNullOrEmpty(preprocBlock.BlockId))
+                                {
+                                    foreach (var paraBlock in paraBlocks)
+                                    {
+                                        if (paraBlock.SourceBlockIds.Contains(preprocBlock.BlockId))
+                                        {
+                                            matched = paraBlock;
+                                            break;
+                                        }
+                                    }
+
+                                    // If not found in para_blocks, check discarded_blocks
+                                    if (matched == null)
+                                    {
+                                        foreach (var discBlock in discardedBlocks)
+                                        {
+                                            if (discBlock.SourceBlockIds.Contains(preprocBlock.BlockId))
+                                            {
+                                                matched = discBlock;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Strategy 2: If block_id matching failed, fall back to bbox overlap
+                                if (matched == null)
+                                {
+                                    matched = FindMatchingBlock(preprocBlock, paraBlocks, discardedBlocks);
+                                }
+
                                 if (matched != null)
                                 {
                                     preprocBlock.DestinationType = matched.BlockSource;
                                     preprocBlock.RelatedBlockIds.Add(matched.Id);
                                     matched.RelatedBlockIds.Add(preprocBlock.Id);
                                 }
+                                pagePreprocBlocks.Add(preprocBlock);
                             }
                         }
+                    }
+                    
+                    // Store preproc_blocks for this page
+                    if (pagePreprocBlocks.Count > 0)
+                    {
+                        if (!minerUDoc.PreprocBlocks.ContainsKey(pageNum))
+                            minerUDoc.PreprocBlocks[pageNum] = new List<MinerUBlock>();
+                        minerUDoc.PreprocBlocks[pageNum].AddRange(pagePreprocBlocks);
                     }
                     
                     blocks.AddRange(paraBlocks);
@@ -318,12 +378,12 @@ public static class MinerUJsonService
                 minerUDoc.BuildAggregationMap();
             }
 
-            // 3. Normalize 0-based page indices to 1-based.
+            // 3. Normalize 0-based page indices to 1-based for both PagesBlocks and PreprocBlocks.
             // MinerU may use 0-based page numbers (page_idx 0 = first page),
             // while PageViewModel.PageNumber is 1-based.
             if (minerUDoc.PagesBlocks.Count > 0 && minerUDoc.PagesBlocks.ContainsKey(0))
             {
-                var normalized = new Dictionary<int, List<MinerUBlock>>();
+                var normalizedPages = new Dictionary<int, List<MinerUBlock>>();
                 foreach (var kvp in minerUDoc.PagesBlocks)
                 {
                     int newKey = kvp.Key + 1;
@@ -332,9 +392,26 @@ public static class MinerUJsonService
                         if (block.Page == kvp.Key)
                             block.Page = newKey;
                     }
-                    normalized[newKey] = kvp.Value;
+                    normalizedPages[newKey] = kvp.Value;
                 }
-                minerUDoc.PagesBlocks = normalized;
+                minerUDoc.PagesBlocks = normalizedPages;
+
+                // Also normalize PreprocBlocks
+                if (minerUDoc.PreprocBlocks.Count > 0)
+                {
+                    var normalizedPreproc = new Dictionary<int, List<MinerUBlock>>();
+                    foreach (var kvp in minerUDoc.PreprocBlocks)
+                    {
+                        int newKey = kvp.Key + 1;
+                        foreach (var block in kvp.Value)
+                        {
+                            if (block.Page == kvp.Key)
+                                block.Page = newKey;
+                        }
+                        normalizedPreproc[newKey] = kvp.Value;
+                    }
+                    minerUDoc.PreprocBlocks = normalizedPreproc;
+                }
             }
 
             // 4. Build InferenceBlocks from PagesBlocks
@@ -420,6 +497,9 @@ public static class MinerUJsonService
     {
         var block = new MinerUBlock();
 
+        // Parse block_id (UUID string) - the primary alignment key
+        block.BlockId = GetStringProperty(elem, "block_id") ?? string.Empty;
+
         // Support both "id" and "index" fields (different MinerU versions use different field names)
         if (elem.TryGetProperty("id", out var idElem))
         {
@@ -428,6 +508,22 @@ public static class MinerUJsonService
         else if (elem.TryGetProperty("index", out var indexElem))
         {
             block.Id = GetIntValue(indexElem, block.Id);
+        }
+
+        // Parse block_ids array (source preproc_block IDs referenced by this para_block)
+        if (elem.TryGetProperty("block_ids", out var blockIdsElem) && blockIdsElem.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var id in blockIdsElem.EnumerateArray())
+            {
+                if (id.ValueKind == JsonValueKind.String)
+                {
+                    var sourceId = id.GetString();
+                    if (!string.IsNullOrEmpty(sourceId))
+                    {
+                        block.SourceBlockIds.Add(sourceId);
+                    }
+                }
+            }
         }
 
         if (elem.TryGetProperty("page", out var pageElem))
@@ -487,29 +583,88 @@ public static class MinerUJsonService
 
         if (sectionElem.TryGetProperty("blocks", out var blocksElem) && blocksElem.ValueKind == JsonValueKind.Array)
         {
+            // Extract parent's block_ids so sub-blocks can inherit them for proper matching
+            var parentBlockIds = new List<string>();
+            if (sectionElem.TryGetProperty("block_ids", out var parentBlockIdsElem) && parentBlockIdsElem.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var id in parentBlockIdsElem.EnumerateArray())
+                {
+                    if (id.ValueKind == JsonValueKind.String)
+                    {
+                        var sid = id.GetString();
+                        if (!string.IsNullOrEmpty(sid))
+                            parentBlockIds.Add(sid);
+                    }
+                }
+            }
+            
             foreach (var blockElem in blocksElem.EnumerateArray())
             {
                 var block = MapMinerUBlockToMinerUBlock(blockElem, pageWidth, pageHeight);
                 if (block.Page <= 0)
                     block.Page = pageNum;
+                
+                // If sub-block has no own block_ids, inherit parent's block_ids
+                // This ensures proper matching: e.g., image_footnote sub-block can be matched
+                // to its preproc_block counterpart via the parent's block_ids array
+                if (parentBlockIds.Count > 0 && block.SourceBlockIds.Count == 0)
+                {
+                    block.SourceBlockIds = new System.Collections.Generic.List<string>(parentBlockIds);
+                }
+                
                 results.Add(block);
             }
         }
 
-        // Also support a direct content-bearing block object.
+        // Also support a direct content-bearing block object (no sub-blocks).
         if (sectionElem.TryGetProperty("lines", out var linesElem) && linesElem.ValueKind == JsonValueKind.Array)
         {
+            // Parse block_id from the parent section element (e.g., preproc_block's own block_id)
+            var blockId = GetStringProperty(sectionElem, "block_id") ?? string.Empty;
+            
+            // Parse block_ids array from the parent section element
+            var sourceBlockIds = new List<string>();
+            if (sectionElem.TryGetProperty("block_ids", out var blockIdsElem) && blockIdsElem.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var id in blockIdsElem.EnumerateArray())
+                {
+                    if (id.ValueKind == JsonValueKind.String)
+                    {
+                        var sid = id.GetString();
+                        if (!string.IsNullOrEmpty(sid))
+                            sourceBlockIds.Add(sid);
+                    }
+                }
+            }
+            
             var block = new MinerUBlock
             {
                 Id = results.Count + 1,
+                BlockId = blockId,
                 Page = pageNum,
                 Type = MapMinerUTypeToBlockType(GetStringProperty(sectionElem, "type") ?? string.Empty),
                 SourceLabel = GetStringProperty(sectionElem, "type") ?? string.Empty,
                 Content = ExtractMinerUContent(sectionElem),
             };
+            // Set source block IDs if any
+            if (sourceBlockIds.Count > 0)
+            {
+                block.SourceBlockIds = sourceBlockIds;
+            }
             var (bbox, isNormalized) = ParseMinerUBbox(sectionElem.TryGetProperty("bbox", out var bboxElem) ? bboxElem : default, pageWidth, pageHeight);
             block.Bbox = bbox;
             block.IsBboxNormalized = isNormalized;
+            
+            // Also parse index/id if available
+            if (sectionElem.TryGetProperty("index", out var indexElem))
+            {
+                block.Id = GetIntValue(indexElem, block.Id);
+            }
+            else if (sectionElem.TryGetProperty("id", out var idElem))
+            {
+                block.Id = GetIntValue(idElem, block.Id);
+            }
+            
             results.Add(block);
         }
 

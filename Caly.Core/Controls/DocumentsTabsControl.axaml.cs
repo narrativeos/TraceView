@@ -24,19 +24,21 @@ using Avalonia.Controls.Metadata;
 using Avalonia.Data;
 using Avalonia.Input;
 using Avalonia.VisualTree;
+using Caly.Core.Models;
 using Caly.Core.Utilities;
 using Caly.Core.ViewModels;
 using CommunityToolkit.Mvvm.Input;
 using System;
+using System.Linq;
 
 namespace Caly.Core.Controls;
 
-/// <summary>
-/// Control that represents all open PDF documents, together with the top and left navigation panels.
-/// Each PDF document is displayed in a tab.
-/// </summary>
 [TemplatePart("PART_TextBoxPageNumber", typeof(TextBox))]
 [TemplatePart("PART_SplitView", typeof(SplitView))]
+[TemplatePart("PART_DocumentControl", typeof(DocumentControl))]
+[TemplatePart("PART_MinerUScrollViewer", typeof(ScrollViewer))]
+[TemplatePart("PART_ConnectionLinesControl", typeof(ConnectionLinesControl))]
+[TemplatePart("PART_ThreeColumnGrid", typeof(Grid))]
 public sealed partial class DocumentsTabsControl : UserControl
 {
     private const int MaxPaneLength = 500;
@@ -47,6 +49,10 @@ public sealed partial class DocumentsTabsControl : UserControl
 
     private SplitView? _splitView;
     private TextBox? _textBoxPageNumber;
+    private DocumentControl? _documentControl;
+    private ScrollViewer? _minerUScrollViewer;
+    private ConnectionLinesControl? _connectionLinesControl;
+    private Grid? _threeColumnGrid;
 
     public DocumentsTabsControl()
     {
@@ -217,16 +223,11 @@ public sealed partial class DocumentsTabsControl : UserControl
         e.Handled = true;
     }
 
-    /// <summary>
-    /// Handles click on a MinerU block in the middle column.
-    /// Uses FindAncestor to reliably locate the DocumentsTabsControl and execute SelectMinerUBlockCommand.
-    /// </summary>
     private void MinerUBlock_OnPointerPressed(object? sender, PointerPressedEventArgs e)
     {
         if (sender is not Border border || border.DataContext is not MinerUBlockViewModel blockVm)
             return;
 
-        // Use FindAncestor for a more robust approach that works regardless of template structure
         var tabsControl = border.FindAncestorOfType<DocumentsTabsControl>();
         if (tabsControl?.DataContext is not MainViewModel mainVm)
             return;
@@ -235,6 +236,151 @@ public sealed partial class DocumentsTabsControl : UserControl
         {
             currentDoc.SelectMinerUBlockCommand?.Execute(blockVm.Id);
             e.Handled = true;
+        }
+    }
+
+    private void OnMinerUScrollChanged(object? sender, ScrollChangedEventArgs e)
+    {
+        UpdateConnectionLines();
+    }
+
+    private ConnectionLinesControl? GetConnectionLinesControl()
+    {
+        if (_connectionLinesControl is null)
+        {
+            _connectionLinesControl = this.FindDescendantOfType<ConnectionLinesControl>();
+            if (_connectionLinesControl is not null)
+            {
+                _connectionLinesControl.SizeChanged += (_, _) => UpdateConnectionLines();
+            }
+        }
+        return _connectionLinesControl;
+    }
+
+    private DocumentControl? GetDocumentControl()
+    {
+        if (_documentControl is null)
+        {
+            _documentControl = this.FindDescendantOfType<DocumentControl>();
+            if (_documentControl is not null)
+            {
+                var pageItemsControl = _documentControl.FindDescendantOfType<PageItemsControl>();
+                if (pageItemsControl?.Scroll is { } scroll)
+                {
+                    scroll.ScrollChanged += (_, _) => UpdateConnectionLines();
+                }
+            }
+        }
+        return _documentControl;
+    }
+
+    private ScrollViewer? GetMinerUScrollViewer()
+    {
+        if (_minerUScrollViewer is null)
+        {
+            _minerUScrollViewer = this.FindDescendantOfType<ScrollViewer>(false, sv => sv.Name == "PART_MinerUScrollViewer");
+        }
+        return _minerUScrollViewer;
+    }
+
+    private Grid? GetThreeColumnGrid()
+    {
+        if (_threeColumnGrid is null)
+        {
+            _threeColumnGrid = this.FindDescendantOfType<Grid>(false, g => g.Name == "PART_ThreeColumnGrid");
+        }
+        return _threeColumnGrid;
+    }
+
+    private void UpdateConnectionLines()
+    {
+        var connControl = GetConnectionLinesControl();
+        if (connControl is null)
+        {
+            System.Diagnostics.Debug.WriteLine("[ConnectionLines] connControl is null");
+            return;
+        }
+
+        System.Diagnostics.Debug.WriteLine($"[ConnectionLines] Bounds={connControl.Bounds.Width}x{connControl.Bounds.Height}, ShowConnections={connControl.ShowConnections}");
+
+        if (DataContext is not MainViewModel mainVm || mainVm.SelectedDocument is not DocumentViewModel docVm)
+        {
+            connControl.ShowConnections = false;
+            return;
+        }
+
+        if (!docVm.ShowMinerUColumn || docVm.MinerUBlocks.Count == 0)
+        {
+            connControl.ShowConnections = false;
+            return;
+        }
+
+        var currentPage = docVm.Pages.FirstOrDefault(p => p.PageNumber == docVm.SelectedPageNumber);
+        if (currentPage?.MinerUBlocks is null || currentPage.MinerUBlocks.Count == 0)
+        {
+            connControl.ShowConnections = false;
+            return;
+        }
+
+        // Debug: check if PreprocBlocks are available
+        var preprocCount = currentPage.PreprocBlocks?.Count ?? 0;
+        System.Diagnostics.Debug.WriteLine($"[ConnectionLines] Page {currentPage.PageNumber}: MinerUBlocks={currentPage.MinerUBlocks.Count}, PreprocBlocks={preprocCount}");
+
+        if (preprocCount == 0)
+        {
+            // No preproc blocks for this page — connection lines cannot be drawn
+            connControl.ShowConnections = false;
+            return;
+        }
+
+        connControl.ShowConnections = true;
+        connControl.PreprocBlocks = currentPage.PreprocBlocks;
+        connControl.MinerUBlocks = docVm.MinerUBlocks;
+        connControl.PageSize = currentPage.Size;
+        connControl.ZoomLevel = docVm.ZoomLevel;
+        connControl.SelectedBlockId = docVm.SelectedMinerUBlockId;
+
+        // Force a render after layout is applied (IsVisible change triggers layout asynchronously)
+        connControl.InvalidateVisual();
+
+        // PDF scroll offset
+        var docControl = GetDocumentControl();
+        if (docControl is not null)
+        {
+            var pageItemsControl = docControl.FindDescendantOfType<PageItemsControl>();
+            if (pageItemsControl?.Scroll is { } pdfScroll)
+            {
+                var pageItem = pageItemsControl.GetPageItem(docVm.SelectedPageNumber ?? 1);
+                if (pageItem is not null)
+                {
+                    var scale = pageItemsControl.LayoutTransform?.LayoutTransform?.Value.M11 ?? 1.0;
+                    connControl.PdfScrollOffsetY = pdfScroll.Offset.Y - pageItem.Bounds.Top * scale;
+                    connControl.PdfPageTopOffset = 0;
+                }
+            }
+        }
+
+        // MinerU scroll offset + list top offset
+        var minerUScroll = GetMinerUScrollViewer();
+        if (minerUScroll is not null)
+        {
+            connControl.MinerUScrollOffsetY = minerUScroll.Offset.Y;
+            // Border Padding=8 + header StackPanel(~20) + margin=6 + ItemsControl padding=8
+            connControl.MinerUListTopOffset = 42;
+        }
+
+        // Column edges
+        var layoutGrid = GetThreeColumnGrid();
+        if (layoutGrid is not null && connControl.Bounds.Width > 0 && layoutGrid.ColumnDefinitions.Count > 0)
+        {
+            var pdfColumnWidth = layoutGrid.ColumnDefinitions[0].ActualWidth;
+            connControl.PdfColumnRightEdge = pdfColumnWidth;
+            connControl.MinerUColumnLeftEdge = pdfColumnWidth + 4;
+        }
+        else if (connControl.Bounds.Width > 0)
+        {
+            connControl.PdfColumnRightEdge = connControl.Bounds.Width * 0.4;
+            connControl.MinerUColumnLeftEdge = connControl.Bounds.Width * 0.6;
         }
     }
 }

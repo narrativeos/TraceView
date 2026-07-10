@@ -46,6 +46,7 @@ public partial class MinerUBlockViewModel : ObservableObject
     }
 
     public int Id => _block.Id;
+    public string BlockId => _block.BlockId;
     public int Page => _block.Page;
     public string Type => _block.Type;
     public string Content => _block.Content;

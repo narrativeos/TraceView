@@ -42,10 +42,18 @@ public partial class StructureDocument : ObservableObject
     private string _modelName = string.Empty;
 
     /// <summary>
-    /// Normalized blocks grouped by page number.
+    /// Normalized blocks grouped by page number (para+discarded blocks).
     /// </summary>
     [ObservableProperty]
     private Dictionary<int, List<MinerUBlock>> _pagesBlocks = new();
+
+    /// <summary>
+    /// Preproc blocks (raw detection blocks) grouped by page number.
+    /// These are the blocks shown on the PDF overlay, and are connected to
+    /// para/discarded blocks via the connection lines.
+    /// </summary>
+    [ObservableProperty]
+    private Dictionary<int, List<MinerUBlock>> _preprocBlocks = new();
 
     /// <summary>
     /// Inference blocks (flat list with contd/level/image fields).
@@ -85,11 +93,19 @@ public partial class StructureDocument : ObservableObject
     }
 
     /// <summary>
-    /// Gets blocks for a specific page.
+    /// Gets blocks for a specific page (para+discarded).
     /// </summary>
     public List<MinerUBlock> GetBlocksForPage(int pageNumber)
     {
         return PagesBlocks.TryGetValue(pageNumber, out var blocks) ? blocks : new List<MinerUBlock>();
+    }
+
+    /// <summary>
+    /// Gets preproc blocks (raw detection blocks) for a specific page.
+    /// </summary>
+    public List<MinerUBlock> GetPreprocBlocksForPage(int pageNumber)
+    {
+        return PreprocBlocks.TryGetValue(pageNumber, out var blocks) ? blocks : new List<MinerUBlock>();
     }
 
     /// <summary>

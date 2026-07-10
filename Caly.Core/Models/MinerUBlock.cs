@@ -38,6 +38,23 @@ public partial class MinerUBlock : ObservableObject
     private int _id;
 
     /// <summary>
+    /// Unique block identifier from MinerU middle.json (UUID string).
+    /// Used as the primary alignment key between PDF overlay and MinerU Blocks column.
+    /// Each block in preproc_blocks, para_blocks, and discarded_blocks has a unique block_id.
+    /// The para_blocks also contain a block_ids array referencing the source preproc_block IDs.
+    /// </summary>
+    [ObservableProperty]
+    private string _blockId = string.Empty;
+
+    /// <summary>
+    /// Source block IDs referenced by this block (for para_blocks that merge multiple preproc_blocks).
+    /// These are the block_id UUIDs from the preproc_blocks that were merged into this para_block.
+    /// Used for cross-highlighting between MinerU Blocks column and PDF overlay.
+    /// </summary>
+    [ObservableProperty]
+    private List<string> _sourceBlockIds = new();
+
+    /// <summary>
     /// Page number (1-based).
     /// </summary>
     [ObservableProperty]

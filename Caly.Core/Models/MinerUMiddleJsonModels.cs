@@ -32,6 +32,20 @@ public class MinerUMiddlePageBlock
     [JsonPropertyName("id")]
     public int Id { get; set; }
 
+    /// <summary>
+    /// Unique block identifier from MinerU middle.json (UUID string).
+    /// Used as the primary alignment key between PDF overlay and MinerU Blocks column.
+    /// </summary>
+    [JsonPropertyName("block_id")]
+    public string BlockId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Source block IDs referenced by this block (for para_blocks that merge multiple preproc_blocks).
+    /// These are the block_id UUIDs from the preproc_blocks that were merged into this para_block.
+    /// </summary>
+    [JsonPropertyName("block_ids")]
+    public List<string> SourceBlockIds { get; set; } = new();
+
     [JsonPropertyName("page")]
     public int Page { get; set; }
 
