@@ -173,7 +173,7 @@ public sealed class ConnectionLinesControl : Control
         set => SetValue(ShowConnectionsProperty, value);
     }
 
-    // High-visibility brushes
+    // High-visibility brushes (precise matches)
     private static readonly ImmutableSolidColorBrush AdoptedLineBrush =
         new(Color.Parse(MinerUConstants.AdoptedColor), 0.8);
     private static readonly ImmutableSolidColorBrush DiscardedLineBrush =
@@ -181,9 +181,21 @@ public sealed class ConnectionLinesControl : Control
     private static readonly ImmutableSolidColorBrush DefaultLineBrush =
         new(Color.Parse(MinerUConstants.DefaultColor), 0.6);
 
+    // Faded brushes (fallback matches - lighter/transparent)
+    private static readonly ImmutableSolidColorBrush FadedAdoptedLineBrush =
+        new(Color.Parse(MinerUConstants.AdoptedColor), 0.25);
+    private static readonly ImmutableSolidColorBrush FadedDiscardedLineBrush =
+        new(Color.Parse(MinerUConstants.DiscardedColor), 0.25);
+    private static readonly ImmutableSolidColorBrush FadedDefaultLineBrush =
+        new(Color.Parse(MinerUConstants.DefaultColor), 0.2);
+
     private static readonly ImmutablePen AdoptedPen = new(AdoptedLineBrush, 2.0);
     private static readonly ImmutablePen DiscardedPen = new(DiscardedLineBrush, 2.0);
     private static readonly ImmutablePen DefaultPen = new(DefaultLineBrush, 1.5);
+
+    private static readonly ImmutablePen FadedAdoptedPen = new(FadedAdoptedLineBrush, 1.0);
+    private static readonly ImmutablePen FadedDiscardedPen = new(FadedDiscardedLineBrush, 1.0);
+    private static readonly ImmutablePen FadedDefaultPen = new(FadedDefaultLineBrush, 1.0);
 
     public override void Render(DrawingContext context)
     {
@@ -306,12 +318,18 @@ public sealed class ConnectionLinesControl : Control
             var controlPoint1 = new Point(startPoint.X + cpOffset, startPoint.Y);
             var controlPoint2 = new Point(endPoint.X - cpOffset, endPoint.Y);
 
-            // Use DestinationType to determine color
-            var pen = preproc.DestinationType switch
+            // Determine if this is a fallback match (either preproc or target has IsFallbackMatch)
+            var isFallback = preproc.IsFallbackMatch || target.IsFallbackMatch;
+
+            // Use DestinationType to determine color, and IsFallbackMatch to determine opacity
+            var pen = (preproc.DestinationType, isFallback) switch
             {
-                MinerUConstants.DestPara => AdoptedPen,
-                MinerUConstants.DestDiscarded => DiscardedPen,
-                _ => DefaultPen
+                (MinerUConstants.DestPara, false) => AdoptedPen,
+                (MinerUConstants.DestPara, true) => FadedAdoptedPen,
+                (MinerUConstants.DestDiscarded, false) => DiscardedPen,
+                (MinerUConstants.DestDiscarded, true) => FadedDiscardedPen,
+                (_, false) => DefaultPen,
+                (_, true) => FadedDefaultPen
             };
 
             var sg = new StreamGeometry();
@@ -359,15 +377,26 @@ public sealed class ConnectionLinesControl : Control
     /// <summary>
     /// Calculates the screen position of the LEFT EDGE of a MinerU block item in the list.
     /// Returns the center-left point of the block item in screen coordinates.
+    /// Uses actual rendered heights from view models for accurate positioning.
     /// </summary>
     private Point CalculateMinerUBlockEndPoint(int blockIndex)
     {
         if (blockIndex < 0)
             return new Point(MinerUColumnLeftEdge, MinerUListTopOffset);
 
-        // Calculate the item's position in the list
-        var itemTop = blockIndex * MinerUBlockItemHeight;
-        var itemCenterY = itemTop + MinerUBlockItemHeight / 2.0;
+        // Calculate cumulative Y position using actual rendered heights
+        double itemTop = 0;
+        for (int i = 0; i < blockIndex && i < MinerUBlocks!.Count; i++)
+        {
+            // Use actual rendered height if available, otherwise use default
+            itemTop += MinerUBlocks[i].ActualHeight;
+            // Add margin between items (Margin="0,2" in XAML = 4px total top+bottom)
+            itemTop += 4.0;
+        }
+
+        var currentBlock = blockIndex < MinerUBlocks!.Count ? MinerUBlocks[blockIndex] : null;
+        var itemHeight = currentBlock?.ActualHeight ?? MinerUBlockItemHeight;
+        var itemCenterY = itemTop + itemHeight / 2.0;
 
         // The left edge of the block item is the column's left edge plus padding
         // Border Padding=8 + item Border Padding=6 = 14px offset from column edge

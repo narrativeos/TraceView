@@ -122,6 +122,16 @@ public class MinerUMiddlePageBlock
     /// </summary>
     [System.Text.Json.Serialization.JsonIgnore]
     public System.Collections.Generic.List<int> RelatedBlockIds { get; set; } = new();
+
+    /// <summary>
+    /// Whether this block's match to its target was a fallback match (not a precise 1:1 index-based match).
+    /// - false: precise match (sub-block index exactly corresponds to block_ids index)
+    /// - true: fallback match (e.g., sub-block count != block_ids count, or matched via bbox overlap)
+    /// Used in connection lines rendering to draw fallback connections with a lighter/faded color.
+    /// NOT serialized to JSON - set during parsing.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsFallbackMatch { get; set; }
 }
 
 /// <summary>

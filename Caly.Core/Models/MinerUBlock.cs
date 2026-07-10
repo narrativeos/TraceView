@@ -160,6 +160,15 @@ public partial class MinerUBlock : ObservableObject
     private List<int> _relatedBlockIds = new();
 
     /// <summary>
+    /// Whether this block's match to its target was a fallback match (not a precise 1:1 index-based match).
+    /// - false: precise match (sub-block index exactly corresponds to block_ids index)
+    /// - true: fallback match (e.g., sub-block count != block_ids count, or matched via bbox overlap)
+    /// Used in connection lines rendering to draw fallback connections with a lighter/faded color.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isFallbackMatch;
+
+    /// <summary>
     /// Computed property: returns color based on Type.
     /// </summary>
     public Color TypeColor => Type switch

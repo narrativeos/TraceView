@@ -384,7 +384,8 @@
                                                               CornerRadius="3"
                                                               BorderThickness="1.5"
                                                               BorderBrush="{Binding BorderBrush}"
-                                                              PointerPressed="MinerUBlock_OnPointerPressed">
+                                                              PointerPressed="MinerUBlock_OnPointerPressed"
+                                                              Loaded="MinerUBlockBorder_OnLoaded">
                                                           <StackPanel Spacing="3">
                                                               <StackPanel Orientation="Horizontal"
                                                                           Spacing="4">

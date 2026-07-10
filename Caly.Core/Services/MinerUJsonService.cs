@@ -252,8 +252,10 @@ public static class MinerUJsonService
                             var paraList = MapMinerUPageSectionToBlocks(blockElem, pageNum, pageWidth, pageHeight);
                             foreach (var b in paraList)
                             {
-                                if (b.Id <= 0)
-                                    b.Id = nextBlockId++;
+                                // Always use global ID counter to ensure unique IDs across all blocks.
+                                // JSON index values can be 0, duplicated, or overlap across sections.
+                                // By always using the global counter we guarantee no ID collisions.
+                                b.Id = nextBlockId++;
                                 b.BlockSource = MinerUConstants.SourcePara;
                                 paraBlocks.Add(b);
                             }
@@ -267,8 +269,8 @@ public static class MinerUJsonService
                             var discList = MapMinerUPageSectionToBlocks(blockElem, pageNum, pageWidth, pageHeight);
                             foreach (var b in discList)
                             {
-                                if (b.Id <= 0)
-                                    b.Id = nextBlockId++;
+                                // Always use global ID counter to ensure unique IDs across all blocks
+                                b.Id = nextBlockId++;
                                 b.BlockSource = MinerUConstants.SourceDiscarded;
                                 discardedBlocks.Add(b);
                             }
@@ -301,8 +303,8 @@ public static class MinerUJsonService
                             var preprocList = MapMinerUPageSectionToBlocks(blockElem, pageNum, pageWidth, pageHeight);
                             foreach (var preprocBlock in preprocList)
                             {
-                                if (preprocBlock.Id <= 0)
-                                    preprocBlock.Id = nextBlockId++;
+                                // Always use global ID counter to ensure unique IDs across all blocks
+                                preprocBlock.Id = nextBlockId++;
 
                                 // Try to match using block_id first (exact match via block_ids array in para_blocks)
                                 MinerUBlock? matched = null;
@@ -334,14 +336,28 @@ public static class MinerUJsonService
                                 }
 
                                 // Strategy 2: If block_id matching failed, fall back to bbox overlap
+                                bool isFallbackMatch = false;
                                 if (matched == null)
                                 {
                                     matched = FindMatchingBlock(preprocBlock, paraBlocks, discardedBlocks);
+                                    // Bbox overlap is a fallback match
+                                    isFallbackMatch = true;
+                                }
+                                else
+                                {
+                                    // Check if the match was from a fallback inheritance (multiple block_ids inherited)
+                                    // If matched block has multiple SourceBlockIds, it was a fallback inheritance
+                                    if (matched.SourceBlockIds.Count > 1)
+                                    {
+                                        isFallbackMatch = true;
+                                    }
                                 }
 
                                 if (matched != null)
                                 {
                                     preprocBlock.DestinationType = matched.BlockSource;
+                                    preprocBlock.IsFallbackMatch = isFallbackMatch;
+                                    matched.IsFallbackMatch = isFallbackMatch;
                                     preprocBlock.RelatedBlockIds.Add(matched.Id);
                                     matched.RelatedBlockIds.Add(preprocBlock.Id);
                                 }
@@ -497,18 +513,11 @@ public static class MinerUJsonService
     {
         var block = new MinerUBlock();
 
-        // Parse block_id (UUID string) - the primary alignment key
+        // Parse block_id (UUID string) - the primary alignment key for matching blocks
         block.BlockId = GetStringProperty(elem, "block_id") ?? string.Empty;
 
-        // Support both "id" and "index" fields (different MinerU versions use different field names)
-        if (elem.TryGetProperty("id", out var idElem))
-        {
-            block.Id = GetIntValue(idElem, block.Id);
-        }
-        else if (elem.TryGetProperty("index", out var indexElem))
-        {
-            block.Id = GetIntValue(indexElem, block.Id);
-        }
+        // Note: ID is assigned by the caller using a global counter to ensure uniqueness.
+        // We no longer use JSON "index" or "id" fields as they can cause collisions.
 
         // Parse block_ids array (source preproc_block IDs referenced by this para_block)
         if (elem.TryGetProperty("block_ids", out var blockIdsElem) && blockIdsElem.ValueKind == JsonValueKind.Array)
@@ -598,18 +607,32 @@ public static class MinerUJsonService
                 }
             }
             
-            foreach (var blockElem in blocksElem.EnumerateArray())
+            var blocksCount = blocksElem.GetArrayLength();
+            
+            for (int i = 0; i < blocksCount; i++)
             {
+                var blockElem = blocksElem[i];
                 var block = MapMinerUBlockToMinerUBlock(blockElem, pageWidth, pageHeight);
                 if (block.Page <= 0)
                     block.Page = pageNum;
                 
-                // If sub-block has no own block_ids, inherit parent's block_ids
-                // This ensures proper matching: e.g., image_footnote sub-block can be matched
-                // to its preproc_block counterpart via the parent's block_ids array
-                if (parentBlockIds.Count > 0 && block.SourceBlockIds.Count == 0)
+                // If sub-block has no own block_ids, determine which parent block_id to assign
+                if (block.SourceBlockIds.Count == 0 && parentBlockIds.Count > 0)
                 {
-                    block.SourceBlockIds = new System.Collections.Generic.List<string>(parentBlockIds);
+                    // If parent has exactly the same number of block_ids as sub-blocks,
+                    // assign by index for precise 1:1 matching (e.g., image_body -> first block_id,
+                    // image_footnote -> second block_id). This ensures preproc sub-blocks are
+                    // matched to the correct para sub-blocks.
+                    if (parentBlockIds.Count == blocksCount)
+                    {
+                        block.SourceBlockIds.Add(parentBlockIds[i]);
+                    }
+                    else
+                    {
+                        // Fallback: if counts don't match, inherit all parent block_ids
+                        // to maintain backward compatibility with unusual JSON structures
+                        block.SourceBlockIds = new System.Collections.Generic.List<string>(parentBlockIds);
+                    }
                 }
                 
                 results.Add(block);
@@ -654,17 +677,7 @@ public static class MinerUJsonService
             var (bbox, isNormalized) = ParseMinerUBbox(sectionElem.TryGetProperty("bbox", out var bboxElem) ? bboxElem : default, pageWidth, pageHeight);
             block.Bbox = bbox;
             block.IsBboxNormalized = isNormalized;
-            
-            // Also parse index/id if available
-            if (sectionElem.TryGetProperty("index", out var indexElem))
-            {
-                block.Id = GetIntValue(indexElem, block.Id);
-            }
-            else if (sectionElem.TryGetProperty("id", out var idElem))
-            {
-                block.Id = GetIntValue(idElem, block.Id);
-            }
-            
+            // Note: ID is assigned by the caller using a global counter
             results.Add(block);
         }
 

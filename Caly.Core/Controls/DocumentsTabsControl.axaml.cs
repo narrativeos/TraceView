@@ -23,6 +23,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Metadata;
 using Avalonia.Data;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using Caly.Core.Models;
 using Caly.Core.Utilities;
@@ -237,6 +238,18 @@ public sealed partial class DocumentsTabsControl : UserControl
             currentDoc.SelectMinerUBlockCommand?.Execute(blockVm.Id);
             e.Handled = true;
         }
+    }
+
+    private void MinerUBlockBorder_OnLoaded(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Border border || border.DataContext is not MinerUBlockViewModel blockVm)
+            return;
+
+        // Set the actual rendered height so ConnectionLinesControl can calculate accurate positions
+        blockVm.ActualHeight = border.Bounds.Height;
+        
+        // Trigger connection lines redraw when a block is loaded
+        UpdateConnectionLines();
     }
 
     private void OnMinerUScrollChanged(object? sender, ScrollChangedEventArgs e)

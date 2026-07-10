@@ -73,6 +73,11 @@ public partial class MinerUBlockViewModel : ObservableObject
     public string BlockSource => _block.BlockSource;
 
     /// <summary>
+    /// Whether this block's match to its target was a fallback match.
+    /// </summary>
+    public bool IsFallbackMatch => _block.IsFallbackMatch;
+
+    /// <summary>
     /// Whether this block is from para_blocks (adopted/merged).
     /// </summary>
     public bool IsParaBlock => BlockSource == MinerUConstants.SourcePara;
@@ -264,4 +269,11 @@ public partial class MinerUBlockViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _isExpanded;
+
+    /// <summary>
+    /// Actual rendered height of this block item in the UI.
+    /// Set by the view after layout to enable accurate connection line positioning.
+    /// </summary>
+    [ObservableProperty]
+    private double _actualHeight = 60.0;  // Default fallback height
 }
