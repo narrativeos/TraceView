@@ -109,21 +109,6 @@ public sealed partial class DocumentViewModel
     public bool HasMinerUBlocks => MinerUBlocks.Count > 0;
 
     /// <summary>
-    /// Gets MinerU blocks filtered by the currently selected page.
-    /// Used for the right panel list and connection lines to ensure correct positioning when switching pages.
-    /// </summary>
-    public System.Collections.Generic.IReadOnlyList<MinerUBlockViewModel> CurrentPageMinerUBlocks
-    {
-        get
-        {
-            if (SelectedPageNumber is null || MinerUBlocks.Count == 0)
-                return Array.Empty<MinerUBlockViewModel>();
-            
-            return MinerUBlocks.Where(b => b.Page == SelectedPageNumber).ToList();
-        }
-    }
-
-    /// <summary>
     /// Whether the MinerU column is visible (user toggle).
     /// Defaults to false; shown when MinerU data is loaded.
     /// </summary>

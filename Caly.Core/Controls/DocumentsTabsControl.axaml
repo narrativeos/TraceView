@@ -324,7 +324,7 @@
                                         <TextBlock Text="MinerU"
                                                    FontWeight="Bold"
                                                    FontSize="12"/>
-                                        <TextBlock Text="{Binding CurrentPageMinerUBlocks.Count, StringFormat='({0} blocks)'}"
+                                        <TextBlock Text="{Binding MinerUBlocks.Count, StringFormat='({0} blocks)'}"
                                                    FontSize="11"
                                                    Opacity="0.6"
                                                    IsVisible="{Binding !IsMinerUParsing}"/>
@@ -375,7 +375,7 @@
                                       <ScrollViewer Name="PART_MinerUScrollViewer"
                                                     IsVisible="{Binding !IsMinerUParsing}"
                                                     ScrollChanged="OnMinerUScrollChanged">
-                                          <ItemsControl ItemsSource="{Binding CurrentPageMinerUBlocks}">
+                                          <ItemsControl ItemsSource="{Binding MinerUBlocks}">
                                               <ItemsControl.ItemTemplate>
                                                   <DataTemplate x:DataType="vm:MinerUBlockViewModel">
                                                       <Border Padding="6"
