@@ -46,11 +46,8 @@ public partial class AnalysisViewModel : ViewModelBase
         _structureDocument = structureDocument;
         ArtifactsDirectory = artifactsDirectory;
 
-        // Build block view models
-        foreach (var block in structureDocument.GetAllBlocks())
-        {
-            AllBlocks.Add(new BlockViewModel(block));
-        }
+        // Store raw blocks for lazy ViewModel creation
+        _rawBlocks = structureDocument.GetAllBlocks();
 
         // Build tree view model and wire selection to page block highlighting
         if (structureDocument.TreeRoot is not null)
@@ -96,6 +93,16 @@ public partial class AnalysisViewModel : ViewModelBase
     }
 
     // === Block list ===
+    /// <summary>
+    /// Raw blocks source for lazy ViewModel creation.
+    /// </summary>
+    private IReadOnlyList<MinerUBlock> _rawBlocks = System.Array.Empty<MinerUBlock>();
+
+    /// <summary>
+    /// Lazy ViewModel factory cache: maps block index to its ViewModel.
+    /// </summary>
+    private System.Collections.Generic.Dictionary<int, BlockViewModel> _viewModelCache = new();
+
     [ObservableProperty]
     private ObservableCollection<BlockViewModel> _allBlocks = new();
 
@@ -324,6 +331,9 @@ public partial class AnalysisViewModel : ViewModelBase
 
     private void ApplyFilters()
     {
+        // First, ensure AllBlocks is populated lazily from raw blocks
+        EnsureAllBlocksPopulated();
+
         var filtered = AllBlocks
             .Where(b => VisibleTypes.Contains(b.Type))
             .ToList();
@@ -339,6 +349,28 @@ public partial class AnalysisViewModel : ViewModelBase
         foreach (var block in filtered)
         {
             FilteredBlocks.Add(block);
+        }
+    }
+
+    /// <summary>
+    /// Lazily creates BlockViewModels for all raw blocks.
+    /// Only creates ViewModels that haven't been created yet.
+    /// </summary>
+    private void EnsureAllBlocksPopulated()
+    {
+        // Already populated
+        if (AllBlocks.Count == _rawBlocks.Count)
+            return;
+
+        for (int i = AllBlocks.Count; i < _rawBlocks.Count; i++)
+        {
+            var raw = _rawBlocks[i];
+            if (!_viewModelCache.TryGetValue(i, out var vm))
+            {
+                vm = new BlockViewModel(raw);
+                _viewModelCache[i] = vm;
+            }
+            AllBlocks.Add(vm);
         }
     }
 

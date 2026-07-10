@@ -226,14 +226,16 @@ public sealed partial class DocumentViewModel
 
     /// <summary>
     /// Updates the filtered blocks collection based on current VisiblePages.
+    /// Filters MinerUBlocks by the visible page range for the right panel display.
     /// </summary>
     private void UpdateVisibleMinerUBlocks()
     {
+        _visibleMinerUBlocks.Clear();
+
+        // Filter MinerUBlocks by visible page range
         System.Collections.Generic.IEnumerable<MinerUBlockViewModel> newBlocks = !VisiblePages.HasValue
             ? MinerUBlocks
             : MinerUBlocks.Where(b => b.Page >= VisiblePages.Value.Start.Value && b.Page < VisiblePages.Value.End.Value);
-
-        _visibleMinerUBlocks.Clear();
         foreach (var block in newBlocks)
             _visibleMinerUBlocks.Add(block);
 
@@ -591,7 +593,7 @@ public sealed partial class DocumentViewModel
         }
 
 
-        // Build block collections in memory first, then replace
+        // Build block collections - load all blocks into MinerUBlocks for ConnectionLinesControl
         if (minerUDoc.PagesBlocks is not null)
         {
             var allBlocks = minerUDoc.GetAllBlocks();

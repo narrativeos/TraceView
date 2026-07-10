@@ -27,7 +27,8 @@ using Caly.Core.Utilities;
 using Caly.Core.ViewModels;
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.ComponentModel;
+using System.Threading;
 
 namespace Caly.Core.Controls;
 
@@ -86,14 +87,15 @@ public sealed class ConnectionLinesControl : Control
 
     static ConnectionLinesControl()
     {
+        // NOTE: PdfScrollOffsetYProperty and MinerUScrollOffsetYProperty are NOT in AffectsRender.
+        // We handle them separately via property Changed events with throttling to avoid
+        // rendering on every single scroll tick, which causes severe stuttering.
         AffectsRender<ConnectionLinesControl>(
             PreprocBlocksProperty,
             PreprocBlocksByPageProperty,
             MinerUBlocksProperty,
             PageSizeProperty,
             ZoomLevelProperty,
-            PdfScrollOffsetYProperty,
-            MinerUScrollOffsetYProperty,
             PdfColumnRightEdgeProperty,
             MinerUColumnLeftEdgeProperty,
             PdfPageTopOffsetProperty,
@@ -101,6 +103,47 @@ public sealed class ConnectionLinesControl : Control
             MinerUBlockItemHeightProperty,
             SelectedBlockIdProperty,
             ShowConnectionsProperty);
+
+        // Subscribe to scroll offset property changes for throttled rendering
+        PdfScrollOffsetYProperty.Changed.AddClassHandler<ConnectionLinesControl>((control, e) =>
+        {
+            control.ScheduleRender();
+        });
+        MinerUScrollOffsetYProperty.Changed.AddClassHandler<ConnectionLinesControl>((control, e) =>
+        {
+            control.ScheduleRender();
+        });
+    }
+
+    private int _renderToken;
+    private bool _renderPending;
+    private System.Threading.Timer? _pendingTimer;
+
+    private void ScheduleRender()
+    {
+        // Avoid redundant scheduling: if a render is already pending, skip
+        if (_renderPending)
+            return;
+        
+        _renderPending = true;
+        int token = ++_renderToken;
+        
+        // Dispose previous timer if any
+        _pendingTimer?.Dispose();
+        
+        // Use a simple timer with debounce: wait 50ms (~20fps) after the last scroll event
+        // Longer debounce reduces rendering during fast scrolling, significantly improving performance
+        // The int overload: dueTime (ms), period (ms)
+        _pendingTimer = new System.Threading.Timer(_ =>
+        {
+            _renderPending = false;
+            _pendingTimer = null;
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                if (_renderToken == token)
+                    InvalidateVisual();
+            });
+        }, null, 50, -1);
     }
 
     public IReadOnlyList<MinerUBlock>? PreprocBlocks
@@ -211,28 +254,34 @@ public sealed class ConnectionLinesControl : Control
     private static readonly ImmutablePen FadedDiscardedPen = new(FadedDiscardedLineBrush, 1.0);
     private static readonly ImmutablePen FadedDefaultPen = new(FadedDefaultLineBrush, 1.0);
 
+    // Cached cumulative Y positions for MinerU blocks (avoids O(n²) calculation in CalculateMinerUBlockEndPoint)
+    private double[] _cachedMinerUCumulativeY = Array.Empty<double>();
+    private bool _cumulativeYCacheValid = false;
+
     public override void Render(DrawingContext context)
     {
         if (!ShowConnections)
             return;
-            
+
         if (Bounds.Width <= 0 || Bounds.Height <= 0)
             return;
 
         var minerUBlocks = MinerUBlocks;
         if (minerUBlocks is null || minerUBlocks.Count == 0)
-        {
-            System.Diagnostics.Debug.WriteLine($"[ConnectionLines.Render] Early exit: mineru={minerUBlocks?.Count ?? -1}");
             return;
-        }
 
-        // Build BlockId (UUID string) -> index map for MinerU blocks
+        // ALWAYS rebuild the ID map because VisibleMinerUBlocks content changes
+        // (Clear + Add) without changing the collection reference.
+        // Using a local dictionary avoids allocation issues since it's short-lived.
         var minerUIdToIndex = new Dictionary<string, int>();
         for (int i = 0; i < minerUBlocks.Count; i++)
         {
             if (!string.IsNullOrEmpty(minerUBlocks[i].BlockId) && !minerUIdToIndex.ContainsKey(minerUBlocks[i].BlockId))
                 minerUIdToIndex[minerUBlocks[i].BlockId] = i;
         }
+
+        // Build cumulative Y cache for fast position lookup
+        BuildCumulativeYCacheForList(minerUBlocks);
 
         // If PreprocBlocksByPage is set, render per page with proper Y offset
         if (PreprocBlocksByPage is not null && PreprocBlocksByPage.Count > 0)
@@ -244,12 +293,46 @@ public sealed class ConnectionLinesControl : Control
             // Legacy single page mode
             var preprocBlocks = PreprocBlocks;
             if (preprocBlocks is null || preprocBlocks.Count == 0)
-            {
-                System.Diagnostics.Debug.WriteLine($"[ConnectionLines.Render] Early exit: preproc={preprocBlocks?.Count ?? -1}");
                 return;
-            }
             RenderSinglePageConnections(context, preprocBlocks, minerUIdToIndex, 0);
         }
+    }
+
+    /// <summary>
+    /// Builds cumulative Y cache for a given block list (used at render time).
+    /// </summary>
+    private void BuildCumulativeYCacheForList(IReadOnlyList<MinerUBlockViewModel> blocks)
+    {
+        if (blocks.Count == 0)
+        {
+            _cachedMinerUCumulativeY = Array.Empty<double>();
+            _cumulativeYCacheValid = true;
+            return;
+        }
+
+        var cache = new double[blocks.Count + 1];
+        double cumulative = 0;
+        cache[0] = 0;
+
+        for (int i = 0; i < blocks.Count; i++)
+        {
+            var h = blocks[i].ActualHeight;
+            if (h <= 0)
+                h = MinerUBlockItemHeight;
+            cache[i + 1] = cumulative + h + 4.0;
+            cumulative = cache[i + 1];
+        }
+
+        _cachedMinerUCumulativeY = cache;
+        _cumulativeYCacheValid = true;
+    }
+
+    /// <summary>
+    /// Debug method removed to avoid excessive logging during scrolling.
+    /// </summary>
+    private void DebugLogConnectionLines()
+    {
+        // No-op: logging removed for performance
     }
 
     /// <summary>
@@ -261,35 +344,36 @@ public sealed class ConnectionLinesControl : Control
         IDictionary<int, (IReadOnlyList<MinerUBlock> Blocks, Size PageSize)> preprocBlocksByPage,
         Dictionary<string, int> minerUIdToIndex)
     {
-        System.Diagnostics.Debug.WriteLine($"[ConnectionLines.Render] Multi-page: {preprocBlocksByPage.Count} pages");
-        
-        int totalConnections = 0;
         double cumulativeYOffset = 0;
 
-        // Process each page in order
-        foreach (var pageNumber in preprocBlocksByPage.Keys.OrderBy(p => p))
+        // Sort page numbers without LINQ allocation
+        _pageNumberBuffer.Clear();
+        foreach (var key in preprocBlocksByPage.Keys)
+            _pageNumberBuffer.Add(key);
+        _pageNumberBuffer.Sort();
+
+        for (int i = 0; i < _pageNumberBuffer.Count; i++)
         {
+            var pageNumber = _pageNumberBuffer[i];
             var (preprocBlocks, pageSize) = preprocBlocksByPage[pageNumber];
             if (preprocBlocks.Count == 0)
                 continue;
 
-            System.Diagnostics.Debug.WriteLine($"[ConnectionLines] Page {pageNumber}: PreprocBlocks={preprocBlocks.Count}, PageSize={pageSize}, YOffset={cumulativeYOffset}");
-
-            var count = RenderSinglePageConnections(context, preprocBlocks, minerUIdToIndex, cumulativeYOffset, pageSize);
-            totalConnections += count;
+            RenderSinglePageConnections(context, preprocBlocks, minerUIdToIndex, cumulativeYOffset, pageSize);
 
             // Accumulate Y offset for next page
             cumulativeYOffset += pageSize.Height * ZoomLevel;
         }
-
-        System.Diagnostics.Debug.WriteLine($"[ConnectionLines.Render] Multi-page total: {totalConnections} connections");
     }
+
+    // Reusable buffer for sorting page numbers (avoids LINQ allocation)
+    private readonly List<int> _pageNumberBuffer = new();
 
     /// <summary>
     /// Renders connection lines for a single page's preproc_blocks.
-    /// Returns the number of connections drawn.
+    /// Uses for-loops to avoid LINQ allocation.
     /// </summary>
-    private int RenderSinglePageConnections(
+    private void RenderSinglePageConnections(
         DrawingContext context,
         IReadOnlyList<MinerUBlock> preprocBlocks,
         Dictionary<string, int> minerUIdToIndex,
@@ -298,122 +382,91 @@ public sealed class ConnectionLinesControl : Control
     {
         var minerUBlocks = MinerUBlocks;
         if (minerUBlocks is null || minerUBlocks.Count == 0)
-            return 0;
+            return;
 
-        // Filter to preproc_blocks that have a DestinationType (matched)
-        var matchedPreproc = preprocBlocks.Where(b => !string.IsNullOrEmpty(b.DestinationType)).ToList();
-
-        if (matchedPreproc.Count == 0)
-            return 0;
-
-        // Determine which connections to draw
-        List<(MinerUBlock preproc, MinerUBlockViewModel target)> connections;
-
+        // Determine which connections to draw, directly drawing without allocating a list
         if (!string.IsNullOrEmpty(SelectedBlockId))
         {
             var selId = SelectedBlockId;
-            connections = new List<(MinerUBlock, MinerUBlockViewModel)>();
-
             if (minerUIdToIndex.TryGetValue(selId, out var minerUIdx))
             {
-                foreach (var preproc in matchedPreproc)
+                for (int i = 0; i < preprocBlocks.Count; i++)
                 {
-                    if (preproc.RelatedBlockIds.Contains(selId))
+                    var preproc = preprocBlocks[i];
+                    if (!string.IsNullOrEmpty(preproc.DestinationType) && preproc.RelatedBlockIds.Contains(selId))
                     {
-                        connections.Add((preproc, minerUBlocks[minerUIdx]));
+                        DrawSingleConnection(context, preproc, minerUBlocks[minerUIdx], minerUIdToIndex, pageYOffset, pageSize);
                     }
                 }
             }
-
-            if (connections.Count == 0)
-                return 0;
         }
         else
         {
-            connections = new List<(MinerUBlock, MinerUBlockViewModel)>();
-            foreach (var preproc in matchedPreproc)
+            for (int i = 0; i < preprocBlocks.Count; i++)
             {
-                if (preproc.RelatedBlockIds.Count > 0)
+                var preproc = preprocBlocks[i];
+                if (!string.IsNullOrEmpty(preproc.DestinationType) && preproc.RelatedBlockIds.Count > 0)
                 {
                     var targetId = preproc.RelatedBlockIds[0];
                     if (minerUIdToIndex.TryGetValue(targetId, out var minerUIdx))
                     {
-                        connections.Add((preproc, minerUBlocks[minerUIdx]));
-                    }
-                    else
-                    {
-                        System.Diagnostics.Debug.WriteLine($"  [WARN] targetId={targetId} not found in minerUIdToIndex! Available keys: {string.Join(",", minerUIdToIndex.Keys.Take(10))}...");
+                        DrawSingleConnection(context, preproc, minerUBlocks[minerUIdx], minerUIdToIndex, pageYOffset, pageSize);
                     }
                 }
             }
-
-            if (connections.Count == 0)
-                return 0;
         }
-
-        // Debug: log first few connections with block IDs and pages
-        foreach (var (p, t) in connections.Take(3))
-        {
-            System.Diagnostics.Debug.WriteLine($"  connection: preproc blockId={p.BlockId}(page={p.Page}) -> target blockId={t.BlockId}(page={t.Page}, idx={minerUIdToIndex.GetValueOrDefault(t.BlockId, -1)})");
-        }
-
-        // Draw connections with page Y offset
-        DrawConnectionsWithOffset(context, connections, minerUIdToIndex, pageYOffset, pageSize);
-        return connections.Count;
     }
 
     /// <summary>
-    /// Draws connection lines with an additional Y offset for the page position.
+    /// Draws a single connection line with an additional Y offset for the page position.
     /// </summary>
-    private void DrawConnectionsWithOffset(
+    private void DrawSingleConnection(
         DrawingContext context,
-        List<(MinerUBlock preproc, MinerUBlockViewModel target)> connections,
+        MinerUBlock preproc,
+        MinerUBlockViewModel target,
         Dictionary<string, int> minerUIdToIndex,
         double pageYOffset,
         Size? pageSize = null)
     {
-        foreach (var (preproc, target) in connections)
+        var pdfBlockStart = CalculatePdfBlockStartPointWithOffset(preproc, pageYOffset, pageSize);
+        var minerUIdx = minerUIdToIndex.TryGetValue(target.BlockId, out var idx) ? idx : -1;
+        var minerUBlockEndPoint = CalculateMinerUBlockEndPoint(minerUIdx);
+
+        if (IsOutsideVisibleArea(pdfBlockStart.Y, minerUBlockEndPoint.Y))
+            return;
+
+        var startPoint = pdfBlockStart;
+        var endPoint = minerUBlockEndPoint;
+
+        var horizontalGap = endPoint.X - startPoint.X;
+        if (horizontalGap <= 0)
+            return;
+
+        var cpOffset = horizontalGap * 0.4;
+        var controlPoint1 = new Point(startPoint.X + cpOffset, startPoint.Y);
+        var controlPoint2 = new Point(endPoint.X - cpOffset, endPoint.Y);
+
+        var isFallback = preproc.IsFallbackMatch || target.IsFallbackMatch;
+
+        var pen = (preproc.DestinationType, isFallback) switch
         {
-            var pdfBlockStart = CalculatePdfBlockStartPointWithOffset(preproc, pageYOffset, pageSize);
-            var minerUIdx = minerUIdToIndex.TryGetValue(target.BlockId, out var idx) ? idx : -1;
-            var minerUBlockEndPoint = CalculateMinerUBlockEndPoint(minerUIdx);
+            (MinerUConstants.DestPara, false) => AdoptedPen,
+            (MinerUConstants.DestPara, true) => FadedAdoptedPen,
+            (MinerUConstants.DestDiscarded, false) => DiscardedPen,
+            (MinerUConstants.DestDiscarded, true) => FadedDiscardedPen,
+            (_, false) => DefaultPen,
+            (_, true) => FadedDefaultPen
+        };
 
-            if (IsOutsideVisibleArea(pdfBlockStart.Y, minerUBlockEndPoint.Y))
-                continue;
-
-            var startPoint = pdfBlockStart;
-            var endPoint = minerUBlockEndPoint;
-
-            var horizontalGap = endPoint.X - startPoint.X;
-            if (horizontalGap <= 0)
-                continue;
-
-            var cpOffset = horizontalGap * 0.4;
-            var controlPoint1 = new Point(startPoint.X + cpOffset, startPoint.Y);
-            var controlPoint2 = new Point(endPoint.X - cpOffset, endPoint.Y);
-
-            var isFallback = preproc.IsFallbackMatch || target.IsFallbackMatch;
-
-            var pen = (preproc.DestinationType, isFallback) switch
-            {
-                (MinerUConstants.DestPara, false) => AdoptedPen,
-                (MinerUConstants.DestPara, true) => FadedAdoptedPen,
-                (MinerUConstants.DestDiscarded, false) => DiscardedPen,
-                (MinerUConstants.DestDiscarded, true) => FadedDiscardedPen,
-                (_, false) => DefaultPen,
-                (_, true) => FadedDefaultPen
-            };
-
-            var sg = new StreamGeometry();
-            using (var ctx = sg.Open())
-            {
-                ctx.BeginFigure(startPoint, false);
-                ctx.CubicBezierTo(controlPoint1, controlPoint2, endPoint);
-                ctx.EndFigure(false);
-            }
-
-            context.DrawGeometry(null, pen, sg);
+        var sg = new StreamGeometry();
+        using (var ctx = sg.Open())
+        {
+            ctx.BeginFigure(startPoint, false);
+            ctx.CubicBezierTo(controlPoint1, controlPoint2, endPoint);
+            ctx.EndFigure(false);
         }
+
+        context.DrawGeometry(null, pen, sg);
     }
 
     /// <summary>
@@ -532,27 +585,38 @@ public sealed class ConnectionLinesControl : Control
     /// <summary>
     /// Calculates the screen position of the LEFT EDGE of a MinerU block item in the list.
     /// Returns the center-left point of the block item in screen coordinates.
-    /// Uses actual rendered heights from view models for accurate positioning.
+    /// Uses pre-computed cumulative Y cache for O(1) lookup instead of O(n) loop.
     /// </summary>
     private Point CalculateMinerUBlockEndPoint(int blockIndex)
     {
         if (blockIndex < 0)
             return new Point(MinerUColumnLeftEdge, MinerUListTopOffset);
 
-        // Calculate cumulative Y position using actual rendered heights
-        double itemTop = 0;
-        for (int i = 0; i < blockIndex && i < MinerUBlocks!.Count; i++)
+        var blocks = MinerUBlocks;
+        if (blocks is null || blockIndex >= blocks.Count)
+            return new Point(MinerUColumnLeftEdge, MinerUListTopOffset);
+
+        // Use pre-computed cumulative Y cache for O(1) lookup
+        // cache[blockIndex] = cumulative Y before block at index blockIndex
+        double itemTop;
+        if (_cumulativeYCacheValid && blockIndex < _cachedMinerUCumulativeY.Length)
         {
-            // Use actual rendered height if available, otherwise use default
-            var h = MinerUBlocks[i].ActualHeight;
-            if (h <= 0)
-                h = MinerUBlockItemHeight;
-            itemTop += h;
-            // Add margin between items (Margin="0,2" in XAML = 4px total top+bottom)
-            itemTop += 4.0;
+            itemTop = _cachedMinerUCumulativeY[blockIndex];
+        }
+        else
+        {
+            // Fallback: compute on the fly (should rarely happen)
+            itemTop = 0;
+            for (int i = 0; i < blockIndex; i++)
+            {
+                var h = blocks[i].ActualHeight;
+                if (h <= 0)
+                    h = MinerUBlockItemHeight;
+                itemTop += h + 4.0;
+            }
         }
 
-        var currentBlock = blockIndex < MinerUBlocks!.Count ? MinerUBlocks[blockIndex] : null;
+        var currentBlock = blocks[blockIndex];
         var itemHeight = currentBlock?.ActualHeight ?? MinerUBlockItemHeight;
         if (itemHeight <= 0)
             itemHeight = MinerUBlockItemHeight;

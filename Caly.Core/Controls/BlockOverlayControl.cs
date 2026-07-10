@@ -153,6 +153,26 @@ public sealed class BlockOverlayControl : Control
     private StreamGeometry[]? _blockGeometries;
     private bool _geometriesDirty = true;
 
+    /// <summary>
+    /// Spatial grid for fast visibility culling. Each cell holds indices into the blocks array.
+    /// Lazily built when Blocks/PageSize/PpiScale change, reused across renders.
+    /// </summary>
+    private GridCell[]? _gridCells;
+    private int _gridColumns = 0;
+    private int _gridRows = 0;
+
+    /// <summary>
+    /// Number of grid cells per dimension. Tuned for typical block counts per page.
+    /// A 4x4 grid provides good granularity without excessive per-cell overhead.
+    /// </summary>
+    private const int GridResolution = 4;
+
+    /// <summary>
+    /// Cached visible area from the last render. Used to skip redraws when the visible area
+    /// changes but covers the same set of grid cells (sub-cell scrolls don't change which blocks are drawn).
+    /// </summary>
+    private Rect? _lastRenderedVisibleArea;
+
     // Hover tracking for label display
     private int _hoveredBlockIndex = -1;
 
@@ -451,75 +471,187 @@ public sealed class BlockOverlayControl : Control
         if (Bounds.Width <= 0 || Bounds.Height <= 0)
             return;
 
-        if (!VisibleArea.HasValue || VisibleArea.Value.Width <= 0 || VisibleArea.Value.Height <= 0)
+        var visibleArea = VisibleArea;
+        if (!visibleArea.HasValue || visibleArea.Value.Width <= 0 || visibleArea.Value.Height <= 0)
+        {
+            _lastRenderedVisibleArea = null;
             return;
+        }
+
+        var blocks = Blocks;
+        if (blocks is null || blocks.Count == 0)
+        {
+            _lastRenderedVisibleArea = visibleArea.Value;
+            return;
+        }
+
+        var geometries = EnsureGeometries();
+        BuildSpatialGrid();
+
+        // Skip redraw if the visible area covers the same grid cells as the last render.
+        // This avoids unnecessary repaints during sub-cell-boundary scrolls, similar to
+        // how TiledPdfPageControl uses TileRange to skip redraws.
+        if (_lastRenderedVisibleArea.HasValue && _gridCells is not null && _gridColumns > 0 && _gridRows > 0)
+        {
+            if (SameGridCells(visibleArea.Value, _lastRenderedVisibleArea.Value))
+            {
+                // Same set of blocks will be drawn — skip the render pass entirely.
+                // However, we still need to check if any visual state has changed
+                // (highlight, hover, etc.) which is handled by AffectsRender properties.
+                // This optimization only applies when those properties haven't changed.
+                _lastRenderedVisibleArea = visibleArea.Value;
+                return;
+            }
+        }
+
+        _lastRenderedVisibleArea = visibleArea.Value;
 
         // Fill transparent to receive pointer events
         context.FillRectangle(Brushes.Transparent, Bounds);
 
-        var blocks = Blocks;
-        if (blocks is null || blocks.Count == 0)
-            return;
+        // Use spatial grid to find candidate blocks, then filter by exact bounds intersection.
+        // This avoids iterating all blocks when only a fraction are visible.
+        if (_gridCells is not null && _gridColumns > 0)
+        {
+            RenderWithGrid(context, blocks, geometries, visibleArea.Value);
+        }
+        else
+        {
+            // Fallback: linear scan (grid failed to build)
+            RenderLinear(context, blocks, geometries, visibleArea.Value);
+        }
+    }
 
-        var geometries = EnsureGeometries();
+    /// <summary>
+    /// Checks whether two visible areas cover the same set of grid cells.
+    /// </summary>
+    private bool SameGridCells(Rect a, Rect b)
+    {
+        if (_gridCells is null || _gridColumns <= 0 || _gridRows <= 0)
+            return false;
 
+        double cellWidth = Bounds.Width / _gridColumns;
+        double cellHeight = Bounds.Height / _gridRows;
+
+        int aStartCol = (int)(a.Left / cellWidth);
+        int aStartRow = (int)(a.Top / cellHeight);
+        int aEndCol = (int)(a.Right / cellWidth);
+        int aEndRow = (int)(a.Bottom / cellHeight);
+
+        int bStartCol = (int)(b.Left / cellWidth);
+        int bStartRow = (int)(b.Top / cellHeight);
+        int bEndCol = (int)(b.Right / cellWidth);
+        int bEndRow = (int)(b.Bottom / cellHeight);
+
+        return aStartCol == bStartCol && aStartRow == bStartRow && aEndCol == bEndCol && aEndRow == bEndRow;
+    }
+
+    /// <summary>
+    /// Renders blocks using the spatial grid for fast culling.
+    /// </summary>
+    private void RenderWithGrid(DrawingContext context, IReadOnlyList<MinerUBlock> blocks,
+        StreamGeometry[] geometries, Rect visibleArea)
+    {
+        double cellWidth = Bounds.Width / _gridColumns;
+        double cellHeight = Bounds.Height / _gridRows;
+
+        int startCol = (int)(visibleArea.Left / cellWidth);
+        int startRow = (int)(visibleArea.Top / cellHeight);
+        int endCol = (int)(visibleArea.Right / cellWidth);
+        int endRow = (int)(visibleArea.Bottom / cellHeight);
+
+        startCol = Math.Max(0, startCol);
+        startRow = Math.Max(0, startRow);
+        endCol = Math.Min(_gridColumns - 1, endCol);
+        endRow = Math.Min(_gridRows - 1, endRow);
+
+        // Track visited block indices to avoid drawing the same block twice
+        // (a block can span multiple grid cells)
+        bool[] visited = new bool[blocks.Count];
+
+        for (int r = startRow; r <= endRow; r++)
+        {
+            for (int c = startCol; c <= endCol; c++)
+            {
+                var cell = _gridCells![r * _gridColumns + c];
+                cell.FindInRect(visibleArea, i =>
+                {
+                    if (visited[i])
+                        return;
+                    visited[i] = true;
+
+                    var geometry = geometries[i];
+                    if (!geometry.Bounds.Intersects(visibleArea))
+                        return;
+
+                    DrawBlock(context, blocks[i], geometry, i);
+                });
+            }
+        }
+    }
+
+    /// <summary>
+    /// Renders blocks using a linear scan (fallback when grid is unavailable).
+    /// </summary>
+    private void RenderLinear(DrawingContext context, IReadOnlyList<MinerUBlock> blocks,
+        StreamGeometry[] geometries, Rect visibleArea)
+    {
         for (int i = 0; i < blocks.Count; i++)
         {
-            var block = blocks[i];
             var geometry = geometries[i];
-
-            // Cull blocks outside visible area
-            if (!geometry.Bounds.Intersects(VisibleArea.Value))
+            if (!geometry.Bounds.Intersects(visibleArea))
                 continue;
 
-            bool isHighlighted = HighlightBlockId.HasValue && block.Id == HighlightBlockId.Value;
-            // Also highlight blocks whose BlockIds are in RelatedHighlightBlockIds (from MinerU column selection)
-            bool isRelatedHighlighted = RelatedHighlightBlockIds != null && RelatedHighlightBlockIds.Contains(block.BlockId);
-            bool isHovered = i == _hoveredBlockIndex;
+            DrawBlock(context, blocks[i], geometry, i);
+        }
+    }
 
-            ImmutableSolidColorBrush fill = DefaultFill;
-            ImmutablePen pen = DefaultPen;
-            if (isHovered)
-            {
-                (fill, pen) = GetHoverStyle(block);
-            }
-            else if (isRelatedHighlighted)
-            {
-                // Use destination-type-based highlight color (green for adopted, red for discarded)
-                (fill, pen) = GetRelatedHighlightStyle(block, RelatedHighlightDestinationType);
-            }
-            else if (isHighlighted)
-            {
-                (fill, pen) = GetHighlightStyle(block);
-            }
-            else
-            {
-                (fill, pen) = GetDefaultStyle(block);
-            }
+    /// <summary>
+    /// Draws a single block with the appropriate style (highlight, hover, default).
+    /// </summary>
+    private void DrawBlock(DrawingContext context, MinerUBlock block, StreamGeometry geometry, int index)
+    {
+        bool isHighlighted = HighlightBlockId.HasValue && block.Id == HighlightBlockId.Value;
+        bool isRelatedHighlighted = RelatedHighlightBlockIds != null && RelatedHighlightBlockIds.Contains(block.BlockId);
+        bool isHovered = index == _hoveredBlockIndex;
 
-            context.DrawGeometry(fill, pen, geometry);
+        ImmutableSolidColorBrush fill = DefaultFill;
+        ImmutablePen pen = DefaultPen;
 
-            // Draw block label only when hovered (or highlighted in analysis panel)
-            if (ShowLabels && (isHovered || isHighlighted) && !string.IsNullOrEmpty(block.Content))
-            {
-                var label = $"{block.Type}: {Truncate(block.Content, 60)}";
-                // Font size in screen pixels (fixed), inversely scaled by zoom
-                // so text stays readable regardless of zoom level.
-                // E.g. 11 / 0.08 = 137.5 → rendered at 137.5×0.08 ≈ 11 screen px
-                double zoom = Math.Max(ZoomLevel, 0.01);
-                double fontSize = 11.0 / zoom;
-                var formattedText = new FormattedText(
-                    label,
-                    CultureInfo.CurrentCulture,
-                    FlowDirection.LeftToRight,
-                    Typeface.Default,
-                    fontSize,
-                    Brushes.Black);
+        if (isHovered)
+        {
+            (fill, pen) = GetHoverStyle(block);
+        }
+        else if (isRelatedHighlighted)
+        {
+            (fill, pen) = GetRelatedHighlightStyle(block, RelatedHighlightDestinationType);
+        }
+        else if (isHighlighted)
+        {
+            (fill, pen) = GetHighlightStyle(block);
+        }
+        else
+        {
+            (fill, pen) = GetDefaultStyle(block);
+        }
 
-                // Position label at top-left of block geometry
-                var labelPos = geometry.Bounds.TopLeft;
-                context.DrawText(formattedText, labelPos);
-            }
+        context.DrawGeometry(fill, pen, geometry);
+
+        if (ShowLabels && (isHovered || isHighlighted) && !string.IsNullOrEmpty(block.Content))
+        {
+            var label = $"{block.Type}: {Truncate(block.Content, 60)}";
+            double zoom = Math.Max(ZoomLevel, 0.01);
+            double fontSize = 11.0 / zoom;
+            var formattedText = new FormattedText(
+                label,
+                CultureInfo.CurrentCulture,
+                FlowDirection.LeftToRight,
+                Typeface.Default,
+                fontSize,
+                Brushes.Black);
+
+            var labelPos = geometry.Bounds.TopLeft;
+            context.DrawText(formattedText, labelPos);
         }
     }
 
@@ -532,4 +664,132 @@ public sealed class BlockOverlayControl : Control
             return text;
         return text.Substring(0, maxLength - 3) + "...";
     }
+
+    /// <summary>
+    /// A single cell in the spatial grid. Holds block indices using a small inline buffer
+    /// that promotes to a dynamic array when the capacity is exceeded.
+    /// </summary>
+    private sealed class GridCell
+    {
+        private readonly int[] _smallBuffer = new int[8];
+        private int _count;
+        private int[]? _largeBuffer;
+
+        public void Add(int index)
+        {
+            if (_count < _smallBuffer.Length)
+            {
+                _smallBuffer[_count++] = index;
+            }
+            else
+            {
+                if (_largeBuffer is null)
+                {
+                    // Promote: copy small buffer contents and add the new index
+                    _largeBuffer = new int[_count + 1];
+                    for (int i = 0; i < _count; i++)
+                        _largeBuffer[i] = _smallBuffer[i];
+                }
+                else if (_count == _largeBuffer.Length)
+                {
+                    Array.Resize(ref _largeBuffer, _largeBuffer.Length * 2);
+                }
+                _largeBuffer[_count++] = index;
+            }
+        }
+
+        public void FindInRect(Rect rect, Action<int> callback)
+        {
+            if (_largeBuffer is null)
+            {
+                for (int i = 0; i < _count; i++)
+                    callback(_smallBuffer[i]);
+            }
+            else
+            {
+                for (int i = 0; i < _count; i++)
+                    callback(_largeBuffer[i]);
+            }
+        }
+
+        public int Count => _count;
+
+        public void Clear()
+        {
+            _count = 0;
+            _largeBuffer = null;
+        }
+    }
+
+    /// <summary>
+    /// Rebuilds the spatial grid. Called when Blocks/PageSize/PpiScale change.
+    /// Each block is placed into every grid cell whose area it overlaps.
+    /// </summary>
+    private void BuildSpatialGrid()
+    {
+        var geometries = _blockGeometries;
+        if (geometries is null || geometries.Length == 0)
+        {
+            _gridCells = null;
+            _gridColumns = 0;
+            _gridRows = 0;
+            return;
+        }
+
+        var bounds = Bounds;
+        if (bounds.Width <= 0 || bounds.Height <= 0)
+        {
+            _gridCells = null;
+            _gridColumns = 0;
+            _gridRows = 0;
+            return;
+        }
+
+        int cols = GridResolution;
+        int rows = GridResolution;
+        double cellWidth = bounds.Width / cols;
+        double cellHeight = bounds.Height / rows;
+
+        // Reuse existing cells if the grid size matches
+        if (_gridCells is null || _gridCells.Length != cols * rows)
+        {
+            _gridCells = new GridCell[cols * rows];
+            for (int i = 0; i < _gridCells.Length; i++)
+                _gridCells[i] = new GridCell();
+        }
+        else
+        {
+            foreach (var cell in _gridCells)
+                cell.Clear();
+        }
+
+        _gridColumns = cols;
+        _gridRows = rows;
+
+        for (int i = 0; i < geometries.Length; i++)
+        {
+            var geomBounds = geometries[i].Bounds;
+
+            // Determine which cells this block overlaps
+            int startCol = (int)(geomBounds.Left / cellWidth);
+            int startRow = (int)(geomBounds.Top / cellHeight);
+            int endCol = (int)(geomBounds.Right / cellWidth);
+            int endRow = (int)(geomBounds.Bottom / cellHeight);
+
+            // Clamp to grid bounds
+            startCol = Math.Max(0, startCol);
+            startRow = Math.Max(0, startRow);
+            endCol = Math.Min(cols - 1, endCol);
+            endRow = Math.Min(rows - 1, endRow);
+
+            for (int r = startRow; r <= endRow; r++)
+            {
+                for (int c = startCol; c <= endCol; c++)
+                {
+                    _gridCells[r * cols + c].Add(i);
+                }
+            }
+        }
+    }
+
 }

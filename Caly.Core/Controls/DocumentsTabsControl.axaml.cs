@@ -55,6 +55,10 @@ public sealed partial class DocumentsTabsControl : UserControl
     private ScrollViewer? _minerUScrollViewer;
     private ConnectionLinesControl? _connectionLinesControl;
     private Grid? _threeColumnGrid;
+    
+    // Debounce for UpdateConnectionLines to avoid excessive calls during scrolling
+    private bool _updateConnectionLinesPending;
+    private System.Threading.Timer? _updateConnectionLinesTimer;
 
     public DocumentsTabsControl()
     {
@@ -308,14 +312,33 @@ public sealed partial class DocumentsTabsControl : UserControl
 
     private void UpdateConnectionLines()
     {
+        // Debounce: if an update is already scheduled, skip
+        if (_updateConnectionLinesPending)
+            return;
+        
+        _updateConnectionLinesPending = true;
+        _updateConnectionLinesTimer?.Dispose();
+        // Use 100ms debounce during scrolling to reduce expensive DOM queries.
+        // Scroll events fire at ~60fps (16ms interval), so 100ms means we process
+        // only ~10 updates per second instead of ~60, dramatically reducing CPU usage.
+        _updateConnectionLinesTimer = new System.Threading.Timer(_ =>
+        {
+            _updateConnectionLinesPending = false;
+            _updateConnectionLinesTimer = null;
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                UpdateConnectionLinesCore();
+            });
+        }, null, 100, -1);
+    }
+
+    private void UpdateConnectionLinesCore()
+    {
         var connControl = GetConnectionLinesControl();
         if (connControl is null)
         {
-            System.Diagnostics.Debug.WriteLine("[ConnectionLines] connControl is null");
             return;
         }
-
-        System.Diagnostics.Debug.WriteLine($"[ConnectionLines] Bounds={connControl.Bounds.Width}x{connControl.Bounds.Height}, ShowConnections={connControl.ShowConnections}");
 
         if (DataContext is not MainViewModel mainVm || mainVm.SelectedDocument is not DocumentViewModel docVm)
         {
@@ -323,7 +346,7 @@ public sealed partial class DocumentsTabsControl : UserControl
             return;
         }
 
-        if (!docVm.ShowMinerUColumn || docVm.MinerUBlocks.Count == 0)
+        if (!docVm.ShowMinerUColumn || !docVm.HasMinerUBlocks)
         {
             connControl.ShowConnections = false;
             return;
@@ -339,8 +362,6 @@ public sealed partial class DocumentsTabsControl : UserControl
         var visibleRange = docVm.VisiblePages.Value;
         int startPage = visibleRange.Start.Value;
         int endPage = visibleRange.End.Value; // exclusive
-
-        System.Diagnostics.Debug.WriteLine($"[ConnectionLines] VisiblePages: {startPage}-{endPage - 1}");
 
         // Collect PreprocBlocks from all visible pages with per-page sizes
         var preprocBlocksByPage = new System.Collections.Generic.Dictionary<int, (IReadOnlyList<MinerUBlock> Blocks, Size PageSize)>();
@@ -365,17 +386,12 @@ public sealed partial class DocumentsTabsControl : UserControl
             return;
         }
 
-        System.Diagnostics.Debug.WriteLine($"[ConnectionLines] {preprocBlocksByPage.Count} pages, {totalPreproc} total preproc blocks");
-
         connControl.ShowConnections = true;
         connControl.PreprocBlocksByPage = preprocBlocksByPage;
         connControl.MinerUBlocks = docVm.VisibleMinerUBlocks;
         connControl.PageSize = firstPageWithBlocks?.Size ?? new Size(0, 0);
         connControl.ZoomLevel = docVm.ZoomLevel;
         connControl.SelectedBlockId = docVm.SelectedMinerUBlockId;
-
-        // Force a render after layout is applied
-        connControl.InvalidateVisual();
 
         // PDF scroll offset
         var docControl = GetDocumentControl();
@@ -421,5 +437,8 @@ public sealed partial class DocumentsTabsControl : UserControl
             connControl.PdfColumnRightEdge = connControl.Bounds.Width * 0.4;
             connControl.MinerUColumnLeftEdge = connControl.Bounds.Width * 0.6;
         }
+
+        // Schedule a debounced render instead of immediately invalidating
+        // The scroll offset properties trigger ScheduleRender() via their Changed handlers
     }
 }
