@@ -48,13 +48,13 @@ public sealed class BlockOverlayControl : Control
         AvaloniaProperty.Register<BlockOverlayControl, int?>(nameof(HighlightBlockId));
 
     /// <summary>
-    /// Additional block IDs to highlight (from MinerU Blocks column selection).
+    /// Additional block IDs (UUID strings) to highlight (from MinerU Blocks column selection).
     /// When a user selects a block in the MinerU Blocks column, its RelatedBlockIds are set here
     /// to highlight the corresponding preproc_blocks on the PDF overlay.
-    /// Uses IReadOnlySet<int> for O(1) Contains performance in the render loop.
+    /// Uses IReadOnlySet<string> for O(1) Contains performance in the render loop.
     /// </summary>
-    public static readonly StyledProperty<System.Collections.Generic.IReadOnlySet<int>?> RelatedHighlightBlockIdsProperty =
-        AvaloniaProperty.Register<BlockOverlayControl, System.Collections.Generic.IReadOnlySet<int>?>(nameof(RelatedHighlightBlockIds));
+    public static readonly StyledProperty<System.Collections.Generic.IReadOnlySet<string>?> RelatedHighlightBlockIdsProperty =
+        AvaloniaProperty.Register<BlockOverlayControl, System.Collections.Generic.IReadOnlySet<string>?>(nameof(RelatedHighlightBlockIds));
 
     /// <summary>
     /// Destination type of the selected block ("para" = adopted/green, "discarded" = red).
@@ -113,7 +113,7 @@ public sealed class BlockOverlayControl : Control
         set => SetValue(HighlightBlockIdProperty, value);
     }
 
-    public System.Collections.Generic.IReadOnlySet<int>? RelatedHighlightBlockIds
+    public System.Collections.Generic.IReadOnlySet<string>? RelatedHighlightBlockIds
     {
         get => GetValue(RelatedHighlightBlockIdsProperty);
         set => SetValue(RelatedHighlightBlockIdsProperty, value);
@@ -473,8 +473,8 @@ public sealed class BlockOverlayControl : Control
                 continue;
 
             bool isHighlighted = HighlightBlockId.HasValue && block.Id == HighlightBlockId.Value;
-            // Also highlight blocks whose IDs are in RelatedHighlightBlockIds (from MinerU column selection)
-            bool isRelatedHighlighted = RelatedHighlightBlockIds != null && RelatedHighlightBlockIds.Contains(block.Id);
+            // Also highlight blocks whose BlockIds are in RelatedHighlightBlockIds (from MinerU column selection)
+            bool isRelatedHighlighted = RelatedHighlightBlockIds != null && RelatedHighlightBlockIds.Contains(block.BlockId);
             bool isHovered = i == _hoveredBlockIndex;
 
             ImmutableSolidColorBrush fill = DefaultFill;

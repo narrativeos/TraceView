@@ -30,6 +30,7 @@ using Caly.Core.Utilities;
 using Caly.Core.ViewModels;
 using CommunityToolkit.Mvvm.Input;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace Caly.Core.Controls;
@@ -235,7 +236,7 @@ public sealed partial class DocumentsTabsControl : UserControl
 
         if (mainVm.SelectedDocument is DocumentViewModel currentDoc)
         {
-            currentDoc.SelectMinerUBlockCommand?.Execute(blockVm.Id);
+            currentDoc.SelectMinerUBlockCommand?.Execute(blockVm.BlockId);
             e.Handled = true;
         }
     }
@@ -328,32 +329,52 @@ public sealed partial class DocumentsTabsControl : UserControl
             return;
         }
 
-        var currentPage = docVm.Pages.FirstOrDefault(p => p.PageNumber == docVm.SelectedPageNumber);
-        if (currentPage?.MinerUBlocks is null || currentPage.MinerUBlocks.Count == 0)
+        // Get visible page range from VisiblePages
+        if (!docVm.VisiblePages.HasValue)
         {
             connControl.ShowConnections = false;
             return;
         }
 
-        // Debug: check if PreprocBlocks are available
-        var preprocCount = currentPage.PreprocBlocks?.Count ?? 0;
-        System.Diagnostics.Debug.WriteLine($"[ConnectionLines] Page {currentPage.PageNumber}: MinerUBlocks={currentPage.MinerUBlocks.Count}, PreprocBlocks={preprocCount}");
+        var visibleRange = docVm.VisiblePages.Value;
+        int startPage = visibleRange.Start.Value;
+        int endPage = visibleRange.End.Value; // exclusive
 
-        if (preprocCount == 0)
+        System.Diagnostics.Debug.WriteLine($"[ConnectionLines] VisiblePages: {startPage}-{endPage - 1}");
+
+        // Collect PreprocBlocks from all visible pages with per-page sizes
+        var preprocBlocksByPage = new System.Collections.Generic.Dictionary<int, (IReadOnlyList<MinerUBlock> Blocks, Size PageSize)>();
+        int totalPreproc = 0;
+        PageViewModel? firstPageWithBlocks = null;
+
+        for (int pageNum = startPage; pageNum < endPage; pageNum++)
         {
-            // No preproc blocks for this page — connection lines cannot be drawn
+            var page = docVm.Pages.FirstOrDefault(p => p.PageNumber == pageNum);
+            if (page?.PreprocBlocks is { Count: > 0 })
+            {
+                preprocBlocksByPage[pageNum] = (page.PreprocBlocks, page.Size);
+                totalPreproc += page.PreprocBlocks.Count;
+                if (firstPageWithBlocks is null)
+                    firstPageWithBlocks = page;
+            }
+        }
+
+        if (preprocBlocksByPage.Count == 0 || totalPreproc == 0)
+        {
             connControl.ShowConnections = false;
             return;
         }
+
+        System.Diagnostics.Debug.WriteLine($"[ConnectionLines] {preprocBlocksByPage.Count} pages, {totalPreproc} total preproc blocks");
 
         connControl.ShowConnections = true;
-        connControl.PreprocBlocks = currentPage.PreprocBlocks;
-        connControl.MinerUBlocks = docVm.MinerUBlocks;
-        connControl.PageSize = currentPage.Size;
+        connControl.PreprocBlocksByPage = preprocBlocksByPage;
+        connControl.MinerUBlocks = docVm.VisibleMinerUBlocks;
+        connControl.PageSize = firstPageWithBlocks?.Size ?? new Size(0, 0);
         connControl.ZoomLevel = docVm.ZoomLevel;
         connControl.SelectedBlockId = docVm.SelectedMinerUBlockId;
 
-        // Force a render after layout is applied (IsVisible change triggers layout asynchronously)
+        // Force a render after layout is applied
         connControl.InvalidateVisual();
 
         // PDF scroll offset
@@ -363,12 +384,17 @@ public sealed partial class DocumentsTabsControl : UserControl
             var pageItemsControl = docControl.FindDescendantOfType<PageItemsControl>();
             if (pageItemsControl?.Scroll is { } pdfScroll)
             {
-                var pageItem = pageItemsControl.GetPageItem(docVm.SelectedPageNumber ?? 1);
-                if (pageItem is not null)
+                // Use the first visible page for scroll offset calculation
+                var firstVisiblePage = docVm.Pages.FirstOrDefault(p => p.PageNumber >= startPage && p.PreprocBlocks?.Count > 0);
+                if (firstVisiblePage is not null)
                 {
-                    var scale = pageItemsControl.LayoutTransform?.LayoutTransform?.Value.M11 ?? 1.0;
-                    connControl.PdfScrollOffsetY = pdfScroll.Offset.Y - pageItem.Bounds.Top * scale;
-                    connControl.PdfPageTopOffset = 0;
+                    var pageItem = pageItemsControl.GetPageItem(firstVisiblePage.PageNumber);
+                    if (pageItem is not null)
+                    {
+                        var scale = pageItemsControl.LayoutTransform?.LayoutTransform?.Value.M11 ?? 1.0;
+                        connControl.PdfScrollOffsetY = pdfScroll.Offset.Y - pageItem.Bounds.Top * scale;
+                        connControl.PdfPageTopOffset = 0;
+                    }
                 }
             }
         }

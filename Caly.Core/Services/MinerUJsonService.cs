@@ -219,6 +219,11 @@ public static class MinerUJsonService
             // 2. Parse pdf_info -> PagesBlocks (actual MinerU output format seen in the wild)
             if (root.TryGetProperty("pdf_info", out var pdfInfoElem) && pdfInfoElem.ValueKind == JsonValueKind.Array)
             {
+                // Global ID counter to ensure unique IDs across ALL pages and sections.
+                // Without this, blocks from different pages would have duplicate IDs (e.g., page1.id=1 and page2.id=1),
+                // causing connection lines to point to the wrong blocks.
+                int globalNextBlockId = 1;
+
                 foreach (var pageInfoElem in pdfInfoElem.EnumerateArray())
                 {
                     var pageNum = pageInfoElem.TryGetProperty("page_idx", out var pageIdxElem)
@@ -241,10 +246,8 @@ public static class MinerUJsonService
                     // providing a clear contrast with the PDF overlay layer which uses preproc_blocks (raw detection).
                     var paraBlocks = new List<MinerUBlock>();
                     var discardedBlocks = new List<MinerUBlock>();
-                    // Global ID counter to ensure unique IDs across all sections (para/discarded/preproc).
-                    // Without this, blocks from different sections that lack explicit IDs would get duplicate IDs.
-                    int nextBlockId = 1;
-                    
+                    // Use the global ID counter (declared outside the page loop) to ensure unique IDs
+                    // across all pages. Without this, page 1 and page 2 would both have blocks with id=1,2,3...
                     if (pageInfoElem.TryGetProperty("para_blocks", out var paraElem) && paraElem.ValueKind == JsonValueKind.Array)
                     {
                         foreach (var blockElem in paraElem.EnumerateArray())
@@ -252,10 +255,7 @@ public static class MinerUJsonService
                             var paraList = MapMinerUPageSectionToBlocks(blockElem, pageNum, pageWidth, pageHeight);
                             foreach (var b in paraList)
                             {
-                                // Always use global ID counter to ensure unique IDs across all blocks.
-                                // JSON index values can be 0, duplicated, or overlap across sections.
-                                // By always using the global counter we guarantee no ID collisions.
-                                b.Id = nextBlockId++;
+                                b.Id = globalNextBlockId++;
                                 b.BlockSource = MinerUConstants.SourcePara;
                                 paraBlocks.Add(b);
                             }
@@ -269,8 +269,7 @@ public static class MinerUJsonService
                             var discList = MapMinerUPageSectionToBlocks(blockElem, pageNum, pageWidth, pageHeight);
                             foreach (var b in discList)
                             {
-                                // Always use global ID counter to ensure unique IDs across all blocks
-                                b.Id = nextBlockId++;
+                                b.Id = globalNextBlockId++;
                                 b.BlockSource = MinerUConstants.SourceDiscarded;
                                 discardedBlocks.Add(b);
                             }
@@ -303,8 +302,7 @@ public static class MinerUJsonService
                             var preprocList = MapMinerUPageSectionToBlocks(blockElem, pageNum, pageWidth, pageHeight);
                             foreach (var preprocBlock in preprocList)
                             {
-                                // Always use global ID counter to ensure unique IDs across all blocks
-                                preprocBlock.Id = nextBlockId++;
+                                preprocBlock.Id = globalNextBlockId++;
 
                                 // Try to match using block_id first (exact match via block_ids array in para_blocks)
                                 MinerUBlock? matched = null;
@@ -358,8 +356,9 @@ public static class MinerUJsonService
                                     preprocBlock.DestinationType = matched.BlockSource;
                                     preprocBlock.IsFallbackMatch = isFallbackMatch;
                                     matched.IsFallbackMatch = isFallbackMatch;
-                                    preprocBlock.RelatedBlockIds.Add(matched.Id);
-                                    matched.RelatedBlockIds.Add(preprocBlock.Id);
+                                    // Use BlockId (UUID string) for bidirectional relationship
+                                    preprocBlock.RelatedBlockIds.Add(matched.BlockId);
+                                    matched.RelatedBlockIds.Add(preprocBlock.BlockId);
                                 }
                                 pagePreprocBlocks.Add(preprocBlock);
                             }

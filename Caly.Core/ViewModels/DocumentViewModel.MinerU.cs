@@ -123,34 +123,34 @@ public sealed partial class DocumentViewModel
     private bool _showAnalysisColumn = false;
 
     /// <summary>
-    /// Currently selected MinerU block ID for cross-highlighting with the PDF overlay.
-    /// When set, the BlockOverlayControl highlights all blocks whose IDs are in the
+    /// Currently selected MinerU block ID (UUID string) for cross-highlighting with the PDF overlay.
+    /// When set, the BlockOverlayControl highlights all blocks whose BlockIds are in the
     /// RelatedBlockIds of the selected block.
     /// </summary>
     [ObservableProperty]
-    private int? _selectedMinerUBlockId;
+    private string? _selectedMinerUBlockId;
 
     // Cached reference to the currently selected block to avoid O(n) searches on each property access.
     private MinerUBlockViewModel? _cachedSelectedBlock;
 
     /// <summary>
-    /// Dictionary for O(1) block lookup by ID. Rebuilt whenever MinerUBlocks collection changes.
+    /// Dictionary for O(1) block lookup by BlockId (UUID string). Rebuilt whenever MinerUBlocks collection changes.
     /// </summary>
-    private System.Collections.Generic.Dictionary<int, MinerUBlockViewModel> _blockIdMap = new();
+    private System.Collections.Generic.Dictionary<string, MinerUBlockViewModel> _blockIdMap = new();
 
     /// <summary>
-    /// Gets the RelatedBlockIds of the currently selected MinerU block.
+    /// Gets the RelatedBlockIds (UUID strings) of the currently selected MinerU block.
     /// Used to bind to BlockOverlayControl.RelatedHighlightBlockIds for cross-highlighting.
     /// Returns a HashSet-backed IReadOnlySet for O(1) Contains performance in the render loop.
     /// </summary>
-    public System.Collections.Generic.IReadOnlySet<int>? SelectedMinerUBlockRelatedIds
+    public System.Collections.Generic.IReadOnlySet<string>? SelectedMinerUBlockRelatedIds
     {
         get
         {
             if (_cachedSelectedBlock is null)
                 return null;
             var related = _cachedSelectedBlock.RelatedBlockIds;
-            return related.Count > 0 ? (System.Collections.Generic.IReadOnlySet<int>)new System.Collections.Generic.HashSet<int>(related) : null;
+            return related.Count > 0 ? (System.Collections.Generic.IReadOnlySet<string>)new System.Collections.Generic.HashSet<string>(related) : null;
         }
     }
 
@@ -169,9 +169,9 @@ public sealed partial class DocumentViewModel
 
     private MinerUBlockViewModel? FindSelectedBlock()
     {
-        if (SelectedMinerUBlockId is not int id)
+        if (string.IsNullOrEmpty(SelectedMinerUBlockId))
             return null;
-        return _blockIdMap.TryGetValue(id, out var block) ? block : null;
+        return _blockIdMap.TryGetValue(SelectedMinerUBlockId, out var block) ? block : null;
     }
 
     /// <summary>
@@ -189,19 +189,79 @@ public sealed partial class DocumentViewModel
 
     /// <summary>
     /// Rebuilds the block ID map after MinerUBlocks collection is populated.
-    /// Uses a loop instead of ToDictionary to handle duplicate IDs gracefully (last-one-wins).
-    /// Duplicate IDs can occur when the same block ID appears in both para_blocks and discarded_blocks.
+    /// Uses BlockId (UUID string) as the key for unique identification across all pages.
     /// </summary>
     internal void RebuildBlockIdMap()
     {
-        var dict = new System.Collections.Generic.Dictionary<int, MinerUBlockViewModel>(MinerUBlocks.Count);
+        var dict = new System.Collections.Generic.Dictionary<string, MinerUBlockViewModel>(MinerUBlocks.Count);
         foreach (var block in MinerUBlocks)
         {
-            dict[block.Id] = block; // Last-one-wins for duplicate IDs
+            if (!string.IsNullOrEmpty(block.BlockId))
+                dict[block.BlockId] = block; // BlockId is globally unique (UUID)
         }
         _blockIdMap = dict;
     }
 
+    /// <summary>
+    /// Cached visible blocks collection for XAML binding.
+    /// Updated when VisiblePages changes.
+    /// </summary>
+    private ObservableCollection<MinerUBlockViewModel> _visibleMinerUBlocks = new();
+
+    /// <summary>
+    /// Gets MinerU blocks filtered by the current visible page range.
+    /// When VisiblePages changes (PDF scroll), this property returns
+    /// only blocks for the visible pages, enabling smooth transition in the right panel.
+    /// </summary>
+    public ObservableCollection<MinerUBlockViewModel> VisibleMinerUBlocks => _visibleMinerUBlocks;
+
+    /// <summary>
+    /// Called by CommunityToolkit.Mvvm when VisiblePages changes.
+    /// Updates the filtered blocks collection for the right panel.
+    /// </summary>
+    partial void OnVisiblePagesChanged(Range? value)
+    {
+        UpdateVisibleMinerUBlocks();
+    }
+
+    /// <summary>
+    /// Updates the filtered blocks collection based on current VisiblePages.
+    /// </summary>
+    private void UpdateVisibleMinerUBlocks()
+    {
+        System.Collections.Generic.IEnumerable<MinerUBlockViewModel> newBlocks = !VisiblePages.HasValue
+            ? MinerUBlocks
+            : MinerUBlocks.Where(b => b.Page >= VisiblePages.Value.Start.Value && b.Page < VisiblePages.Value.End.Value);
+
+        _visibleMinerUBlocks.Clear();
+        foreach (var block in newBlocks)
+            _visibleMinerUBlocks.Add(block);
+
+        OnPropertyChanged(nameof(VisibleMinerUBlocks.Count));
+        OnPropertyChanged(nameof(VisiblePagesText));
+    }
+
+    /// <summary>
+    /// Gets a human-readable string showing the visible page range.
+    /// E.g., "Pages 1-3" or empty string if not available.
+    /// </summary>
+    public string VisiblePagesText
+    {
+        get
+        {
+            if (!VisiblePages.HasValue)
+                return string.Empty;
+
+            var range = VisiblePages.Value;
+            int start = range.Start.Value;
+            int end = range.End.Value;
+            // Range is [start, end), so the last visible page is end-1
+            int lastPage = end - 1;
+            return start == lastPage
+                ? $"Page {start}"
+                : $"Pages {start}-{lastPage}";
+        }
+    }
 
     #endregion
 
@@ -244,7 +304,7 @@ public sealed partial class DocumentViewModel
     /// Clicking the same block again deselects it (toggles off).
     /// </summary>
     [RelayCommand]
-    private void SelectMinerUBlock(int blockId)
+    private void SelectMinerUBlock(string blockId)
     {
         // Toggle: if the same block is clicked again, deselect
         if (SelectedMinerUBlockId == blockId)
@@ -550,6 +610,9 @@ public sealed partial class DocumentViewModel
 
             // Rebuild the block ID map for O(1) lookups
             RebuildBlockIdMap();
+            
+            // Update visible blocks based on current VisiblePages
+            UpdateVisibleMinerUBlocks();
         }
 
         // Auto-open the Popo analysis pane
@@ -629,6 +692,9 @@ public sealed partial class DocumentViewModel
 
         // Rebuild the block ID map for O(1) lookups
         RebuildBlockIdMap();
+        
+        // Update visible blocks based on current VisiblePages
+        UpdateVisibleMinerUBlocks();
 
         MinerUStatus = MinerUParseStatus.Completed;
         MinerUProgress = 100;
@@ -659,7 +725,7 @@ public sealed partial class DocumentViewModel
                 Bbox = new double[] { block.Bbox.X, block.Bbox.Y, block.Bbox.Right, block.Bbox.Bottom },
                 BlockSource = block.BlockSource,
                 DestinationType = block.DestinationType,
-                RelatedBlockIds = new System.Collections.Generic.List<int>(block.RelatedBlockIds),
+                RelatedBlockIds = new System.Collections.Generic.List<string>(block.RelatedBlockIds),
                 SourceBlockIds = new System.Collections.Generic.List<string>(block.SourceBlockIds),
                 IsFallbackMatch = block.IsFallbackMatch
             }, artifactsDirectory);

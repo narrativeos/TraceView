@@ -115,13 +115,13 @@ public class MinerUMiddlePageBlock
     public string DestinationType { get; set; } = string.Empty;
 
     /// <summary>
-    /// Related block IDs for cross-highlighting between MinerU Blocks column and PDF overlay.
-    /// - For para_blocks: contains the preproc_block IDs that were merged into this paragraph
-    /// - For preproc_blocks: contains the para_block/discarded_block ID it belongs to
+    /// Related block IDs (UUID strings) for cross-highlighting between MinerU Blocks column and PDF overlay.
+    /// - For para_blocks: contains the preproc_block BlockIds that were merged into this paragraph
+    /// - For preproc_blocks: contains the para_block/discarded_block BlockId it belongs to
     /// NOT serialized to JSON - set during parsing.
     /// </summary>
     [System.Text.Json.Serialization.JsonIgnore]
-    public System.Collections.Generic.List<int> RelatedBlockIds { get; set; } = new();
+    public System.Collections.Generic.List<string> RelatedBlockIds { get; set; } = new();
 
     /// <summary>
     /// Whether this block's match to its target was a fallback match (not a precise 1:1 index-based match).

@@ -57,10 +57,10 @@ public partial class MinerUBlockViewModel : ObservableObject
     public double[] Bbox => _block.Bbox;
 
     /// <summary>
-    /// Related block IDs for cross-highlighting between MinerU Blocks column and PDF overlay.
+    /// Related block IDs (UUID strings) for cross-highlighting between MinerU Blocks column and PDF overlay.
     /// Returns a read-only view to prevent external modification.
     /// </summary>
-    public System.Collections.Generic.IReadOnlyList<int> RelatedBlockIds => _block.RelatedBlockIds;
+    public System.Collections.Generic.IReadOnlyList<string> RelatedBlockIds => _block.RelatedBlockIds;
 
     /// <summary>
     /// Destination type: "para" (adopted), "discarded" (rejected), or empty.

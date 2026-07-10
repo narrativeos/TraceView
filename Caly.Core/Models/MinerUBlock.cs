@@ -152,12 +152,12 @@ public partial class MinerUBlock : ObservableObject
     private string _destinationType = string.Empty;
 
     /// <summary>
-    /// Related block IDs for cross-highlighting between MinerU Blocks column and PDF overlay.
-    /// - For para_blocks: contains the preproc_block IDs that were merged into this paragraph
-    /// - For preproc_blocks: contains the para_block/discarded_block ID it belongs to
+    /// Related block IDs (UUID strings) for cross-highlighting between MinerU Blocks column and PDF overlay.
+    /// - For para_blocks: contains the preproc_block BlockIds that were merged into this paragraph
+    /// - For preproc_blocks: contains the para_block/discarded_block BlockId it belongs to
     /// </summary>
     [ObservableProperty]
-    private List<int> _relatedBlockIds = new();
+    private List<string> _relatedBlockIds = new();
 
     /// <summary>
     /// Whether this block's match to its target was a fallback match (not a precise 1:1 index-based match).
