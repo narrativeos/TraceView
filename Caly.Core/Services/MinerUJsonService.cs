@@ -324,10 +324,26 @@ public static class MinerUJsonService
                                     {
                                         foreach (var discBlock in discardedBlocks)
                                         {
+                                            // First try: match via SourceBlockIds (for discarded_blocks with sub-blocks)
                                             if (discBlock.SourceBlockIds.Contains(preprocBlock.BlockId))
                                             {
                                                 matched = discBlock;
                                                 break;
+                                            }
+                                        }
+                                        
+                                        // Second try: if no match via SourceBlockIds, match discarded_blocks directly by BlockId
+                                        // This handles the case where a discarded_block is a single block (no sub-blocks)
+                                        // and its own BlockId is the same as the preproc_block's BlockId
+                                        if (matched == null)
+                                        {
+                                            foreach (var discBlock in discardedBlocks)
+                                            {
+                                                if (discBlock.SourceBlockIds.Count == 0 && discBlock.BlockId == preprocBlock.BlockId)
+                                                {
+                                                    matched = discBlock;
+                                                    break;
+                                                }
                                             }
                                         }
                                     }
