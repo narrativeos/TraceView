@@ -76,7 +76,7 @@ public static class MinerUJsonService
         Directory.CreateDirectory(minerUDir);
 
         var fileName = docId is not null
-            ? $"{docId}_mineru.zip"
+            ? $"{docId}.zip"
             : Path.GetFileName(zipPath);
 
         var destPath = Path.Combine(minerUDir, fileName);
@@ -115,7 +115,7 @@ public static class MinerUJsonService
 
         if (docId is not null)
         {
-            var specificPath = Path.Combine(minerUDir, $"{docId}_mineru.zip");
+            var specificPath = Path.Combine(minerUDir, $"{docId}.zip");
             if (File.Exists(specificPath))
                 return specificPath;
         }

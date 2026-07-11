@@ -6,6 +6,7 @@
              xmlns:controls="clr-namespace:Caly.Core.Controls"
              xmlns:utilities="clr-namespace:Caly.Core.Utilities"
              xmlns:services="clr-namespace:Caly.Core.Services"
+             xmlns:models="clr-namespace:Caly.Core.Models"
              xmlns:tabalonia="clr-namespace:Tabalonia.Controls;assembly=Tabalonia"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
              x:Class="Caly.Core.Controls.DocumentsTabsControl"
@@ -334,51 +335,72 @@
                                                     IsVisible="{Binding !IsMinerUParsing}"/>
                                      </StackPanel>
 
-                                    <!-- Progress State: shown during parsing -->
-                                    <Border IsVisible="{Binding IsMinerUParsing}"
-                                            VerticalAlignment="Center"
-                                            HorizontalAlignment="Stretch">
-                                        <StackPanel VerticalAlignment="Center"
-                                                    HorizontalAlignment="Center"
-                                                    Spacing="12">
-                                            <!-- Spinner -->
-                                            <PathIcon Width="32"
-                                                      Height="32"
-                                                      Data="{StaticResource spinner_regular}"
-                                                      Foreground="{DynamicResource SystemAccentColor}"
-                                                      HorizontalAlignment="Center"/>
+                                     <!-- Progress State: shown during parsing -->
+                                     <Border IsVisible="{Binding IsMinerUParsing}"
+                                             VerticalAlignment="Center"
+                                             HorizontalAlignment="Stretch">
+                                         <StackPanel VerticalAlignment="Center"
+                                                     HorizontalAlignment="Center"
+                                                     Spacing="12">
+                                             <!-- Spinner -->
+                                             <PathIcon Width="32"
+                                                       Height="32"
+                                                       Data="{StaticResource spinner_regular}"
+                                                       Foreground="{DynamicResource SystemAccentColor}"
+                                                       HorizontalAlignment="Center"/>
 
-                                            <!-- Status Text -->
-                                            <TextBlock Text="{Binding MinerUStatusText}"
-                                                       FontSize="13"
-                                                       HorizontalAlignment="Center"
-                                                       TextAlignment="Center"/>
+                                             <!-- Status Text -->
+                                             <TextBlock Text="{Binding MinerUStatusText}"
+                                                        FontSize="13"
+                                                        HorizontalAlignment="Center"
+                                                        TextAlignment="Center"/>
 
-                                            <!-- Progress Bar -->
-                                            <ProgressBar Width="200"
-                                                         Minimum="0"
-                                                         Maximum="100"
-                                                         Value="{Binding MinerUProgress}"
-                                                         HorizontalAlignment="Center"/>
+                                             <!-- Progress Bar -->
+                                             <ProgressBar Width="200"
+                                                          Minimum="0"
+                                                          Maximum="100"
+                                                          Value="{Binding MinerUProgress}"
+                                                          HorizontalAlignment="Center"/>
 
-                                            <!-- Progress Percentage -->
-                                            <TextBlock Text="{Binding MinerUProgress, StringFormat='{}{0}%'}"
-                                                       FontSize="11"
-                                                       HorizontalAlignment="Center"
-                                                       Opacity="0.7"/>
+                                             <!-- Progress Percentage -->
+                                             <TextBlock Text="{Binding MinerUProgress, StringFormat='{}{0}%'}"
+                                                        FontSize="11"
+                                                        HorizontalAlignment="Center"
+                                                        Opacity="0.7"/>
 
-                                            <!-- Cancel Button -->
-                                            <Button Content="Cancel"
-                                                    Command="{Binding CancelMinerUParseCommand}"
-                                                    HorizontalAlignment="Center"
-                                                    Padding="20,4"/>
-                                        </StackPanel>
-                                    </Border>
+                                             <!-- Cancel Button -->
+                                             <Button Content="Cancel"
+                                                     Command="{Binding CancelMinerUParseCommand}"
+                                                     HorizontalAlignment="Center"
+                                                     Padding="20,4"/>
+                                         </StackPanel>
+                                     </Border>
 
-                                       <!-- Blocks List: shown when not parsing -->
-                                       <ScrollViewer Name="PART_MinerUScrollViewer"
-                                                     IsVisible="{Binding !IsMinerUParsing}"
-                                                     ScrollChanged="OnMinerUScrollChanged">
+                                     <!-- Error/Failed State: shown when parsing failed -->
+                                     <Border IsVisible="{Binding MinerUStatus, Converter={StaticResource EqualsConverter}, ConverterParameter={x:Static models:MinerUParseStatus.Failed}}"
+                                             VerticalAlignment="Center"
+                                             HorizontalAlignment="Stretch"
+                                             Padding="12"
+                                             Background="#FFF2F2"
+                                             CornerRadius="4">
+                                         <StackPanel Spacing="8"
+                                                     HorizontalAlignment="Center">
+                                             <TextBlock Text="{Binding MinerUStatusText}"
+                                                        FontSize="12"
+                                                        Foreground="#FF4444"
+                                                        TextAlignment="Center"
+                                                        TextWrapping="Wrap"/>
+                                             <Button Content="Retry"
+                                                     Command="{Binding ParseWithMinerUCommand}"
+                                                     HorizontalAlignment="Center"
+                                                     Padding="20,4"/>
+                                         </StackPanel>
+                                     </Border>
+
+                                     <!-- Blocks List: shown when not parsing and no error -->
+                                     <ScrollViewer Name="PART_MinerUScrollViewer"
+                                                      IsVisible="{Binding ShowMinerUBlocksList}"
+                                                      ScrollChanged="OnMinerUScrollChanged">
                                            <ItemsControl ItemsSource="{Binding VisibleMinerUBlocks}">
                                               <ItemsControl.ItemTemplate>
                                                   <DataTemplate x:DataType="vm:MinerUBlockViewModel">

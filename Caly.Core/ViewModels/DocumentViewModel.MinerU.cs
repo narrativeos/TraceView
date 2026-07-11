@@ -219,6 +219,21 @@ public sealed partial class DocumentViewModel
     /// Called by CommunityToolkit.Mvvm when VisiblePages changes.
     /// Updates the filtered blocks collection for the right panel.
     /// </summary>
+    partial void OnMinerUStatusChanged(MinerUParseStatus value)
+    {
+        OnPropertyChanged(nameof(ShowMinerUBlocksList));
+    }
+
+    partial void OnIsMinerUParsingChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ShowMinerUBlocksList));
+    }
+
+    /// <summary>
+    /// Whether the MinerU blocks list should be shown (not parsing and no error).
+    /// </summary>
+    public bool ShowMinerUBlocksList => !IsMinerUParsing && MinerUStatus != MinerUParseStatus.Failed;
+
     partial void OnVisiblePagesChanged(Range? value)
     {
         UpdateVisibleMinerUBlocks();

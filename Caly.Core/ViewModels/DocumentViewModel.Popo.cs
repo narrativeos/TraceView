@@ -222,24 +222,23 @@ public sealed partial class DocumentViewModel
                 var mineruDir = Path.Combine(ProjectPath, "mineru");
                 if (Directory.Exists(mineruDir))
                 {
-                    var zipFiles = Directory.GetFiles(mineruDir, "*_mineru.zip");
+                    var zipFiles = Directory.GetFiles(mineruDir, "*.zip");
                     if (zipFiles.Length > 0)
                     {
-                        var fileName = Path.GetFileNameWithoutExtension(zipFiles[0]);
-                        docId = fileName.EndsWith("_mineru") ? fileName[..^7] : fileName;
+                        // ZIP filename is now simply {docId}.zip
+                        docId = Path.GetFileNameWithoutExtension(zipFiles[0]);
                     }
                 }
             }
 
-            // 1: Try MinerU cache hybrid_auto directory (~/.TraceView/{docId}/mineru/extract_{docId}/{docId}/hybrid_auto/)
-            // This is the primary source because popo_result.json's img_path is relative to this directory.
+            // 1: Try MinerU cache hybrid_auto directory (~/.TraceView/{docId}/mineru/{docId}/{docId}/hybrid_auto/)
             if (docId is not null)
             {
                 var cacheBase = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".TraceView", docId);
                 var mineruCacheDir = Path.Combine(cacheBase, "mineru");
-                var extractedDir = Path.Combine(mineruCacheDir, $"extract_{docId}");
+                var extractedDir = Path.Combine(mineruCacheDir, docId);
 
-                // The ZIP extracts to: extract_{docId}/{docId}/hybrid_auto/
+                // The ZIP extracts to: {docId}/{docId}/hybrid_auto/
                 var hybridAutoDir = Path.Combine(extractedDir, docId, "hybrid_auto");
 
                 if (Directory.Exists(hybridAutoDir))

@@ -285,7 +285,7 @@ public sealed class PopoService : IDisposable
         // The popo_result.json contains img_path like "images/xxx.jpg", which is relative to the
         // hybrid_auto directory. By pointing to the MinerU extract directory, we avoid duplicating
         // image files and save disk space.
-        // Directory structure: ~/.TraceView/{docId}/mineru/extract_{docId}/{docId}/hybrid_auto/images/
+        // Directory structure: ~/.TraceView/{docId}/mineru/{docId}/{docId}/hybrid_auto/images/
         var artifactsDir = FindMinerUImagesDirectory(sourceDocId);
 
         onProgress?.Invoke(PopoProcessStatus.Completed, 100);
@@ -303,7 +303,7 @@ public sealed class PopoService : IDisposable
 
     /// <summary>
     /// Finds the MinerU extracted images directory for a given document ID.
-    /// The directory structure is: ~/.TraceView/{docId}/mineru/extract_{docId}/{docId}/hybrid_auto/
+    /// The directory structure is: ~/.TraceView/{docId}/mineru/{docId}/{docId}/hybrid_auto/
     /// This is the directory where popo_result.json's img_path (e.g., "images/xxx.jpg") is relative to.
     /// </summary>
     private string? FindMinerUImagesDirectory(string docId)
@@ -312,12 +312,12 @@ public sealed class PopoService : IDisposable
         {
             var cacheBase = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".TraceView", docId);
             var mineruCacheDir = Path.Combine(cacheBase, "mineru");
-            var extractedDir = Path.Combine(mineruCacheDir, $"extract_{docId}");
+            var extractedDir = Path.Combine(mineruCacheDir, docId);
 
             if (!Directory.Exists(extractedDir))
                 return null;
 
-            // The ZIP extracts to: extract_{docId}/{docId}/hybrid_auto/
+            // The ZIP extracts to: {docId}/{docId}/hybrid_auto/
             var hybridAutoDir = Path.Combine(extractedDir, docId, "hybrid_auto");
 
             if (Directory.Exists(hybridAutoDir))

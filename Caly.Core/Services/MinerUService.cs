@@ -436,18 +436,16 @@ public sealed class MinerUService : IDisposable
     private string GetCacheZipPath(string pdfPath)
     {
         var docId = Path.GetFileNameWithoutExtension(pdfPath);
-        var zipFileName = $"{docId}_mineru.zip";
-        return Path.Combine(_cacheDirectory, zipFileName);
+        return Path.Combine(_cacheDirectory, $"{docId}.zip");
     }
 
     /// <summary>
     /// Gets the extracted artifacts directory path for a given PDF.
-    /// Uses a consistent naming scheme for easy cleanup.
     /// </summary>
     private string GetExtractedDirPath(string pdfPath)
     {
         var docId = Path.GetFileNameWithoutExtension(pdfPath);
-        return Path.Combine(_cacheDirectory, $"extract_{docId}");
+        return Path.Combine(_cacheDirectory, docId);
     }
 
     #region Task ID Persistence
@@ -655,7 +653,8 @@ public sealed class MinerUService : IDisposable
             foreach (var dir in Directory.GetDirectories(_cacheDirectory))
             {
                 var dirName = Path.GetFileName(dir);
-                if (dirName.StartsWith("extract_") && !dirName.Contains(currentDocId))
+                // Skip .zip files and the current document directory
+                if (!dirName.EndsWith(".zip") && dirName != currentDocId)
                 {
                     try
                     {

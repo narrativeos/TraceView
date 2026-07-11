@@ -199,7 +199,7 @@ public sealed partial class DocumentViewModel
             {
                 PopoStatus = PopoProcessStatus.Failed;
                 var expectedPath = ProjectPath is not null
-                    ? Path.Combine(ProjectPath, "mineru", $"{docId}_mineru.zip")
+                    ? Path.Combine(ProjectPath, "mineru", $"{docId}.zip")
                     : "mineru/ directory";
                 PopoStatusText = $"No MinerU ZIP found at {expectedPath}. Run AI Parse first to generate it, then try Process with Popo again.";
                 PopoProgress = 0;
