@@ -191,6 +191,9 @@ public sealed class BlockOverlayControl : Control
         int prev = _hoveredBlockIndex;
         _hoveredBlockIndex = -1;
 
+        // First ensure geometries are built (they may not be if Render hasn't been called yet)
+        EnsureGeometries();
+
         var geometries = _blockGeometries;
         if (geometries is not null)
         {
@@ -244,18 +247,18 @@ public sealed class BlockOverlayControl : Control
     // Highlight stroke (yellow/amber)
     private static readonly ImmutableSolidColorBrush HighlightStroke = new(Color.Parse(MinerUConstants.HighlightColor), 1.0);
 
-    private static readonly ImmutablePen DefaultPen = new(DefaultStroke, 1.5);
-    private static readonly ImmutablePen HighlightPen = new(HighlightStroke, 3.0);
+    private static readonly ImmutablePen DefaultPen = new(DefaultStroke, 2.5);
+    private static readonly ImmutablePen HighlightPen = new(HighlightStroke, 4.0);
 
     // Destination-based pens
-    private static readonly ImmutablePen AdoptedPen = new(AdoptedStroke, 2.0);
-    private static readonly ImmutablePen DiscardedPen = new(DiscardedStroke, 1.5);
+    private static readonly ImmutablePen AdoptedPen = new(AdoptedStroke, 3.0);
+    private static readonly ImmutablePen DiscardedPen = new(DiscardedStroke, 2.5);
 
     // Cached related-highlight brushes (avoid per-frame allocation in GetRelatedHighlightStyle)
     private static readonly ImmutablePen AdoptedHighlightPen = new(
-        new ImmutableSolidColorBrush(Color.Parse(MinerUConstants.AdoptedColor), 1.0), 3.0);
+        new ImmutableSolidColorBrush(Color.Parse(MinerUConstants.AdoptedColor), 1.0), 4.0);
     private static readonly ImmutablePen DiscardedHighlightPen = new(
-        new ImmutableSolidColorBrush(Color.Parse(MinerUConstants.DiscardedColor), 1.0), 3.0);
+        new ImmutableSolidColorBrush(Color.Parse(MinerUConstants.DiscardedColor), 1.0), 4.0);
     private static readonly ImmutableSolidColorBrush AdoptedHighlightFill = new(
         Color.Parse(MinerUConstants.AdoptedColor), 0.50);
     private static readonly ImmutableSolidColorBrush DiscardedHighlightFill = new(
@@ -264,19 +267,29 @@ public sealed class BlockOverlayControl : Control
         Color.Parse(MinerUConstants.HighlightColor), 0.50);
 
     // Cached pens per type (avoid per-frame allocation)
-    private static readonly ImmutablePen TitlePen = new(TitleStroke, 1.5);
-    private static readonly ImmutablePen TextPen = new(TextStroke, 1.5);
-    private static readonly ImmutablePen ImagePen = new(ImageStroke, 1.5);
-    private static readonly ImmutablePen TablePen = new(TableStroke, 1.5);
-    private static readonly ImmutablePen CaptionPen = new(CaptionStroke, 1.5);
+    private static readonly ImmutablePen TitlePen = new(TitleStroke, 2.5);
+    private static readonly ImmutablePen TextPen = new(TextStroke, 2.5);
+    private static readonly ImmutablePen ImagePen = new(ImageStroke, 2.5);
+    private static readonly ImmutablePen TablePen = new(TableStroke, 2.5);
+    private static readonly ImmutablePen CaptionPen = new(CaptionStroke, 2.5);
+
+    // Hover stroke colors (alpha = 1.0, solid colors for maximum visibility)
+    // MUST be defined before Hover pens that depend on them
+    private static readonly ImmutableSolidColorBrush TitleHoverStroke = new(Colors.Blue, 1.0);
+    private static readonly ImmutableSolidColorBrush TextHoverStroke = new(Colors.Green, 1.0);
+    private static readonly ImmutableSolidColorBrush ImageHoverStroke = new(Colors.Orange, 1.0);
+    private static readonly ImmutableSolidColorBrush TableHoverStroke = new(Colors.Purple, 1.0);
+    private static readonly ImmutableSolidColorBrush CaptionHoverStroke = new(Colors.Gray, 1.0);
+    // Default hover stroke uses black for maximum contrast
+    private static readonly ImmutableSolidColorBrush DefaultHoverStroke = new(Colors.Black, 1.0);
 
     // Hover pens (thicker, solid)
-    private static readonly ImmutablePen TitleHoverPen = new(TitleHoverStroke, 2.5);
-    private static readonly ImmutablePen TextHoverPen = new(TextHoverStroke, 2.5);
-    private static readonly ImmutablePen ImageHoverPen = new(ImageHoverStroke, 2.5);
-    private static readonly ImmutablePen TableHoverPen = new(TableHoverStroke, 2.5);
-    private static readonly ImmutablePen CaptionHoverPen = new(CaptionHoverStroke, 2.5);
-    private static readonly ImmutablePen DefaultHoverPen = new(DefaultHoverStroke, 2.5);
+    private static readonly ImmutablePen TitleHoverPen = new(TitleHoverStroke, 5.0);
+    private static readonly ImmutablePen TextHoverPen = new(TextHoverStroke, 5.0);
+    private static readonly ImmutablePen ImageHoverPen = new(ImageHoverStroke, 5.0);
+    private static readonly ImmutablePen TableHoverPen = new(TableHoverStroke, 5.0);
+    private static readonly ImmutablePen CaptionHoverPen = new(CaptionHoverStroke, 5.0);
+    private static readonly ImmutablePen DefaultHoverPen = new(DefaultHoverStroke, 5.0);
 
     // Cached highlight fill brushes per type color (avoid per-frame allocation)
     private static readonly ImmutableSolidColorBrush TitleHighlightFill = new(Colors.Blue, 0.45);
@@ -286,21 +299,14 @@ public sealed class BlockOverlayControl : Control
     private static readonly ImmutableSolidColorBrush CaptionHighlightFill = new(Colors.Gray, 0.45);
     private static readonly ImmutableSolidColorBrush DefaultHighlightFill = new(Colors.LightGray, 0.45);
 
-    // Hover fill colors (alpha = 0.45 — midway between normal fill and highlight)
-    private static readonly ImmutableSolidColorBrush TitleHoverFill = new(Colors.Blue, 0.45);
-    private static readonly ImmutableSolidColorBrush TextHoverFill = new(Colors.Green, 0.45);
-    private static readonly ImmutableSolidColorBrush ImageHoverFill = new(Colors.Orange, 0.45);
-    private static readonly ImmutableSolidColorBrush TableHoverFill = new(Colors.Purple, 0.45);
-    private static readonly ImmutableSolidColorBrush CaptionHoverFill = new(Colors.Gray, 0.45);
-    private static readonly ImmutableSolidColorBrush DefaultHoverFill = new(Colors.LightGray, 0.45);
-
-    // Hover stroke colors (alpha = 1.0)
-    private static readonly ImmutableSolidColorBrush TitleHoverStroke = new(Colors.Blue, 1.0);
-    private static readonly ImmutableSolidColorBrush TextHoverStroke = new(Colors.Green, 1.0);
-    private static readonly ImmutableSolidColorBrush ImageHoverStroke = new(Colors.Orange, 1.0);
-    private static readonly ImmutableSolidColorBrush TableHoverStroke = new(Colors.Purple, 1.0);
-    private static readonly ImmutableSolidColorBrush CaptionHoverStroke = new(Colors.Gray, 1.0);
-    private static readonly ImmutableSolidColorBrush DefaultHoverStroke = new(Colors.LightGray, 1.0);
+    // Hover fill colors (alpha = 0.50 — more opaque for better visibility)
+    private static readonly ImmutableSolidColorBrush TitleHoverFill = new(Colors.Blue, 0.50);
+    private static readonly ImmutableSolidColorBrush TextHoverFill = new(Colors.Green, 0.50);
+    private static readonly ImmutableSolidColorBrush ImageHoverFill = new(Colors.Orange, 0.50);
+    private static readonly ImmutableSolidColorBrush TableHoverFill = new(Colors.Purple, 0.50);
+    private static readonly ImmutableSolidColorBrush CaptionHoverFill = new(Colors.Gray, 0.50);
+    // Default hover uses a vibrant yellow for high contrast on any background
+    private static readonly ImmutableSolidColorBrush DefaultHoverFill = new(Colors.Yellow, 0.50);
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
@@ -487,24 +493,6 @@ public sealed class BlockOverlayControl : Control
 
         var geometries = EnsureGeometries();
         BuildSpatialGrid();
-
-        // Skip redraw if the visible area covers the same grid cells as the last render.
-        // This avoids unnecessary repaints during sub-cell-boundary scrolls, similar to
-        // how TiledPdfPageControl uses TileRange to skip redraws.
-        if (_lastRenderedVisibleArea.HasValue && _gridCells is not null && _gridColumns > 0 && _gridRows > 0)
-        {
-            if (SameGridCells(visibleArea.Value, _lastRenderedVisibleArea.Value))
-            {
-                // Same set of blocks will be drawn — skip the render pass entirely.
-                // However, we still need to check if any visual state has changed
-                // (highlight, hover, etc.) which is handled by AffectsRender properties.
-                // This optimization only applies when those properties haven't changed.
-                _lastRenderedVisibleArea = visibleArea.Value;
-                return;
-            }
-        }
-
-        _lastRenderedVisibleArea = visibleArea.Value;
 
         // Fill transparent to receive pointer events
         context.FillRectangle(Brushes.Transparent, Bounds);
