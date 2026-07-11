@@ -285,7 +285,7 @@ public sealed class PopoService : IDisposable
         // The popo_result.json contains img_path like "images/xxx.jpg", which is relative to the
         // hybrid_auto directory. By pointing to the MinerU extract directory, we avoid duplicating
         // image files and save disk space.
-        // Directory structure: ~/.TraceView/{docId}/mineru/{docId}/{docId}/hybrid_auto/images/
+        // Directory structure: ~/.TraceView/{docId}/mineru/{docId}/hybrid_auto/images/
         var artifactsDir = FindMinerUImagesDirectory(sourceDocId);
 
         onProgress?.Invoke(PopoProcessStatus.Completed, 100);
@@ -303,7 +303,8 @@ public sealed class PopoService : IDisposable
 
     /// <summary>
     /// Finds the MinerU extracted images directory for a given document ID.
-    /// The directory structure is: ~/.TraceView/{docId}/mineru/{docId}/{docId}/hybrid_auto/
+    /// The directory structure is: ~/.TraceView/{docId}/mineru/{docId}/hybrid_auto/
+    /// The ZIP contains {docId}/hybrid_auto/... which extracts to {mineru}/{docId}/hybrid_auto/...
     /// This is the directory where popo_result.json's img_path (e.g., "images/xxx.jpg") is relative to.
     /// </summary>
     private string? FindMinerUImagesDirectory(string docId)
@@ -312,13 +313,17 @@ public sealed class PopoService : IDisposable
         {
             var cacheBase = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".TraceView", docId);
             var mineruCacheDir = Path.Combine(cacheBase, "mineru");
-            var extractedDir = Path.Combine(mineruCacheDir, docId);
 
-            if (!Directory.Exists(extractedDir))
+            if (!Directory.Exists(mineruCacheDir))
                 return null;
 
-            // The ZIP extracts to: {docId}/{docId}/hybrid_auto/
-            var hybridAutoDir = Path.Combine(extractedDir, docId, "hybrid_auto");
+            // The ZIP extracts {docId}/hybrid_auto/ to {mineru}/{docId}/hybrid_auto/
+            var artifactsDir = Path.Combine(mineruCacheDir, docId);
+
+            if (!Directory.Exists(artifactsDir))
+                return null;
+
+            var hybridAutoDir = Path.Combine(artifactsDir, "hybrid_auto");
 
             if (Directory.Exists(hybridAutoDir))
             {
@@ -334,12 +339,12 @@ public sealed class PopoService : IDisposable
                 }
             }
 
-            // Fallback: try the extract directory directly (some ZIP structures may be flat)
-            var imageFilesInExtract = Directory.GetFiles(extractedDir, "*.*", SearchOption.AllDirectories)
+            // Fallback: search the entire artifacts directory for images
+            var imageFiles = Directory.GetFiles(artifactsDir, "*.*", SearchOption.AllDirectories)
                 .Where(f => Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
                 .ToList();
-            if (imageFilesInExtract.Count > 0)
-                return extractedDir;
+            if (imageFiles.Count > 0)
+                return artifactsDir;
         }
         catch
         {

@@ -441,11 +441,13 @@ public sealed class MinerUService : IDisposable
 
     /// <summary>
     /// Gets the extracted artifacts directory path for a given PDF.
+    /// Returns the cache directory directly. The ZIP contains {docId}/hybrid_auto/...,
+    /// so extracting to {cache}/ results in {cache}/{docId}/hybrid_auto/... naturally.
+    /// No post-extraction moving is needed.
     /// </summary>
     private string GetExtractedDirPath(string pdfPath)
     {
-        var docId = Path.GetFileNameWithoutExtension(pdfPath);
-        return Path.Combine(_cacheDirectory, docId);
+        return _cacheDirectory;
     }
 
     #region Task ID Persistence
@@ -611,14 +613,17 @@ public sealed class MinerUService : IDisposable
         if (!File.Exists(zipPath))
             return null;
 
-        var extractedDir = GetExtractedDirPath(pdfPath);
-        // If extracted dir doesn't exist, extract from zip
-        if (!Directory.Exists(extractedDir))
+        var docId = Path.GetFileNameWithoutExtension(pdfPath);
+        // The ZIP contains {docId}/hybrid_auto/..., so the artifacts are in {cache}/{docId}/
+        var artifactsDir = Path.Combine(_cacheDirectory, docId);
+
+        // If artifacts dir doesn't exist, extract from zip
+        if (!Directory.Exists(artifactsDir))
         {
             try
             {
-                Directory.CreateDirectory(extractedDir);
-                ZipFile.ExtractToDirectory(zipPath, extractedDir, overwriteFiles: true);
+                Directory.CreateDirectory(_cacheDirectory);
+                ZipFile.ExtractToDirectory(zipPath, _cacheDirectory, overwriteFiles: true);
             }
             catch
             {
@@ -626,11 +631,11 @@ public sealed class MinerUService : IDisposable
             }
         }
 
-        var minerUDoc = MinerUJsonService.TryParseMinerUFromExtractedDir(extractedDir);
+        var minerUDoc = MinerUJsonService.TryParseMinerUFromExtractedDir(artifactsDir);
         if (minerUDoc is null)
             return null;
 
-        var markdownInfo = ExtractMarkdownFromDir(extractedDir);
+        var markdownInfo = ExtractMarkdownFromDir(artifactsDir);
 
         return new MinerUParseResult
         {
@@ -638,7 +643,7 @@ public sealed class MinerUService : IDisposable
             ZipPath = zipPath,
             Markdown = markdownInfo.markdown,
             PopoMarkdown = markdownInfo.popoMarkdown,
-            ArtifactsDirectory = extractedDir
+            ArtifactsDirectory = artifactsDir
         };
     }
 
@@ -688,9 +693,9 @@ public sealed class MinerUService : IDisposable
     }
 
     /// <summary>
-    /// Extracts the zip to a consistent cache directory, parses the MinerU output,
-    /// and builds a MinerUParseResult. Uses the already-extracted directory to avoid
-    /// redundant extraction in PopoJsonService.
+    /// Extracts the zip to the cache directory and builds a MinerUParseResult.
+    /// The ZIP contains {docId}/hybrid_auto/..., so extracting to {cache}/ naturally
+    /// produces {cache}/{docId}/hybrid_auto/... with no post-extraction moving needed.
     /// </summary>
     private async Task<MinerUParseResult> BuildParseResultAsync(
         string zipPath,
@@ -700,32 +705,28 @@ public sealed class MinerUService : IDisposable
     {
         onProgress?.Invoke(MinerUParseStatus.ParsingResult, 85);
 
-        // Extract to a consistent directory (not random) for cache reuse
-        var extractedDir = GetExtractedDirPath(sourcePdfPath);
-
-        // Clean old extracted dir if exists
-        if (Directory.Exists(extractedDir))
-        {
-            try { Directory.Delete(extractedDir, recursive: true); }
-            catch { }
-        }
-        Directory.CreateDirectory(extractedDir);
+        var docId = Path.GetFileNameWithoutExtension(sourcePdfPath);
+        // Extract to cache dir: ZIP's {docId}/ becomes {cache}/{docId}/
+        Directory.CreateDirectory(_cacheDirectory);
 
         try
         {
-            ZipFile.ExtractToDirectory(zipPath, extractedDir, overwriteFiles: true);
+            ZipFile.ExtractToDirectory(zipPath, _cacheDirectory, overwriteFiles: true);
         }
         catch (Exception ex)
         {
             throw new MinerUServiceException($"Failed to extract parse result: {ex.Message}", ex);
         }
 
+        // The artifacts are in {cache}/{docId}/ (created by the ZIP extraction)
+        var artifactsDir = Path.Combine(_cacheDirectory, docId);
+
         // Parse the extracted directory
         var minerUDoc = await Task.Run(() =>
-            MinerUJsonService.TryParseMinerUFromExtractedDir(extractedDir), ct);
+            MinerUJsonService.TryParseMinerUFromExtractedDir(artifactsDir), ct);
 
         // Extract markdown files
-        var markdownInfo = ExtractMarkdownFromDir(extractedDir);
+        var markdownInfo = ExtractMarkdownFromDir(artifactsDir);
 
         return new MinerUParseResult
         {
@@ -733,7 +734,7 @@ public sealed class MinerUService : IDisposable
             ZipPath = zipPath,
             Markdown = markdownInfo.markdown,
             PopoMarkdown = markdownInfo.popoMarkdown,
-            ArtifactsDirectory = extractedDir
+            ArtifactsDirectory = artifactsDir
         };
     }
 
