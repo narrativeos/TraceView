@@ -424,18 +424,23 @@ public sealed partial class DocumentsTabsControl : UserControl
             connControl.MinerUListTopOffset = 42;
         }
 
-        // Column edges
+        // Column edges + PDF page left offset (page is centered in column)
         var layoutGrid = GetThreeColumnGrid();
         if (layoutGrid is not null && connControl.Bounds.Width > 0 && layoutGrid.ColumnDefinitions.Count > 0)
         {
             var pdfColumnWidth = layoutGrid.ColumnDefinitions[0].ActualWidth;
             connControl.PdfColumnRightEdge = pdfColumnWidth;
             connControl.MinerUColumnLeftEdge = pdfColumnWidth + 4;
+            // PDF page is horizontally centered within the PDF column
+            var pageWidth = (firstPageWithBlocks?.Size.Width ?? 0) * docVm.ZoomLevel;
+            connControl.PdfPageLeftOffset = (pdfColumnWidth - pageWidth) / 2.0;
         }
         else if (connControl.Bounds.Width > 0)
         {
             connControl.PdfColumnRightEdge = connControl.Bounds.Width * 0.4;
             connControl.MinerUColumnLeftEdge = connControl.Bounds.Width * 0.6;
+            var pageWidth = (firstPageWithBlocks?.Size.Width ?? 0) * docVm.ZoomLevel;
+            connControl.PdfPageLeftOffset = (connControl.Bounds.Width * 0.4 - pageWidth) / 2.0;
         }
 
         // Schedule a debounced render instead of immediately invalidating

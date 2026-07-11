@@ -70,6 +70,9 @@ public sealed class ConnectionLinesControl : Control
     public static readonly StyledProperty<double> MinerUColumnLeftEdgeProperty =
         AvaloniaProperty.Register<ConnectionLinesControl, double>(nameof(MinerUColumnLeftEdge));
 
+    public static readonly StyledProperty<double> PdfPageLeftOffsetProperty =
+        AvaloniaProperty.Register<ConnectionLinesControl, double>(nameof(PdfPageLeftOffset));
+
     public static readonly StyledProperty<double> PdfPageTopOffsetProperty =
         AvaloniaProperty.Register<ConnectionLinesControl, double>(nameof(PdfPageTopOffset));
 
@@ -198,6 +201,12 @@ public sealed class ConnectionLinesControl : Control
     {
         get => GetValue(MinerUColumnLeftEdgeProperty);
         set => SetValue(MinerUColumnLeftEdgeProperty, value);
+    }
+
+    public double PdfPageLeftOffset
+    {
+        get => GetValue(PdfPageLeftOffsetProperty);
+        set => SetValue(PdfPageLeftOffsetProperty, value);
     }
 
     public double PdfPageTopOffset
@@ -485,22 +494,18 @@ public sealed class ConnectionLinesControl : Control
 
         if (block.IsBboxNormalized && PageSize.Width > 0 && PageSize.Height > 0)
         {
-            left = bbox.X * PageSize.Width * ZoomLevel;
-            top = bbox.Y * PageSize.Height * ZoomLevel;
-            right = (bbox.X + bbox.Width) * PageSize.Width * ZoomLevel;
-            bottom = (bbox.Y + bbox.Height) * PageSize.Height * ZoomLevel;
+            left = PdfPageLeftOffset + bbox.X * PageSize.Width * ZoomLevel;
+            top = PdfPageTopOffset + bbox.Y * PageSize.Height * ZoomLevel - PdfScrollOffsetY;
+            right = PdfPageLeftOffset + (bbox.X + bbox.Width) * PageSize.Width * ZoomLevel;
+            bottom = PdfPageTopOffset + (bbox.Y + bbox.Height) * PageSize.Height * ZoomLevel - PdfScrollOffsetY;
         }
         else
         {
-            left = bbox.X * ZoomLevel;
-            top = bbox.Y * ZoomLevel;
-            right = bbox.Right * ZoomLevel;
-            bottom = bbox.Bottom * ZoomLevel;
+            left = PdfPageLeftOffset + bbox.X * ZoomLevel;
+            top = PdfPageTopOffset + bbox.Y * ZoomLevel - PdfScrollOffsetY;
+            right = PdfPageLeftOffset + bbox.Right * ZoomLevel;
+            bottom = PdfPageTopOffset + bbox.Bottom * ZoomLevel - PdfScrollOffsetY;
         }
-
-        // Convert to screen coordinates (X is relative to page left edge, no offset needed)
-        top = PdfPageTopOffset + top - PdfScrollOffsetY;
-        bottom = PdfPageTopOffset + bottom - PdfScrollOffsetY;
 
         // Find the intersection of the line from center to target with the bounding box
         return IntersectionWithRect(center, targetPoint, left, top, right, bottom);
@@ -522,26 +527,21 @@ public sealed class ConnectionLinesControl : Control
 
         if (block.IsBboxNormalized && page.Width > 0 && page.Height > 0)
         {
-            left = bbox.X * page.Width * ZoomLevel;
-            top = bbox.Y * page.Height * ZoomLevel;
-            right = (bbox.X + bbox.Width) * page.Width * ZoomLevel;
-            bottom = (bbox.Y + bbox.Height) * page.Height * ZoomLevel;
+            left = PdfPageLeftOffset + bbox.X * page.Width * ZoomLevel;
+            top = PdfPageTopOffset + bbox.Y * page.Height * ZoomLevel + pageYOffset - PdfScrollOffsetY;
+            right = PdfPageLeftOffset + (bbox.X + bbox.Width) * page.Width * ZoomLevel;
+            bottom = PdfPageTopOffset + (bbox.Y + bbox.Height) * page.Height * ZoomLevel + pageYOffset - PdfScrollOffsetY;
         }
         else
         {
-            left = bbox.X * ZoomLevel;
-            top = bbox.Y * ZoomLevel;
-            right = bbox.Right * ZoomLevel;
-            bottom = bbox.Bottom * ZoomLevel;
+            left = PdfPageLeftOffset + bbox.X * ZoomLevel;
+            top = PdfPageTopOffset + bbox.Y * ZoomLevel + pageYOffset - PdfScrollOffsetY;
+            right = PdfPageLeftOffset + bbox.Right * ZoomLevel;
+            bottom = PdfPageTopOffset + bbox.Bottom * ZoomLevel + pageYOffset - PdfScrollOffsetY;
         }
-
-        // Convert to screen coordinates with page offset
-        top = PdfPageTopOffset + top + pageYOffset - PdfScrollOffsetY;
-        bottom = PdfPageTopOffset + bottom + pageYOffset - PdfScrollOffsetY;
 
         // Calculate the target point (MinerU block center) for direction
         // We need to find the intersection with the block's border
-        // For now, use a simple approach: find the right edge intersection
         return IntersectionWithRect(center, new Point(PdfColumnRightEdge + 100, center.Y), left, top, right, bottom);
     }
 
@@ -564,7 +564,7 @@ public sealed class ConnectionLinesControl : Control
             centerY = bbox.Y + bbox.Height / 2.0;
         }
 
-        var screenX = centerX * ZoomLevel;
+        var screenX = PdfPageLeftOffset + centerX * ZoomLevel;
         var screenY = PdfPageTopOffset + centerY * ZoomLevel - PdfScrollOffsetY;
         return new Point(screenX, screenY);
     }
@@ -588,7 +588,7 @@ public sealed class ConnectionLinesControl : Control
             centerY = bbox.Y + bbox.Height / 2.0;
         }
 
-        var screenX = centerX * ZoomLevel;
+        var screenX = PdfPageLeftOffset + centerX * ZoomLevel;
         var screenY = PdfPageTopOffset + centerY * ZoomLevel + pageYOffset - PdfScrollOffsetY;
         return new Point(screenX, screenY);
     }
