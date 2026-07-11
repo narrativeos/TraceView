@@ -228,9 +228,9 @@ public sealed class PopoService : IDisposable
         }
 
         // Cache the raw response for debugging
-        var resultDir = Path.Combine(_cacheDirectory, $"result_{sourceDocId}");
-        Directory.CreateDirectory(resultDir);
-        var jsonPath = Path.Combine(resultDir, "popo_result.json");
+        // Save directly to popo/popo_result.json (no intermediate result_{docId} directory)
+        var jsonPath = Path.Combine(_cacheDirectory, "popo_result.json");
+        Directory.CreateDirectory(_cacheDirectory);
         File.WriteAllText(jsonPath, json);
 
         // Parse the wrapped response

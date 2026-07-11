@@ -154,7 +154,7 @@ public sealed partial class DocumentViewModel
 
     /// <summary>
     /// Attempts to load Popo analysis data for the currently opened document.
-    /// Only loads from result_*/popo_result.json in the project's popo/ directory.
+    /// Only loads from popo/popo_result.json in the project's popo/ directory.
     /// Called silently after the document is successfully opened.
     /// </summary>
     internal void TryLoadPopoData()
@@ -164,17 +164,17 @@ public sealed partial class DocumentViewModel
 
         StructureDocument? minerUDoc = null;
 
-        // Phase 1: Check project's popo/result_* directories (Popo service output)
+        // Phase 1: Check project's popo/popo_result.json directly (Popo service output)
         if (ProjectPath is not null)
         {
             var popoDir = Path.Combine(ProjectPath, "popo");
             if (Directory.Exists(popoDir))
             {
-                foreach (var subDir in Directory.GetDirectories(popoDir, "result_*"))
+                // Try popo_result.json directly in the popo directory
+                var resultJson = Path.Combine(popoDir, "popo_result.json");
+                if (File.Exists(resultJson))
                 {
-                    minerUDoc = PopoJsonService.TryParsePopoResultDir(subDir);
-                    if (minerUDoc is not null)
-                        break;
+                    minerUDoc = PopoJsonService.TryParsePopoResultJson(resultJson);
                 }
 
                 // Fallback: Try extract subdirectory

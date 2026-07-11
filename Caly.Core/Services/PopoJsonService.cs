@@ -650,11 +650,10 @@ public static class PopoJsonService
     }
 
     /// <summary>
-    /// <summary>
     /// Tries to parse a single JSON file as a Popo-serialized StructureDocument.
     /// Handles two formats:
     ///   1. Direct StructureDocument JSON (e.g., popo.json)
-    ///   2. PopoTaskResultResponse wrapper (e.g., result_*/popo_result.json)
+    ///   2. PopoTaskResultResponse wrapper (e.g., popo_result.json)
     ///      which contains task_id/status/result.tree.
     /// Callers should route MinerU *_middle.json files to TryParseMinerUMiddleJson directly.
     ///
@@ -662,7 +661,7 @@ public static class PopoJsonService
     /// avoiding double deserialization. If the root has a "result" property, it's the
     /// PopoTaskResultResponse wrapper format; otherwise, it's a direct StructureDocument.
     /// </summary>
-    static StructureDocument? TryParsePopoResultJson(string jsonPath)
+    public static StructureDocument? TryParsePopoResultJson(string jsonPath)
     {
         if (!File.Exists(jsonPath))
             return null;

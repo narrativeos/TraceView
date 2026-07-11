@@ -70,7 +70,7 @@ public sealed partial class DocumentViewModel
 
     /// <summary>
     /// Whether Popo-processed results already exist in the project's popo/ directory.
-    /// Checks for result_* subdirectories with popo_result.json.
+    /// Checks for popo_result.json directly in the popo/ directory.
     /// </summary>
     public bool HasPopoResult
     {
@@ -83,13 +83,10 @@ public sealed partial class DocumentViewModel
             if (!Directory.Exists(popoDir))
                 return false;
 
-            // Check for result_* subdirectories with popo_result.json
-            foreach (var subDir in Directory.GetDirectories(popoDir, "result_*"))
-            {
-                var resultJson = Path.Combine(subDir, "popo_result.json");
-                if (File.Exists(resultJson))
-                    return true;
-            }
+            // Check for popo_result.json directly in the popo directory
+            var resultJson = Path.Combine(popoDir, "popo_result.json");
+            if (File.Exists(resultJson))
+                return true;
 
             // Fallback: Check for extract subdirectory with JSON files
             var extractDir = Path.Combine(popoDir, "extract");
@@ -242,7 +239,7 @@ public sealed partial class DocumentViewModel
                 }
 
                 // Note: popo_result.json is already saved by PopoService.DownloadAndParseResultAsync
-                // in the project's popo/result_{docId}/ directory. TryLoadPopoData loads from there.
+                // in the project's popo/ directory. TryLoadPopoData loads from there.
             }
 
             PopoStatus = PopoProcessStatus.Completed;
