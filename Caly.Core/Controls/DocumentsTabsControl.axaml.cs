@@ -39,6 +39,7 @@ namespace Caly.Core.Controls;
 [TemplatePart("PART_SplitView", typeof(SplitView))]
 [TemplatePart("PART_DocumentControl", typeof(DocumentControl))]
 [TemplatePart("PART_MinerUScrollViewer", typeof(ScrollViewer))]
+[TemplatePart("PART_MinerUItemsControl", typeof(ItemsControl))]
 [TemplatePart("PART_ConnectionLinesControl", typeof(ConnectionLinesControl))]
 [TemplatePart("PART_ThreeColumnGrid", typeof(Grid))]
 public sealed partial class DocumentsTabsControl : UserControl
@@ -53,6 +54,7 @@ public sealed partial class DocumentsTabsControl : UserControl
     private TextBox? _textBoxPageNumber;
     private DocumentControl? _documentControl;
     private ScrollViewer? _minerUScrollViewer;
+    private ItemsControl? _minerUItemsControl;
     private ConnectionLinesControl? _connectionLinesControl;
     private Grid? _threeColumnGrid;
     
@@ -310,6 +312,15 @@ public sealed partial class DocumentsTabsControl : UserControl
         return _threeColumnGrid;
     }
 
+    private ItemsControl? GetMinerUItemsControl()
+    {
+        if (_minerUItemsControl is null)
+        {
+            _minerUItemsControl = this.FindDescendantOfType<ItemsControl>(false, ic => ic.Name == "PART_MinerUItemsControl");
+        }
+        return _minerUItemsControl;
+    }
+
     private void UpdateConnectionLines()
     {
         // Debounce: if an update is already scheduled, skip
@@ -446,6 +457,13 @@ public sealed partial class DocumentsTabsControl : UserControl
             connControl.MinerUListTopOffset = 42;
         }
 
+        // Set reference to MinerU ItemsControl for accurate position calculation
+        var minerUItems = GetMinerUItemsControl();
+        if (minerUItems is not null)
+        {
+            connControl.MinerUItemsReference = minerUItems;
+        }
+
         // Column edges
         var layoutGrid = GetThreeColumnGrid();
         if (layoutGrid is not null && connControl.Bounds.Width > 0 && layoutGrid.ColumnDefinitions.Count > 0)
@@ -460,7 +478,7 @@ public sealed partial class DocumentsTabsControl : UserControl
             connControl.MinerUColumnLeftEdge = connControl.Bounds.Width * 0.6;
         }
 
-        // Schedule a debounced render instead of immediately invalidating
-        // The scroll offset properties trigger ScheduleRender() via their Changed handlers
+        // Force a re-render now that all properties have been set
+        connControl.InvalidateVisual();
     }
 }

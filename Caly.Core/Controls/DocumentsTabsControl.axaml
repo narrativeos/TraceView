@@ -401,7 +401,8 @@
                                      <ScrollViewer Name="PART_MinerUScrollViewer"
                                                       IsVisible="{Binding ShowMinerUBlocksList}"
                                                       ScrollChanged="OnMinerUScrollChanged">
-                                           <ItemsControl ItemsSource="{Binding VisibleMinerUBlocks}">
+                                           <ItemsControl Name="PART_MinerUItemsControl"
+                                                         ItemsSource="{Binding VisibleMinerUBlocks}">
                                               <ItemsControl.ItemTemplate>
                                                   <DataTemplate x:DataType="vm:MinerUBlockViewModel">
                                                       <Border Padding="6"

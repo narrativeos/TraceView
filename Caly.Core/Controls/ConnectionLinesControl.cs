@@ -95,6 +95,20 @@ public sealed class ConnectionLinesControl : Control
     public static readonly StyledProperty<bool> ShowConnectionsProperty =
         AvaloniaProperty.Register<ConnectionLinesControl, bool>(nameof(ShowConnections), false);
 
+    /// <summary>
+    /// Reference to the BlockOverlayControl for getting actual block positions.
+    /// When set, connection lines will use the overlay's Bounds to calculate positions.
+    /// </summary>
+    public static readonly StyledProperty<BlockOverlayControl?> PdfOverlayReferenceProperty =
+        AvaloniaProperty.Register<ConnectionLinesControl, BlockOverlayControl?>(nameof(PdfOverlayReference));
+
+    /// <summary>
+    /// Reference to the MinerU ItemsControl for getting actual block item positions.
+    /// When set, connection lines will use the items' actual rendered positions.
+    /// </summary>
+    public static readonly StyledProperty<ItemsControl?> MinerUItemsReferenceProperty =
+        AvaloniaProperty.Register<ConnectionLinesControl, ItemsControl?>(nameof(MinerUItemsReference));
+
     static ConnectionLinesControl()
     {
         // NOTE: PdfScrollOffsetYProperty and MinerUScrollOffsetYProperty are NOT in AffectsRender.
@@ -108,6 +122,7 @@ public sealed class ConnectionLinesControl : Control
             ZoomLevelProperty,
             PdfColumnRightEdgeProperty,
             MinerUColumnLeftEdgeProperty,
+            PdfPageLeftOffsetProperty,
             PdfPageTopOffsetProperty,
             MinerUListTopOffsetProperty,
             MinerUBlockItemHeightProperty,
@@ -251,6 +266,18 @@ public sealed class ConnectionLinesControl : Control
     {
         get => GetValue(ShowConnectionsProperty);
         set => SetValue(ShowConnectionsProperty, value);
+    }
+
+    public BlockOverlayControl? PdfOverlayReference
+    {
+        get => GetValue(PdfOverlayReferenceProperty);
+        set => SetValue(PdfOverlayReferenceProperty, value);
+    }
+
+    public ItemsControl? MinerUItemsReference
+    {
+        get => GetValue(MinerUItemsReferenceProperty);
+        set => SetValue(MinerUItemsReferenceProperty, value);
     }
 
     // High-visibility brushes (precise matches)
