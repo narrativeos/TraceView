@@ -269,6 +269,144 @@ public class PopoJsonServiceTests
         }
     }
 
+    [Fact]
+    public void LoadTreeJson_ParsesSourceBlockIds()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "caly-popo-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+
+        var jsonPath = Path.Combine(tempDir, "tree.json");
+        File.WriteAllText(jsonPath, """
+        {
+          "type": "root",
+          "title": "",
+          "metadata": "",
+          "content": "",
+          "level": 0,
+          "location": [],
+          "block_ids": [],
+          "source_block_ids": [],
+          "children": [
+            {
+              "type": "text",
+              "title": "Section 1",
+              "metadata": "",
+              "content": "Some content",
+              "level": 1,
+              "location": [
+                {
+                  "bbox": [0.1, 0.1, 0.5, 0.2],
+                  "page": 1
+                }
+              ],
+              "block_ids": [1, 2],
+              "source_block_ids": ["aaaa-1111-bbbb-2222", "cccc-3333-dddd-4444"],
+              "children": [
+                {
+                  "type": "image",
+                  "title": "",
+                  "metadata": "",
+                  "content": "",
+                  "level": 2,
+                  "location": [
+                    {
+                      "bbox": [0.2, 0.3, 0.6, 0.5],
+                      "page": 1
+                    }
+                  ],
+                  "block_ids": [3],
+                  "source_block_ids": ["eeee-5555-ffff-6666"],
+                  "children": []
+                }
+              ]
+            }
+          ]
+        }
+        """);
+
+        try
+        {
+            var result = PopoJsonService.LoadTreeJson(jsonPath);
+
+            Assert.NotNull(result);
+            Assert.Equal("root", result.Type);
+            Assert.Empty(result.SourceBlockIds);
+            Assert.Single(result.Children);
+
+            var section = result.Children[0];
+            Assert.Equal("text", section.Type);
+            Assert.Equal(2, section.BlockIds.Count);
+            Assert.Equal(1, section.BlockIds[0]);
+            Assert.Equal(2, section.BlockIds[1]);
+            Assert.Equal(2, section.SourceBlockIds.Count);
+            Assert.Equal("aaaa-1111-bbbb-2222", section.SourceBlockIds[0]);
+            Assert.Equal("cccc-3333-dddd-4444", section.SourceBlockIds[1]);
+
+            var image = section.Children[0];
+            Assert.Equal("image", image.Type);
+            Assert.Single(image.BlockIds);
+            Assert.Equal(3, image.BlockIds[0]);
+            Assert.Single(image.SourceBlockIds);
+            Assert.Equal("eeee-5555-ffff-6666", image.SourceBlockIds[0]);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+                Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void BuildStructureDocumentFromTree_PopulatesSourceBlockIdsInBlocks()
+    {
+        var treeRoot = new Caly.Core.Models.AnalysisTreeNode
+        {
+            Type = "root",
+            Level = 0
+        };
+
+        var sectionNode = new Caly.Core.Models.AnalysisTreeNode
+        {
+            Type = "text",
+            Title = "Section 1",
+            Content = "Content here",
+            Level = 1
+        };
+        sectionNode.Location.Add(new Caly.Core.Models.LocationEntry
+        {
+            Bbox = new Avalonia.Rect(0.1, 0.1, 0.4, 0.1),
+            Page = 1
+        });
+        sectionNode.BlockIds.Add(1);
+        sectionNode.BlockIds.Add(2);
+        sectionNode.SourceBlockIds.Add("uuid-1111-2222-3333");
+        sectionNode.SourceBlockIds.Add("uuid-4444-5555-6666");
+
+        treeRoot.Children.Add(sectionNode);
+
+        var doc = PopoJsonService.BuildStructureDocumentFromTree(treeRoot, "test_doc");
+
+        Assert.NotNull(doc);
+        Assert.Equal("test_doc", doc.DocId);
+        Assert.NotNull(doc.TreeRoot);
+        Assert.NotNull(doc.PagesBlocks);
+        Assert.True(doc.PagesBlocks.ContainsKey(1));
+
+        var page1Blocks = doc.PagesBlocks[1];
+        Assert.Single(page1Blocks);
+
+        var block = page1Blocks[0];
+        Assert.Equal("text", block.Type);
+        Assert.Equal(0, block.Id); // blockId starts at 0
+        Assert.Equal(1, block.Page);
+        Assert.Equal(2, block.OriginalBlockIds.Count);
+        Assert.Equal(1, block.OriginalBlockIds[0]);
+        Assert.Equal(2, block.OriginalBlockIds[1]);
+        Assert.Equal(2, block.SourceBlockIds.Count);
+        Assert.Equal("uuid-1111-2222-3333", block.SourceBlockIds[0]);
+        Assert.Equal("uuid-4444-5555-6666", block.SourceBlockIds[1]);
+    }
+
     #endregion
 
     #region FindPopoJsonPaths Tests

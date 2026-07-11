@@ -75,6 +75,14 @@ public partial class AnalysisTreeNode : ObservableObject
     private List<int> _blockIds = new();
 
     /// <summary>
+    /// Source block IDs (UUID strings) from MinerU middle.json that compose this node.
+    /// Used for tracing back to the original MinerU blocks for cross-referencing.
+    /// Corresponds to the source_block_ids field in popo_result.json.
+    /// </summary>
+    [ObservableProperty]
+    private List<string> _sourceBlockIds = new();
+
+    /// <summary>
     /// Image path returned by the Popo API (relative path like "images/xxx.jpg").
     /// Only populated for image-type nodes when loaded from popo_result.json.
     /// </summary>

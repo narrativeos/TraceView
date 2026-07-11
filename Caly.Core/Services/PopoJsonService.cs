@@ -435,6 +435,17 @@ public static class PopoJsonService
             }
         }
 
+        // Parse source_block_ids (UUID strings from MinerU middle.json)
+        if (elem.TryGetProperty("source_block_ids", out var sourceIdsElem))
+        {
+            foreach (var sourceId in sourceIdsElem.EnumerateArray())
+            {
+                var sourceIdStr = sourceId.GetString();
+                if (!string.IsNullOrEmpty(sourceIdStr))
+                    node.SourceBlockIds.Add(sourceIdStr);
+            }
+        }
+
         // Parse children recursively
         if (elem.TryGetProperty("children", out var childrenElem))
         {
@@ -763,6 +774,7 @@ public static class PopoJsonService
         {
             // Create one block per location entry, preserving original block_ids for cross-reference
             var originalIds = new List<int>(node.BlockIds);
+            var sourceBlockIds = new List<string>(node.SourceBlockIds);
 
             for (int i = 0; i < node.Location.Count; i++)
             {
@@ -777,7 +789,8 @@ public static class PopoJsonService
                     Content = !string.IsNullOrEmpty(node.Content) ? node.Content : node.Title,
                     Bbox = loc.Bbox,
                     TitleLevel = node.Level,
-                    OriginalBlockIds = originalIds
+                    OriginalBlockIds = originalIds,
+                    SourceBlockIds = sourceBlockIds
                 };
 
                 if (!pageBlocks.ContainsKey(page))

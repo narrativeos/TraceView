@@ -63,7 +63,20 @@ public partial class TreeNodeViewModel : ObservableObject
             }
         }
 
-        foreach (var child in node.Children)
+        // Sort children by their first page number to ensure correct display order.
+        // The Popo API sometimes places nodes out of page order (e.g., P1 images after P2/P3 text),
+        // so we sort by the first page in each child's location to restore logical reading order.
+        var sortedChildren = node.Children
+            .OrderBy(child =>
+            {
+                if (child.Location.Count > 0)
+                    return child.Location[0].Page;
+                // Nodes without location (e.g., root) go first
+                return int.MaxValue;
+            })
+            .ToList();
+
+        foreach (var child in sortedChildren)
         {
             Children.Add(new TreeNodeViewModel(child, artifactsDirectory, structureDocument));
         }
