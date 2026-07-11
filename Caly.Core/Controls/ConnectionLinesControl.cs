@@ -82,6 +82,13 @@ public sealed class ConnectionLinesControl : Control
     public static readonly StyledProperty<double> MinerUBlockItemHeightProperty =
         AvaloniaProperty.Register<ConnectionLinesControl, double>(nameof(MinerUBlockItemHeight), 60.0);
 
+    /// <summary>
+    /// PPI scale factor for converting PDF points to display pixels.
+    /// Used when block coordinates are in PDF point space (not normalized).
+    /// </summary>
+    public static readonly StyledProperty<double> PpiScaleProperty =
+        AvaloniaProperty.Register<ConnectionLinesControl, double>(nameof(PpiScale), 1.0);
+
     public static readonly StyledProperty<string?> SelectedBlockIdProperty =
         AvaloniaProperty.Register<ConnectionLinesControl, string?>(nameof(SelectedBlockId));
 
@@ -104,6 +111,7 @@ public sealed class ConnectionLinesControl : Control
             PdfPageTopOffsetProperty,
             MinerUListTopOffsetProperty,
             MinerUBlockItemHeightProperty,
+            PpiScaleProperty,
             SelectedBlockIdProperty,
             ShowConnectionsProperty);
 
@@ -225,6 +233,12 @@ public sealed class ConnectionLinesControl : Control
     {
         get => GetValue(MinerUBlockItemHeightProperty);
         set => SetValue(MinerUBlockItemHeightProperty, value);
+    }
+
+    public double PpiScale
+    {
+        get => GetValue(PpiScaleProperty);
+        set => SetValue(PpiScaleProperty, value);
     }
 
     public string? SelectedBlockId
@@ -494,8 +508,10 @@ public sealed class ConnectionLinesControl : Control
         }
         else
         {
-            blockRightX = bbox.Right;
-            blockCenterY = bbox.Y + bbox.Height / 2.0;
+            // Non-normalized: coordinates are in PDF point space.
+            // Multiply by PpiScale to convert to display pixel space.
+            blockRightX = bbox.Right * PpiScale;
+            blockCenterY = (bbox.Y + bbox.Height / 2.0) * PpiScale;
         }
 
         var screenX = PdfPageLeftOffset + blockRightX * ZoomLevel;
@@ -519,8 +535,10 @@ public sealed class ConnectionLinesControl : Control
         }
         else
         {
-            blockRightX = bbox.Right;
-            blockCenterY = bbox.Y + bbox.Height / 2.0;
+            // Non-normalized: coordinates are in PDF point space.
+            // Multiply by PpiScale to convert to display pixel space.
+            blockRightX = bbox.Right * PpiScale;
+            blockCenterY = (bbox.Y + bbox.Height / 2.0) * PpiScale;
         }
 
         var screenX = PdfPageLeftOffset + blockRightX * ZoomLevel;

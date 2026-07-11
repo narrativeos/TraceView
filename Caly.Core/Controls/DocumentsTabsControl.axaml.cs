@@ -391,6 +391,7 @@ public sealed partial class DocumentsTabsControl : UserControl
         connControl.MinerUBlocks = docVm.VisibleMinerUBlocks;
         connControl.PageSize = firstPageWithBlocks?.Size ?? new Size(0, 0);
         connControl.ZoomLevel = docVm.ZoomLevel;
+        connControl.PpiScale = firstPageWithBlocks?.PpiScale ?? 1.0;
         connControl.SelectedBlockId = docVm.SelectedMinerUBlockId;
 
         // PDF scroll offset + page left offset (get actual page position)
@@ -410,11 +411,27 @@ public sealed partial class DocumentsTabsControl : UserControl
                         var scale = pageItemsControl.LayoutTransform?.LayoutTransform?.Value.M11 ?? 1.0;
                         connControl.PdfScrollOffsetY = pdfScroll.Offset.Y - pageItem.Bounds.Top * scale;
                         connControl.PdfPageTopOffset = 0;
-                        // Use the actual page position relative to the DocumentControl
-                        // pageItem.Bounds.Left is the position within the PageItemsControl
-                        // We need to convert to ConnectionLinesControl coordinates
+                        
+                        // Calculate the actual left offset of the PDF page in screen coordinates.
+                        // The PageItemsControl uses LayoutTransformControl with HorizontalAlignment="Center",
+                        // so the ItemsPresenter is centered within the LayoutTransformControl.
+                        // We need to account for this centering offset.
+                        var layoutTransform = pageItemsControl.LayoutTransform;
                         var docControlLeft = docControl.Bounds.X;
-                        connControl.PdfPageLeftOffset = docControlLeft + pageItem.Bounds.Left * scale;
+                        
+                        if (layoutTransform is not null && layoutTransform.Bounds.Width > 0)
+                        {
+                            // The page's rendered width after PpiScale but before Zoom
+                            double pageDisplayWidth = firstVisiblePage.Size.Width * firstVisiblePage.PpiScale;
+                            // Centering offset within the LayoutTransformControl viewport
+                            double centerOffset = Math.Max(0, (layoutTransform.Bounds.Width - pageDisplayWidth * scale) / 2.0);
+                            connControl.PdfPageLeftOffset = docControlLeft + centerOffset + pageItem.Bounds.Left * scale;
+                        }
+                        else
+                        {
+                            // Fallback: no layout transform available
+                            connControl.PdfPageLeftOffset = docControlLeft + pageItem.Bounds.Left * scale;
+                        }
                     }
                 }
             }
