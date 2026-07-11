@@ -470,116 +470,210 @@ public sealed class ConnectionLinesControl : Control
     }
 
     /// <summary>
+    /// Calculates the screen position on the BORDER of a preproc_block on the PDF page.
+    /// Finds the intersection of the line from block center to target with the block's bounding box edge.
+    /// This makes the connection line appear to start from the block's border rather than its center.
+    /// </summary>
+    private Point CalculatePdfBlockStartPoint(MinerUBlock block, Point targetPoint)
+    {
+        // First calculate the block's center in screen coordinates
+        var center = CalculatePdfBlockCenter(block);
+        
+        // Calculate the block's bounding box in screen coordinates
+        var bbox = block.Bbox;
+        double left, top, right, bottom;
+
+        if (block.IsBboxNormalized && PageSize.Width > 0 && PageSize.Height > 0)
+        {
+            left = bbox.X * PageSize.Width * ZoomLevel;
+            top = bbox.Y * PageSize.Height * ZoomLevel;
+            right = (bbox.X + bbox.Width) * PageSize.Width * ZoomLevel;
+            bottom = (bbox.Y + bbox.Height) * PageSize.Height * ZoomLevel;
+        }
+        else
+        {
+            left = bbox.X * ZoomLevel;
+            top = bbox.Y * ZoomLevel;
+            right = bbox.Right * ZoomLevel;
+            bottom = bbox.Bottom * ZoomLevel;
+        }
+
+        // Convert to screen coordinates (X is relative to page left edge, no offset needed)
+        top = PdfPageTopOffset + top - PdfScrollOffsetY;
+        bottom = PdfPageTopOffset + bottom - PdfScrollOffsetY;
+
+        // Find the intersection of the line from center to target with the bounding box
+        return IntersectionWithRect(center, targetPoint, left, top, right, bottom);
+    }
+
+    /// <summary>
     /// Like CalculatePdfBlockStartPoint but adds a page Y offset for multi-page rendering.
-    /// pageYOffset is in pixels (already includes ZoomLevel), so we don't multiply it again.
-    /// If pageSize is provided, uses it instead of the global PageSize.
     /// </summary>
     private Point CalculatePdfBlockStartPointWithOffset(MinerUBlock block, double pageYOffset, Size? pageSize = null)
     {
         var page = pageSize ?? PageSize;
+        
+        // First calculate the block's center in screen coordinates (with offset)
+        var center = CalculatePdfBlockCenterWithOffset(block, pageYOffset, page);
+        
+        // Calculate the block's bounding box in screen coordinates
         var bbox = block.Bbox;
-        double blockX, blockY;
+        double left, top, right, bottom;
 
         if (block.IsBboxNormalized && page.Width > 0 && page.Height > 0)
         {
-            blockX = (bbox.X + bbox.Width) * page.Width;
-            blockY = (bbox.Y + bbox.Height / 2.0) * page.Height;
+            left = bbox.X * page.Width * ZoomLevel;
+            top = bbox.Y * page.Height * ZoomLevel;
+            right = (bbox.X + bbox.Width) * page.Width * ZoomLevel;
+            bottom = (bbox.Y + bbox.Height) * page.Height * ZoomLevel;
         }
         else
         {
-            blockX = bbox.Right;
-            blockY = bbox.Y + bbox.Height / 2.0;
+            left = bbox.X * ZoomLevel;
+            top = bbox.Y * ZoomLevel;
+            right = bbox.Right * ZoomLevel;
+            bottom = bbox.Bottom * ZoomLevel;
         }
 
-        var screenX = blockX * ZoomLevel;
-        // Y: blockY * ZoomLevel + pageYOffset (already in pixels) - scroll offset
-        var screenY = PdfPageTopOffset + blockY * ZoomLevel + pageYOffset - PdfScrollOffsetY;
-        return new Point(screenX, screenY);
-    }
+        // Convert to screen coordinates with page offset
+        top = PdfPageTopOffset + top + pageYOffset - PdfScrollOffsetY;
+        bottom = PdfPageTopOffset + bottom + pageYOffset - PdfScrollOffsetY;
 
-    private void DrawConnections(
-        DrawingContext context,
-        List<(MinerUBlock preproc, MinerUBlockViewModel target)> connections,
-        Dictionary<string, int> minerUIdToIndex)
-    {
-        var minerULeft = MinerUColumnLeftEdge;
-
-        foreach (var (preproc, target) in connections)
-        {
-            var pdfBlockStart = CalculatePdfBlockStartPoint(preproc);
-            var minerUIdx = minerUIdToIndex.TryGetValue(target.BlockId, out var idx) ? idx : -1;
-            var minerUBlockEndPoint = CalculateMinerUBlockEndPoint(minerUIdx);
-
-            if (IsOutsideVisibleArea(pdfBlockStart.Y, minerUBlockEndPoint.Y))
-                continue;
-
-            var startPoint = pdfBlockStart;
-            var endPoint = minerUBlockEndPoint;
-
-            // Use bezier control points for smooth S-curve
-            // Control points are horizontally offset from start/end for smooth transitions
-            var horizontalGap = endPoint.X - startPoint.X;
-            if (horizontalGap <= 0)
-                continue;
-
-            var cpOffset = horizontalGap * 0.4;
-            var controlPoint1 = new Point(startPoint.X + cpOffset, startPoint.Y);
-            var controlPoint2 = new Point(endPoint.X - cpOffset, endPoint.Y);
-
-            // Determine if this is a fallback match (either preproc or target has IsFallbackMatch)
-            var isFallback = preproc.IsFallbackMatch || target.IsFallbackMatch;
-
-            // Use DestinationType to determine color, and IsFallbackMatch to determine opacity
-            var pen = (preproc.DestinationType, isFallback) switch
-            {
-                (MinerUConstants.DestPara, false) => AdoptedPen,
-                (MinerUConstants.DestPara, true) => FadedAdoptedPen,
-                (MinerUConstants.DestDiscarded, false) => DiscardedPen,
-                (MinerUConstants.DestDiscarded, true) => FadedDiscardedPen,
-                (_, false) => DefaultPen,
-                (_, true) => FadedDefaultPen
-            };
-
-            var sg = new StreamGeometry();
-            using (var ctx = sg.Open())
-            {
-                ctx.BeginFigure(startPoint, false);
-                // Use native CubicBezierTo for smooth rendering
-                ctx.CubicBezierTo(controlPoint1, controlPoint2, endPoint);
-                ctx.EndFigure(false);
-            }
-
-            context.DrawGeometry(null, pen, sg);
-        }
+        // Calculate the target point (MinerU block center) for direction
+        // We need to find the intersection with the block's border
+        // For now, use a simple approach: find the right edge intersection
+        return IntersectionWithRect(center, new Point(PdfColumnRightEdge + 100, center.Y), left, top, right, bottom);
     }
 
     /// <summary>
-    /// Calculates the screen position of the RIGHT EDGE of a preproc_block on the PDF page.
-    /// Returns the center-right point of the block's bounding box in screen coordinates.
+    /// Calculates the screen position of the center of a preproc_block on the PDF page.
     /// </summary>
-    private Point CalculatePdfBlockStartPoint(MinerUBlock block)
+    private Point CalculatePdfBlockCenter(MinerUBlock block)
     {
         var bbox = block.Bbox;
-        double blockX, blockY;
+        double centerX, centerY;
 
         if (block.IsBboxNormalized && PageSize.Width > 0 && PageSize.Height > 0)
         {
-            // Use the RIGHT EDGE of the block (x + width), Y is the center
-            blockX = (bbox.X + bbox.Width) * PageSize.Width;
-            blockY = (bbox.Y + bbox.Height / 2.0) * PageSize.Height;
+            centerX = (bbox.X + bbox.Width / 2.0) * PageSize.Width;
+            centerY = (bbox.Y + bbox.Height / 2.0) * PageSize.Height;
         }
         else
         {
-            // Use the RIGHT EDGE of the block, Y is the center
-            blockX = bbox.Right;
-            blockY = bbox.Y + bbox.Height / 2.0;
+            centerX = bbox.X + bbox.Width / 2.0;
+            centerY = bbox.Y + bbox.Height / 2.0;
         }
 
-        // X: apply zoom level (PDF page starts at left edge of the PDF column)
-        var screenX = blockX * ZoomLevel;
-        // Y: apply top offset, zoom, and subtract scroll offset
-        var screenY = PdfPageTopOffset + blockY * ZoomLevel - PdfScrollOffsetY;
+        var screenX = centerX * ZoomLevel;
+        var screenY = PdfPageTopOffset + centerY * ZoomLevel - PdfScrollOffsetY;
         return new Point(screenX, screenY);
+    }
+
+    /// <summary>
+    /// Calculates the screen position of the center of a preproc_block with page offset.
+    /// </summary>
+    private Point CalculatePdfBlockCenterWithOffset(MinerUBlock block, double pageYOffset, Size page)
+    {
+        var bbox = block.Bbox;
+        double centerX, centerY;
+
+        if (block.IsBboxNormalized && page.Width > 0 && page.Height > 0)
+        {
+            centerX = (bbox.X + bbox.Width / 2.0) * page.Width;
+            centerY = (bbox.Y + bbox.Height / 2.0) * page.Height;
+        }
+        else
+        {
+            centerX = bbox.X + bbox.Width / 2.0;
+            centerY = bbox.Y + bbox.Height / 2.0;
+        }
+
+        var screenX = centerX * ZoomLevel;
+        var screenY = PdfPageTopOffset + centerY * ZoomLevel + pageYOffset - PdfScrollOffsetY;
+        return new Point(screenX, screenY);
+    }
+
+    /// <summary>
+    /// Calculates the intersection point of a line from 'start' to 'end' with a rectangle.
+    /// Returns the first intersection point on the rectangle's border.
+    /// </summary>
+    private static Point IntersectionWithRect(Point start, Point end, double left, double top, double right, double bottom)
+    {
+        // If start is inside the rectangle, find where the line exits the rectangle
+        // If start is outside, find where it enters
+        double dx = end.X - start.X;
+        double dy = end.Y - start.Y;
+
+        // Handle zero direction
+        if (dx == 0 && dy == 0)
+            return start;
+
+        // Find intersections with each edge of the rectangle
+        // We want the closest intersection point in the direction from start to end
+        double minT = double.MaxValue;
+        Point result = start;
+
+        // Left edge (x = left)
+        if (dx != 0)
+        {
+            double t = (left - start.X) / dx;
+            if (t > 0.001 && t < minT)
+            {
+                double y = start.Y + t * dy;
+                if (y >= top && y <= bottom)
+                {
+                    minT = t;
+                    result = new Point(left, y);
+                }
+            }
+        }
+
+        // Right edge (x = right)
+        if (dx != 0)
+        {
+            double t = (right - start.X) / dx;
+            if (t > 0.001 && t < minT)
+            {
+                double y = start.Y + t * dy;
+                if (y >= top && y <= bottom)
+                {
+                    minT = t;
+                    result = new Point(right, y);
+                }
+            }
+        }
+
+        // Top edge (y = top)
+        if (dy != 0)
+        {
+            double t = (top - start.Y) / dy;
+            if (t > 0.001 && t < minT)
+            {
+                double x = start.X + t * dx;
+                if (x >= left && x <= right)
+                {
+                    minT = t;
+                    result = new Point(x, top);
+                }
+            }
+        }
+
+        // Bottom edge (y = bottom)
+        if (dy != 0)
+        {
+            double t = (bottom - start.Y) / dy;
+            if (t > 0.001 && t < minT)
+            {
+                double x = start.X + t * dx;
+                if (x >= left && x <= right)
+                {
+                    minT = t;
+                    result = new Point(x, bottom);
+                }
+            }
+        }
+
+        return result;
     }
 
     /// <summary>
