@@ -140,10 +140,46 @@ public sealed partial class DocumentViewModel
         return count;
     }
 
+    /// <summary>
+    /// Gets a flat list of visible Popo tree nodes, respecting the IsExpanded state.
+    /// When a node is collapsed (IsExpanded=false), its children are excluded.
+    /// When a node is expanded (IsExpanded=true), its children are included recursively.
+    /// This is used for drawing connection lines from MinerU blocks to Popo nodes.
+    /// </summary>
+    public System.Collections.Generic.List<TreeNodeViewModel> VisiblePopoNodes
+    {
+        get
+        {
+            var result = new System.Collections.Generic.List<TreeNodeViewModel>();
+            FlattenVisibleNodes(PopoTreeRoot?.Children, result);
+            return result;
+        }
+    }
+
+    private static void FlattenVisibleNodes(
+        ObservableCollection<TreeNodeViewModel>? nodes,
+        System.Collections.Generic.List<TreeNodeViewModel> result)
+    {
+        if (nodes is null || nodes.Count == 0)
+            return;
+
+        foreach (var node in nodes)
+        {
+            result.Add(node);
+
+            // Only include children if the node is expanded
+            if (node.IsExpanded && node.Children.Count > 0)
+            {
+                FlattenVisibleNodes(node.Children, result);
+            }
+        }
+    }
+
     partial void OnPopoTreeRootChanged(TreeNodeViewModel? value)
     {
         OnPropertyChanged(nameof(PopoTreeNodeCount));
         OnPropertyChanged(nameof(PopoTreeRootChildren));
+        OnPropertyChanged(nameof(VisiblePopoNodes));
     }
 
     [RelayCommand]

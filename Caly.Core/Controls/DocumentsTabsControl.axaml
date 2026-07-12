@@ -565,12 +565,15 @@
                                     </Border>
 
                                       <!-- Blocks List: shown only when not processing and no error -->
-                                      <ScrollViewer IsVisible="{Binding ShowPopoBlocksList}"
-                                                    HorizontalScrollBarVisibility="Disabled">
-                                          <TreeView ItemsSource="{Binding PopoTreeRootChildren}"
-                                                    BorderThickness="0"
-                                                    Background="Transparent"
-                                                    ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                      <ScrollViewer Name="PART_PopoScrollViewer"
+                                                    IsVisible="{Binding ShowPopoBlocksList}"
+                                                    HorizontalScrollBarVisibility="Disabled"
+                                                    ScrollChanged="OnPopoScrollChanged">
+                                           <TreeView Name="PART_PopoTreeView"
+                                                     ItemsSource="{Binding PopoTreeRootChildren}"
+                                                     BorderThickness="0"
+                                                     Background="Transparent"
+                                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                                              <TreeView.Styles>
                                                  <Style Selector="TreeViewItem">
                                                      <Setter Property="IsExpanded" Value="True"/>
@@ -579,11 +582,12 @@
                                              <TreeView.ItemTemplate>
                                                  <TreeDataTemplate x:DataType="vm:TreeNodeViewModel"
                                                                    ItemsSource="{Binding Children}">
-                                                      <Border Padding="6,4"
-                                                              Margin="0,1"
-                                                              CornerRadius="3"
-                                                              Background="{DynamicResource SystemChromeMediumLowColor}"
-                                                              HorizontalAlignment="Stretch">
+                                                       <Border Padding="6,4"
+                                                               Margin="0,1"
+                                                               CornerRadius="3"
+                                                               Background="{DynamicResource SystemChromeMediumLowColor}"
+                                                               HorizontalAlignment="Stretch"
+                                                               SizeChanged="PopoTreeNodeBorder_OnSizeChanged">
                                                           <StackPanel Spacing="2"
                                                                       HorizontalAlignment="Stretch">
                                                              <!-- Type badge + title -->
@@ -683,13 +687,13 @@
                                 </DockPanel>
                             </Border>
 
-                            <!-- Connection Lines overlay between PDF and MinerU columns -->
-                            <controls:ConnectionLinesControl 
-                                Grid.Column="0"
-                                Grid.ColumnSpan="2"
-                                Name="PART_ConnectionLinesControl"
-                                IsVisible="True"
-                                IsHitTestVisible="False"/>
+                             <!-- Connection Lines overlay between all three columns -->
+                             <controls:ConnectionLinesControl 
+                                 Grid.Column="0"
+                                 Grid.ColumnSpan="3"
+                                 Name="PART_ConnectionLinesControl"
+                                 IsVisible="True"
+                                 IsHitTestVisible="False"/>
                         </Grid>
                         </Grid>
                     </SplitView.Content>

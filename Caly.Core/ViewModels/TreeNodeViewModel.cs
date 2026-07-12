@@ -90,6 +90,12 @@ public partial class TreeNodeViewModel : ObservableObject
     public List<int> BlockIds => _node.BlockIds;
 
     /// <summary>
+    /// Source block IDs (UUID strings) from MinerU middle.json that compose this node.
+    /// Used for tracing back to the original MinerU blocks for cross-referencing.
+    /// </summary>
+    public List<string> SourceBlockIds => _node.SourceBlockIds;
+
+    /// <summary>
     /// Whether this node represents an image.
     /// </summary>
     public bool IsImage => Type == "image";
@@ -295,6 +301,13 @@ public partial class TreeNodeViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _isContentExpanded = true;
+
+    /// <summary>
+    /// Actual rendered height of this tree node item in the UI.
+    /// Set by the view after layout to enable accurate connection line positioning.
+    /// </summary>
+    [ObservableProperty]
+    private double _actualHeight = 80.0;  // Default fallback height
 
     /// <summary>
     /// Display title (truncated to 50 chars).

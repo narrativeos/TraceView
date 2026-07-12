@@ -42,6 +42,8 @@ namespace Caly.Core.Controls;
 [TemplatePart("PART_MinerUItemsControl", typeof(ItemsControl))]
 [TemplatePart("PART_ConnectionLinesControl", typeof(ConnectionLinesControl))]
 [TemplatePart("PART_ThreeColumnGrid", typeof(Grid))]
+[TemplatePart("PART_PopoScrollViewer", typeof(ScrollViewer))]
+[TemplatePart("PART_PopoTreeView", typeof(TreeView))]
 public sealed partial class DocumentsTabsControl : UserControl
 {
     private const int MaxPaneLength = 500;
@@ -57,6 +59,8 @@ public sealed partial class DocumentsTabsControl : UserControl
     private ItemsControl? _minerUItemsControl;
     private ConnectionLinesControl? _connectionLinesControl;
     private Grid? _threeColumnGrid;
+    private ScrollViewer? _popoScrollViewer;
+    private TreeView? _popoTreeView;
     
     // Debounce for UpdateConnectionLines to avoid excessive calls during scrolling
     private bool _updateConnectionLinesPending;
@@ -259,7 +263,25 @@ public sealed partial class DocumentsTabsControl : UserControl
         UpdateConnectionLines();
     }
 
+    private void PopoTreeNodeBorder_OnSizeChanged(object? sender, SizeChangedEventArgs e)
+    {
+        if (sender is not Border border || border.DataContext is not TreeNodeViewModel nodeVm)
+            return;
+
+        // Set the actual rendered height so ConnectionLinesControl can calculate accurate positions
+        // SizeChanged fires continuously as the border is resized/reused by TreeView virtualization
+        nodeVm.ActualHeight = e.NewSize.Height;
+        
+        // Trigger connection lines redraw
+        UpdateConnectionLines();
+    }
+
     private void OnMinerUScrollChanged(object? sender, ScrollChangedEventArgs e)
+    {
+        UpdateConnectionLines();
+    }
+
+    private void OnPopoScrollChanged(object? sender, ScrollChangedEventArgs e)
     {
         UpdateConnectionLines();
     }
@@ -319,6 +341,24 @@ public sealed partial class DocumentsTabsControl : UserControl
             _minerUItemsControl = this.FindDescendantOfType<ItemsControl>(false, ic => ic.Name == "PART_MinerUItemsControl");
         }
         return _minerUItemsControl;
+    }
+
+    private ScrollViewer? GetPopoScrollViewer()
+    {
+        if (_popoScrollViewer is null)
+        {
+            _popoScrollViewer = this.FindDescendantOfType<ScrollViewer>(false, sv => sv.Name == "PART_PopoScrollViewer");
+        }
+        return _popoScrollViewer;
+    }
+
+    private TreeView? GetPopoTreeView()
+    {
+        if (_popoTreeView is null)
+        {
+            _popoTreeView = this.FindDescendantOfType<TreeView>(false, tv => tv.Name == "PART_PopoTreeView");
+        }
+        return _popoTreeView;
     }
 
     private void UpdateConnectionLines()
@@ -471,12 +511,43 @@ public sealed partial class DocumentsTabsControl : UserControl
             var pdfColumnWidth = layoutGrid.ColumnDefinitions[0].ActualWidth;
             connControl.PdfColumnRightEdge = pdfColumnWidth;
             connControl.MinerUColumnLeftEdge = pdfColumnWidth + 4;
+
+            // Popo column left edge (if 3 columns exist)
+            if (layoutGrid.ColumnDefinitions.Count >= 3)
+            {
+                var minerUColumnWidth = layoutGrid.ColumnDefinitions[1].ActualWidth;
+                connControl.MinerUColumnRightEdge = connControl.MinerUColumnLeftEdge + minerUColumnWidth;
+                connControl.PopoColumnLeftEdge = connControl.MinerUColumnRightEdge + 4; // +4 for GridSplitter
+            }
         }
         else if (connControl.Bounds.Width > 0)
         {
             connControl.PdfColumnRightEdge = connControl.Bounds.Width * 0.4;
             connControl.MinerUColumnLeftEdge = connControl.Bounds.Width * 0.6;
+            connControl.PopoColumnLeftEdge = connControl.Bounds.Width * 0.8;
         }
+
+        // Popo scroll offset
+        var popoScroll = GetPopoScrollViewer();
+        if (popoScroll is not null)
+        {
+            connControl.PopoScrollOffsetY = popoScroll.Offset.Y;
+            // Border Padding=8 + header StackPanel(~20) + margin=6 + TreeView padding(~8)
+            connControl.PopoListTopOffset = 42;
+        }
+
+        // Set Popo visible nodes for MinerU -> Popo connections
+        connControl.VisiblePopoNodes = docVm.VisiblePopoNodes;
+
+        // Set Popo TreeView reference for accurate position queries
+        var popoTreeView = GetPopoTreeView();
+        if (popoTreeView is not null)
+        {
+            connControl.PopoTreeViewReference = popoTreeView;
+        }
+
+        // Show Popo connections only when both MinerU and Popo columns are visible
+        connControl.ShowPopoConnections = docVm.ShowMinerUColumn && docVm.ShowAnalysisColumn && docVm.HasPopoBlocks;
 
         // Force a re-render now that all properties have been set
         connControl.InvalidateVisual();

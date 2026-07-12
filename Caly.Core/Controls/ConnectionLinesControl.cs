@@ -20,22 +20,25 @@
 
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Media;
 using Avalonia.Media.Immutable;
+using Avalonia.VisualTree;
 using Caly.Core.Models;
 using Caly.Core.Utilities;
 using Caly.Core.ViewModels;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
 using System.Threading;
 
 namespace Caly.Core.Controls;
 
 /// <summary>
-/// Custom control that draws connecting lines between preproc_blocks (PDF overlay)
-/// and para/discarded blocks (MinerU Blocks column).
-/// Each preproc_block is connected to its matched para/discarded block via RelatedBlockIds.
+/// Custom control that draws connecting lines between:
+/// 1. preproc_blocks (PDF overlay) and para/discarded blocks (MinerU Blocks column)
+/// 2. MinerU Blocks and Popo Blocks (when Popo data is available)
 /// </summary>
 public sealed class ConnectionLinesControl : Control
 {
@@ -70,6 +73,13 @@ public sealed class ConnectionLinesControl : Control
     public static readonly StyledProperty<double> MinerUColumnLeftEdgeProperty =
         AvaloniaProperty.Register<ConnectionLinesControl, double>(nameof(MinerUColumnLeftEdge));
 
+    /// <summary>
+    /// Right edge of the MinerU column (MinerUColumnLeftEdge + MinerU column width).
+    /// Used for calculating the start point of MinerU → Popo connection lines.
+    /// </summary>
+    public static readonly StyledProperty<double> MinerUColumnRightEdgeProperty =
+        AvaloniaProperty.Register<ConnectionLinesControl, double>(nameof(MinerUColumnRightEdge));
+
     public static readonly StyledProperty<double> PdfPageLeftOffsetProperty =
         AvaloniaProperty.Register<ConnectionLinesControl, double>(nameof(PdfPageLeftOffset));
 
@@ -96,6 +106,37 @@ public sealed class ConnectionLinesControl : Control
         AvaloniaProperty.Register<ConnectionLinesControl, bool>(nameof(ShowConnections), false);
 
     /// <summary>
+    /// Whether to show connection lines between MinerU Blocks and Popo Blocks.
+    /// </summary>
+    public static readonly StyledProperty<bool> ShowPopoConnectionsProperty =
+        AvaloniaProperty.Register<ConnectionLinesControl, bool>(nameof(ShowPopoConnections), false);
+
+    /// <summary>
+    /// Left edge of the Popo column (for MinerU → Popo connection lines).
+    /// </summary>
+    public static readonly StyledProperty<double> PopoColumnLeftEdgeProperty =
+        AvaloniaProperty.Register<ConnectionLinesControl, double>(nameof(PopoColumnLeftEdge));
+
+    /// <summary>
+    /// Scroll offset Y for the Popo column.
+    /// </summary>
+    public static readonly StyledProperty<double> PopoScrollOffsetYProperty =
+        AvaloniaProperty.Register<ConnectionLinesControl, double>(nameof(PopoScrollOffsetY));
+
+    /// <summary>
+    /// Top offset of the Popo tree items within the Popo column.
+    /// </summary>
+    public static readonly StyledProperty<double> PopoListTopOffsetProperty =
+        AvaloniaProperty.Register<ConnectionLinesControl, double>(nameof(PopoListTopOffset));
+
+    /// <summary>
+    /// Flat list of visible Popo tree nodes (respecting IsExpanded state).
+    /// Used for drawing connection lines from MinerU blocks to Popo nodes.
+    /// </summary>
+    public static readonly StyledProperty<IReadOnlyList<TreeNodeViewModel>?> VisiblePopoNodesProperty =
+        AvaloniaProperty.Register<ConnectionLinesControl, IReadOnlyList<TreeNodeViewModel>?>(nameof(VisiblePopoNodes));
+
+    /// <summary>
     /// Reference to the BlockOverlayControl for getting actual block positions.
     /// When set, connection lines will use the overlay's Bounds to calculate positions.
     /// </summary>
@@ -108,6 +149,13 @@ public sealed class ConnectionLinesControl : Control
     /// </summary>
     public static readonly StyledProperty<ItemsControl?> MinerUItemsReferenceProperty =
         AvaloniaProperty.Register<ConnectionLinesControl, ItemsControl?>(nameof(MinerUItemsReference));
+
+    /// <summary>
+    /// Reference to the Popo TreeView for getting actual tree node positions.
+    /// When set, connection lines will query the visual tree for accurate positions.
+    /// </summary>
+    public static readonly StyledProperty<TreeView?> PopoTreeViewReferenceProperty =
+        AvaloniaProperty.Register<ConnectionLinesControl, TreeView?>(nameof(PopoTreeViewReference));
 
     static ConnectionLinesControl()
     {
@@ -128,7 +176,12 @@ public sealed class ConnectionLinesControl : Control
             MinerUBlockItemHeightProperty,
             PpiScaleProperty,
             SelectedBlockIdProperty,
-            ShowConnectionsProperty);
+            ShowConnectionsProperty,
+            ShowPopoConnectionsProperty,
+            PopoColumnLeftEdgeProperty,
+            PopoScrollOffsetYProperty,
+            PopoListTopOffsetProperty,
+            VisiblePopoNodesProperty);
 
         // Subscribe to scroll offset property changes for throttled rendering
         PdfScrollOffsetYProperty.Changed.AddClassHandler<ConnectionLinesControl>((control, e) =>
@@ -136,6 +189,10 @@ public sealed class ConnectionLinesControl : Control
             control.ScheduleRender();
         });
         MinerUScrollOffsetYProperty.Changed.AddClassHandler<ConnectionLinesControl>((control, e) =>
+        {
+            control.ScheduleRender();
+        });
+        PopoScrollOffsetYProperty.Changed.AddClassHandler<ConnectionLinesControl>((control, e) =>
         {
             control.ScheduleRender();
         });
@@ -226,6 +283,12 @@ public sealed class ConnectionLinesControl : Control
         set => SetValue(MinerUColumnLeftEdgeProperty, value);
     }
 
+    public double MinerUColumnRightEdge
+    {
+        get => GetValue(MinerUColumnRightEdgeProperty);
+        set => SetValue(MinerUColumnRightEdgeProperty, value);
+    }
+
     public double PdfPageLeftOffset
     {
         get => GetValue(PdfPageLeftOffsetProperty);
@@ -268,6 +331,36 @@ public sealed class ConnectionLinesControl : Control
         set => SetValue(ShowConnectionsProperty, value);
     }
 
+    public bool ShowPopoConnections
+    {
+        get => GetValue(ShowPopoConnectionsProperty);
+        set => SetValue(ShowPopoConnectionsProperty, value);
+    }
+
+    public double PopoColumnLeftEdge
+    {
+        get => GetValue(PopoColumnLeftEdgeProperty);
+        set => SetValue(PopoColumnLeftEdgeProperty, value);
+    }
+
+    public double PopoScrollOffsetY
+    {
+        get => GetValue(PopoScrollOffsetYProperty);
+        set => SetValue(PopoScrollOffsetYProperty, value);
+    }
+
+    public double PopoListTopOffset
+    {
+        get => GetValue(PopoListTopOffsetProperty);
+        set => SetValue(PopoListTopOffsetProperty, value);
+    }
+
+    public IReadOnlyList<TreeNodeViewModel>? VisiblePopoNodes
+    {
+        get => GetValue(VisiblePopoNodesProperty);
+        set => SetValue(VisiblePopoNodesProperty, value);
+    }
+
     public BlockOverlayControl? PdfOverlayReference
     {
         get => GetValue(PdfOverlayReferenceProperty);
@@ -278,6 +371,12 @@ public sealed class ConnectionLinesControl : Control
     {
         get => GetValue(MinerUItemsReferenceProperty);
         set => SetValue(MinerUItemsReferenceProperty, value);
+    }
+
+    public TreeView? PopoTreeViewReference
+    {
+        get => GetValue(PopoTreeViewReferenceProperty);
+        set => SetValue(PopoTreeViewReferenceProperty, value);
     }
 
     // High-visibility brushes (precise matches)
@@ -304,18 +403,39 @@ public sealed class ConnectionLinesControl : Control
     private static readonly ImmutablePen FadedDiscardedPen = new(FadedDiscardedLineBrush, 1.0);
     private static readonly ImmutablePen FadedDefaultPen = new(FadedDefaultLineBrush, 1.0);
 
+    // Purple line for MinerU → Popo connections
+    private static readonly ImmutableSolidColorBrush PopoLineBrush =
+        new(Color.Parse("#9C27B0"), 0.7);
+    private static readonly ImmutablePen PopoPen = new(PopoLineBrush, 1.5);
+
     // Cached cumulative Y positions for MinerU blocks (avoids O(n²) calculation in CalculateMinerUBlockEndPoint)
     private double[] _cachedMinerUCumulativeY = Array.Empty<double>();
     private bool _cumulativeYCacheValid = false;
 
+    // Cached cumulative Y positions for Popo nodes
+    private double[] _cachedPopoCumulativeY = Array.Empty<double>();
+    private bool _popoCumulativeYCacheValid = false;
+
     public override void Render(DrawingContext context)
     {
-        if (!ShowConnections)
-            return;
-
         if (Bounds.Width <= 0 || Bounds.Height <= 0)
             return;
 
+        // Render PDF → MinerU connections
+        if (ShowConnections)
+        {
+            RenderPdfToMinerUConnections(context);
+        }
+
+        // Render MinerU → Popo connections
+        if (ShowPopoConnections)
+        {
+            RenderMinerUToPopoConnections(context);
+        }
+    }
+
+    private void RenderPdfToMinerUConnections(DrawingContext context)
+    {
         var minerUBlocks = MinerUBlocks;
         if (minerUBlocks is null || minerUBlocks.Count == 0)
             return;
@@ -375,14 +495,6 @@ public sealed class ConnectionLinesControl : Control
 
         _cachedMinerUCumulativeY = cache;
         _cumulativeYCacheValid = true;
-    }
-
-    /// <summary>
-    /// Debug method removed to avoid excessive logging during scrolling.
-    /// </summary>
-    private void DebugLogConnectionLines()
-    {
-        // No-op: logging removed for performance
     }
 
     /// <summary>
@@ -519,6 +631,274 @@ public sealed class ConnectionLinesControl : Control
         context.DrawGeometry(null, pen, sg);
     }
 
+    #region MinerU → Popo Connections
+
+    /// <summary>
+    /// Renders connection lines from MinerU Blocks to Popo Blocks.
+    /// Each MinerU block is connected to the Popo node whose SourceBlockIds contains the block's BlockId.
+    /// Uses visual tree queries for accurate Popo node positions.
+    /// </summary>
+    private void RenderMinerUToPopoConnections(DrawingContext context)
+    {
+        var minerUBlocks = MinerUBlocks;
+        var popoNodes = VisiblePopoNodes;
+
+        if (minerUBlocks is null || minerUBlocks.Count == 0)
+            return;
+        if (popoNodes is null || popoNodes.Count == 0)
+            return;
+
+        // Build cumulative Y cache for MinerU blocks
+        BuildCumulativeYCacheForList(minerUBlocks);
+
+        // Build a map: BlockId (UUID) -> Popo node index
+        // A MinerU block's BlockId may appear in multiple Popo nodes' SourceBlockIds,
+        // but we draw to the first matching node.
+        var blockIdToPopoIndex = new Dictionary<string, int>();
+        for (int i = 0; i < popoNodes.Count; i++)
+        {
+            var node = popoNodes[i];
+            foreach (var srcId in node.SourceBlockIds)
+            {
+                if (!string.IsNullOrEmpty(srcId) && !blockIdToPopoIndex.ContainsKey(srcId))
+                {
+                    blockIdToPopoIndex[srcId] = i;
+                }
+            }
+        }
+
+        // Calculate a safe minimum horizontal span for the S-curve.
+        // Because MinerU and Popo columns are very close (only 4px GridSplitter),
+        // a direct curve would be nearly vertical and cause severe overlap.
+        // Instead, we create a S-curve that bows outward on both sides,
+        // extending beyond each column's edge to create visual separation.
+        // The bow distance is calculated as a fraction of the vertical distance,
+        // creating a smooth arc that makes each line distinguishable.
+        const double minBowDistance = 40.0; // Minimum outward bow in pixels
+
+        // Draw connections: MinerU block -> Popo node
+        for (int i = 0; i < minerUBlocks.Count; i++)
+        {
+            var block = minerUBlocks[i];
+            if (string.IsNullOrEmpty(block.BlockId))
+                continue;
+
+            if (!blockIdToPopoIndex.TryGetValue(block.BlockId, out var popoIdx))
+                continue;
+
+            // Calculate start point (center of MinerU block)
+            var startPoint = CalculateMinerUBlockCenter(i);
+
+            // Calculate end point using visual tree query for accurate position
+            var endPoint = GetPopoNodePositionFromVisualTree(popoNodes[popoIdx]);
+
+            // Skip if outside visible area
+            if (IsOutsideVisibleArea(startPoint.Y, endPoint.Y))
+                continue;
+
+            // Calculate vertical distance between start and end
+            var verticalDist = Math.Abs(endPoint.Y - startPoint.Y);
+            // Bow distance: proportional to vertical distance, but with a minimum
+            // This creates curves that bow outward more when the Y difference is large,
+            // and still bow enough when Y is similar (preventing overlap)
+            var bowDistance = Math.Max(minBowDistance, verticalDist * 0.5);
+
+            // S-curve: bow RIGHT from MinerU start, bow LEFT from Popo end
+            // This creates a visible arc between the two columns
+            var controlPoint1 = new Point(startPoint.X + bowDistance, startPoint.Y);
+            var controlPoint2 = new Point(endPoint.X - bowDistance, endPoint.Y);
+
+            var sg = new StreamGeometry();
+            using (var ctx = sg.Open())
+            {
+                ctx.BeginFigure(startPoint, false);
+                ctx.CubicBezierTo(controlPoint1, controlPoint2, endPoint);
+                ctx.EndFigure(false);
+            }
+
+            context.DrawGeometry(null, PopoPen, sg);
+        }
+    }
+
+    /// <summary>
+    /// Gets the actual screen position of a Popo tree node by querying the visual tree.
+    /// Falls back to calculated position if the visual tree query fails.
+    /// </summary>
+    private Point GetPopoNodePositionFromVisualTree(TreeNodeViewModel nodeVm)
+    {
+        // Try to get the position from the visual tree
+        var treeView = PopoTreeViewReference;
+        if (treeView is not null)
+        {
+            // Find the TreeViewItem for this node by walking the visual tree
+            var container = FindContainerForNode(treeView, nodeVm);
+            if (container is not null)
+            {
+                // Get the Border inside the TreeViewItem
+                var border = container.GetVisualDescendants().OfType<Border>().FirstOrDefault();
+                if (border is not null)
+                {
+                    // Get the position relative to the ConnectionLinesControl
+                    var transform = border.TransformToVisual(this);
+                    if (transform is Matrix m)
+                    {
+                        var point = m.Transform(new Point(0, 0));
+                        // Return the center of the border
+                        return new Point(point.X + border.Bounds.Width / 2.0, point.Y + border.Bounds.Height / 2.0);
+                    }
+                }
+            }
+        }
+
+        // Fallback: use calculated position (find the node index in VisiblePopoNodes)
+        if (VisiblePopoNodes is not null)
+        {
+            for (int i = 0; i < VisiblePopoNodes.Count; i++)
+            {
+                if (ReferenceEquals(VisiblePopoNodes[i], nodeVm))
+                {
+                    return CalculatePopoNodeCenter(i);
+                }
+            }
+        }
+
+        // Last resort fallback
+        return new Point(PopoColumnLeftEdge + 150.0, PopoListTopOffset);
+    }
+
+    /// <summary>
+    /// Finds the TreeViewItem container for a given TreeNodeViewModel by walking the visual tree.
+    /// </summary>
+    private TreeViewItem? FindContainerForNode(TreeView treeView, TreeNodeViewModel targetNode)
+    {
+        // Use GetVisualDescendants to find all TreeViewItems
+        foreach (var item in treeView.GetVisualDescendants().OfType<TreeViewItem>())
+        {
+            if (item.DataContext is TreeNodeViewModel nodeVm && ReferenceEquals(nodeVm, targetNode))
+                return item;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Builds cumulative Y cache for Popo nodes using actual rendered heights.
+    /// </summary>
+    private void BuildPopoCumulativeYCache(IReadOnlyList<TreeNodeViewModel> nodes)
+    {
+        if (nodes.Count == 0)
+        {
+            _cachedPopoCumulativeY = Array.Empty<double>();
+            _popoCumulativeYCacheValid = true;
+            return;
+        }
+
+        var cache = new double[nodes.Count + 1];
+        double cumulative = 0;
+        cache[0] = 0;
+
+        for (int i = 0; i < nodes.Count; i++)
+        {
+            // Use actual rendered height from the ViewModel
+            var h = nodes[i].ActualHeight;
+            if (h <= 0)
+                h = 80.0; // Fallback height
+            cache[i + 1] = cumulative + h + 4.0; // 4px gap between items
+            cumulative = cache[i + 1];
+        }
+
+        _cachedPopoCumulativeY = cache;
+        _popoCumulativeYCacheValid = true;
+    }
+
+    /// <summary>
+    /// Calculates the CENTER of a MinerU block for connection start point.
+    /// </summary>
+    private Point CalculateMinerUBlockCenter(int blockIndex)
+    {
+        if (blockIndex < 0)
+            return new Point(MinerUColumnLeftEdge, MinerUListTopOffset);
+
+        var blocks = MinerUBlocks;
+        if (blocks is null || blockIndex >= blocks.Count)
+            return new Point(MinerUColumnLeftEdge, MinerUListTopOffset);
+
+        // Use pre-computed cumulative Y cache
+        double itemTop;
+        if (_cumulativeYCacheValid && blockIndex < _cachedMinerUCumulativeY.Length)
+        {
+            itemTop = _cachedMinerUCumulativeY[blockIndex];
+        }
+        else
+        {
+            itemTop = 0;
+            for (int i = 0; i < blockIndex; i++)
+            {
+                var h = blocks[i].ActualHeight;
+                if (h <= 0)
+                    h = MinerUBlockItemHeight;
+                itemTop += h + 4.0;
+            }
+        }
+
+        var currentBlock = blocks[blockIndex];
+        var itemHeight = currentBlock?.ActualHeight ?? MinerUBlockItemHeight;
+        if (itemHeight <= 0)
+            itemHeight = MinerUBlockItemHeight;
+        var itemCenterY = itemTop + itemHeight / 2.0;
+
+        // Center X of MinerU column
+        var itemCenterX = (MinerUColumnLeftEdge + MinerUColumnRightEdge) / 2.0;
+        var screenY = MinerUListTopOffset + itemCenterY - MinerUScrollOffsetY;
+
+        return new Point(itemCenterX, screenY);
+    }
+
+    /// <summary>
+    /// Calculates the CENTER of a Popo node for connection end point.
+    /// </summary>
+    private Point CalculatePopoNodeCenter(int nodeIndex)
+    {
+        if (nodeIndex < 0)
+            return new Point(PopoColumnLeftEdge, PopoListTopOffset);
+
+        var nodes = VisiblePopoNodes;
+        if (nodes is null || nodeIndex >= nodes.Count)
+            return new Point(PopoColumnLeftEdge, PopoListTopOffset);
+
+        // Use pre-computed cumulative Y cache
+        double itemTop;
+        if (_popoCumulativeYCacheValid && nodeIndex < _cachedPopoCumulativeY.Length)
+        {
+            itemTop = _cachedPopoCumulativeY[nodeIndex];
+        }
+        else
+        {
+            itemTop = 0;
+            for (int i = 0; i < nodeIndex; i++)
+            {
+                var h = nodes[i].ActualHeight;
+                if (h <= 0) h = 80.0;
+                itemTop += h + 4.0;
+            }
+        }
+
+        var currentNode = nodes[nodeIndex];
+        var nodeHeight = currentNode.ActualHeight;
+        if (nodeHeight <= 0) nodeHeight = 80.0;
+        var nodeCenterY = itemTop + nodeHeight / 2.0;
+
+        // Center X of Popo column (estimate: PopoColumnLeftEdge + half of estimated Popo column width)
+        // We don't have PopoColumnRightEdge, so estimate the center as ~150px into the Popo column
+        var itemCenterX = PopoColumnLeftEdge + 150.0;
+        var screenY = PopoListTopOffset + nodeCenterY - PopoScrollOffsetY;
+
+        return new Point(itemCenterX, screenY);
+    }
+
+    #endregion
+
+    #region PDF Position Calculation
+
     /// <summary>
     /// Calculates the RIGHT EDGE of a preproc_block on the PDF page, with Y at the block center.
     /// This is the start point for connection lines going from PDF to MinerU column.
@@ -651,14 +1031,16 @@ public sealed class ConnectionLinesControl : Control
         return screenY;
     }
 
-    private bool IsOutsideVisibleArea(double pdfY, double minerUY)
+    private bool IsOutsideVisibleArea(double y1, double y2)
     {
         var boundsTop = -20;
         var boundsBottom = Bounds.Height + 20;
 
-        var bothAbove = pdfY < boundsTop && minerUY < boundsTop;
-        var bothBelow = pdfY > boundsBottom && minerUY > boundsBottom;
+        var bothAbove = y1 < boundsTop && y2 < boundsTop;
+        var bothBelow = y1 > boundsBottom && y2 > boundsBottom;
 
         return bothAbove || bothBelow;
     }
+
+    #endregion
 }

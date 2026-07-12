@@ -860,6 +860,24 @@ public static class PopoJsonService
                 {
                     MatchTreeNodesToBlocks(node, blocks, pageIdx, pageW, pageH);
                 }
+
+                // Also match from preproc_blocks (they have block_id UUIDs)
+                if (page.TryGetProperty("preproc_blocks", out var preprocBlocks))
+                {
+                    MatchTreeNodesToBlocksById(node, preprocBlocks, pageIdx, pageW, pageH);
+                }
+
+                // Also match from para_blocks (they have block_id UUIDs)
+                if (page.TryGetProperty("para_blocks", out var paraBlocks2))
+                {
+                    MatchTreeNodesToBlocksById(node, paraBlocks2, pageIdx, pageW, pageH);
+                }
+
+                // Also match from discarded_blocks (they have block_id UUIDs)
+                if (page.TryGetProperty("discarded_blocks", out var discardedBlocks))
+                {
+                    MatchTreeNodesToBlocksById(node, discardedBlocks, pageIdx, pageW, pageH);
+                }
             }
         }
 
@@ -940,6 +958,86 @@ public static class PopoJsonService
         foreach (var child in treeNode.Children)
         {
             MatchTreeNodesToBlocks(child, blocks, pageIdx, pageW, pageH);
+        }
+    }
+
+    /// <summary>
+    /// Matches tree nodes to blocks (preproc_blocks, para_blocks, or discarded_blocks) from middle.json
+    /// to populate SourceBlockIds (UUID strings). This is needed because the Popo API may not return
+    /// source_block_ids in popo_result.json, or the source_block_ids may not match the blocks shown
+    /// in the MinerU column.
+    /// </summary>
+    private static void MatchTreeNodesToBlocksById(
+        AnalysisTreeNode treeNode,
+        System.Text.Json.JsonElement blocks,
+        int pageIdx,
+        double pageW,
+        double pageH)
+    {
+        foreach (var block in blocks.EnumerateArray())
+        {
+            if (treeNode.Location.Count == 0)
+                continue;
+
+            // Check if this block's page matches any of the tree node's pages
+            var treePages = treeNode.Location.Select(l => l.Page).ToList();
+            if (!treePages.Contains(pageIdx + 1)) // Popo uses 1-based, middle.json uses 0-based
+                continue;
+
+            // Check if bboxes overlap significantly
+            if (!block.TryGetProperty("bbox", out var bbox))
+                continue;
+
+            var bboxArr = bbox.EnumerateArray().Select(v => v.GetDouble()).ToArray();
+            if (bboxArr.Length < 4)
+                continue;
+
+            var absX1 = bboxArr[0];
+            var absY1 = bboxArr[1];
+            var absX2 = bboxArr[2];
+            var absY2 = bboxArr[3];
+            var normX1 = absX1 / pageW;
+            var normY1 = absY1 / pageH;
+            var normX2 = absX2 / pageW;
+            var normY2 = absY2 / pageH;
+
+            // Check if this bbox matches any of the tree node's locations
+            foreach (var loc in treeNode.Location)
+            {
+                if (loc.Page != pageIdx + 1)
+                    continue;
+
+                // Check bbox overlap
+                var treeX1 = loc.Bbox.X;
+                var treeY1 = loc.Bbox.Y;
+                var treeX2 = treeX1 + loc.Bbox.Width;
+                var treeY2 = treeY1 + loc.Bbox.Height;
+
+                // Calculate overlap
+                var overlapX1 = Math.Max(normX1, treeX1);
+                var overlapY1 = Math.Max(normY1, treeY1);
+                var overlapX2 = Math.Min(normX2, treeX2);
+                var overlapY2 = Math.Min(normY2, treeY2);
+
+                if (overlapX1 < overlapX2 && overlapY1 < overlapY2)
+                {
+                    // Found overlap - get the block_id (UUID string)
+                    if (block.TryGetProperty("block_id", out var blockId))
+                    {
+                        var blockIdStr = blockId.GetString();
+                        if (!string.IsNullOrEmpty(blockIdStr) && !treeNode.SourceBlockIds.Contains(blockIdStr))
+                        {
+                            treeNode.SourceBlockIds.Add(blockIdStr);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Recurse into children
+        foreach (var child in treeNode.Children)
+        {
+            MatchTreeNodesToBlocksById(child, blocks, pageIdx, pageW, pageH);
         }
     }
 
