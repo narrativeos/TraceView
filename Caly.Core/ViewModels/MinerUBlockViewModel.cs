@@ -256,6 +256,8 @@ public partial class MinerUBlockViewModel : ObservableObject
 
     /// <summary>
     /// Image path text for display when image cannot be loaded.
+    /// Always shows the image path from any available source, even if the image file doesn't exist.
+    /// Only shows "[图片未找到]" when no path information is available at all.
     /// </summary>
     public string ImagePathText
     {
@@ -264,9 +266,15 @@ public partial class MinerUBlockViewModel : ObservableObject
             if (Type != "image")
                 return string.Empty;
 
+            // Strategy 1: Try Content field (may contain image path)
             if (!string.IsNullOrEmpty(Content))
                 return Content;
 
+            // Strategy 2: Try SourceLabel
+            if (!string.IsNullOrEmpty(SourceLabel))
+                return SourceLabel;
+
+            // No path information available from any source
             return "[图片未找到]";
         }
     }

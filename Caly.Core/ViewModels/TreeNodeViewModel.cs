@@ -235,8 +235,9 @@ public partial class TreeNodeViewModel : ObservableObject
     public bool HasImageBitmap => _cachedBitmap is not null;
 
     /// <summary>
-    /// Image path text for display.
-    /// Always shows the image path (from ImgPath, MinerUBlock, Content, or Metadata).
+    /// Image path text for display when image cannot be loaded.
+    /// Always shows the image path from any available source, even if the image file doesn't exist.
+    /// Only shows "[图片未找到]" when no path information is available at all.
     /// </summary>
     public string ImagePathText
     {
@@ -251,7 +252,7 @@ public partial class TreeNodeViewModel : ObservableObject
                 return _node.ImgPath;
             }
 
-            // Strategy 2: Try to get path from MinerUBlock
+            // Strategy 2: Try to get path from MinerUBlock by BlockIds
             if (_blockLookup is not null && BlockIds.Count > 0)
             {
                 foreach (var blockId in BlockIds)
@@ -264,18 +265,25 @@ public partial class TreeNodeViewModel : ObservableObject
                 }
             }
 
-            // Strategy 3: Try Content
+            // Strategy 3: Try Content field (may contain image path for some formats)
             if (!string.IsNullOrEmpty(Content))
             {
                 return Content;
             }
 
-            // Strategy 4: Try Metadata
+            // Strategy 4: Try Metadata field (may contain image_footnote with path info)
             if (!string.IsNullOrEmpty(Metadata))
             {
                 return Metadata;
             }
 
+            // Strategy 5: Try Title (some Popo responses put path info in title)
+            if (!string.IsNullOrEmpty(Title))
+            {
+                return Title;
+            }
+
+            // No path information available from any source
             return "[图片未找到]";
         }
     }
