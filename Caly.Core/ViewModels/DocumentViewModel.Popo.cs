@@ -298,15 +298,15 @@ public sealed partial class DocumentViewModel
                 }
             }
 
-            // 1: Try MinerU cache hybrid_auto directory (~/.TraceView/{docId}/mineru/{docId}/{docId}/hybrid_auto/)
+            // 1: Try MinerU cache hybrid_auto directory (~/.TraceView/{docId}/mineru/{docId}/hybrid_auto/)
+            // The ZIP contains {docId}/hybrid_auto/... which extracts to {mineru}/{docId}/hybrid_auto/...
             if (docId is not null)
             {
                 var cacheBase = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".TraceView", docId);
                 var mineruCacheDir = Path.Combine(cacheBase, "mineru");
-                var extractedDir = Path.Combine(mineruCacheDir, docId);
 
-                // The ZIP extracts to: {docId}/{docId}/hybrid_auto/
-                var hybridAutoDir = Path.Combine(extractedDir, docId, "hybrid_auto");
+                // The ZIP extracts to: {mineru}/{docId}/hybrid_auto/
+                var hybridAutoDir = Path.Combine(mineruCacheDir, docId, "hybrid_auto");
 
                 if (Directory.Exists(hybridAutoDir))
                 {
@@ -323,14 +323,18 @@ public sealed partial class DocumentViewModel
                     }
                 }
 
-                // Fallback: try the extract directory directly (some ZIP structures may be flat)
-                if (artifactsDir is null && Directory.Exists(extractedDir))
+                // Fallback: try the extracted directory directly (some ZIP structures may be flat)
+                if (artifactsDir is null)
                 {
-                    var imageFiles = System.IO.Directory.GetFiles(extractedDir, "*.*", System.IO.SearchOption.AllDirectories)
-                        .Where(f => System.IO.Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
-                        .ToList();
-                    if (imageFiles.Count > 0)
-                        artifactsDir = extractedDir;
+                    var extractedDir = Path.Combine(mineruCacheDir, docId);
+                    if (Directory.Exists(extractedDir))
+                    {
+                        var imageFiles = System.IO.Directory.GetFiles(extractedDir, "*.*", System.IO.SearchOption.AllDirectories)
+                            .Where(f => System.IO.Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
+                            .ToList();
+                        if (imageFiles.Count > 0)
+                            artifactsDir = extractedDir;
+                    }
                 }
             }
 

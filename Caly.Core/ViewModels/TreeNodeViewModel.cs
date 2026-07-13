@@ -96,9 +96,9 @@ public partial class TreeNodeViewModel : ObservableObject
     public List<string> SourceBlockIds => _node.SourceBlockIds;
 
     /// <summary>
-    /// Whether this node represents an image.
+    /// Whether this node represents an image or image-related content.
     /// </summary>
-    public bool IsImage => Type == "image";
+    public bool IsImage => Type == "image" || Type == "image_footnote";
 
     /// <summary>
     /// Cached bitmap to avoid reloading on every access.
@@ -289,14 +289,45 @@ public partial class TreeNodeViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Whether to show the content preview (collapsed, non-image nodes).
+    /// Whether this node is a pure image (not image_footnote).
+    /// Pure images show bitmap + metadata, image_footnotes show content text.
     /// </summary>
-    public bool ShowContentPreview => !IsContentExpanded && !IsImage;
+    public bool IsPureImage => Type == "image";
 
     /// <summary>
-    /// Whether to show the full content (expanded, non-image nodes).
+    /// Whether this node is an image footnote (shows content text, not bitmap).
     /// </summary>
-    public bool ShowFullContent => IsContentExpanded && !IsImage;
+    public bool IsImageFootnote => Type == "image_footnote";
+
+    /// <summary>
+    /// Whether to show the content preview (collapsed, non-image nodes + image_footnote).
+    /// </summary>
+    public bool ShowContentPreview => !IsContentExpanded && !IsPureImage;
+
+    /// <summary>
+    /// Whether to show the full content (expanded, non-image nodes + image_footnote).
+    /// </summary>
+    public bool ShowFullContent => IsContentExpanded && !IsPureImage;
+
+    /// <summary>
+    /// Whether to show the metadata/caption (pure image nodes with non-empty metadata).
+    /// </summary>
+    public bool ShowMetadata => IsPureImage && !string.IsNullOrEmpty(Metadata);
+
+    /// <summary>
+    /// Display metadata for image nodes (caption/footnote text).
+    /// Shows the metadata content which often contains the image_footnote text
+    /// merged by the Popo API.
+    /// </summary>
+    public string DisplayMetadata
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(Metadata))
+                return string.Empty;
+            return Metadata;
+        }
+    }
 
     [ObservableProperty]
     private ObservableCollection<TreeNodeViewModel> _children = new();
@@ -352,6 +383,7 @@ public partial class TreeNodeViewModel : ObservableObject
                 "text" => "\uD83D\uDCD4",       // 📄
                 "page_number" => "\uD83D\uDD22", // 🔢
                 "image" => "\uD83D\uDD92",      // 🖼️
+                "image_footnote" => "\uD83D\uDD92", // 🖼️
                 "table" => "\uD83D\uDCCA",      // 📊
                 "title" => "\uD83D\uDCCC",      // 📌
                 "root" => "\uD83C\uDF33",       // 🌳
@@ -372,6 +404,7 @@ public partial class TreeNodeViewModel : ObservableObject
                 "text" => "#4CAF50",      // Green
                 "page_number" => "#9E9E9E", // Gray
                 "image" => "#2196F3",     // Blue
+                "image_footnote" => "#2196F3", // Blue
                 "table" => "#FF9800",     // Orange
                 "title" => "#9C27B0",     // Purple
                 "root" => "#795548",      // Brown

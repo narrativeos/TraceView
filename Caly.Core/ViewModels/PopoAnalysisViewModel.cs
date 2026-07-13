@@ -65,6 +65,7 @@ public partial class AnalysisViewModel : ViewModelBase
         VisibleTypes.Add("title");
         VisibleTypes.Add("text");
         VisibleTypes.Add("image");
+        VisibleTypes.Add("image_footnote");
         VisibleTypes.Add("table");
         VisibleTypes.Add("caption");
 
@@ -309,6 +310,11 @@ public partial class AnalysisViewModel : ViewModelBase
             sb.AppendLine($"![{title}](image_placeholder)");
             if (!string.IsNullOrEmpty(node.Metadata))
                 sb.AppendLine($"*图注: {node.Metadata}*");
+            sb.AppendLine();
+        }
+        else if (type == "image_footnote")
+        {
+            sb.AppendLine($"*图注: {content}*");
             sb.AppendLine();
         }
         else if (type == "table")
