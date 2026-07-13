@@ -103,17 +103,13 @@ public sealed partial class DocumentViewModel
 
     /// <summary>
     /// Whether there is a MinerU ZIP available for Popo processing.
-    /// Returns false if Popo results already exist (no need to re-process).
+    /// Always visible when MinerU ZIP exists, allowing re-processing at any time.
     /// </summary>
     public bool HasMinerUZip
     {
         get
         {
             if (ProjectPath is null)
-                return false;
-
-            // Don't show button if Popo result already exists (not MinerU result)
-            if (HasPopoResult)
                 return false;
 
             var docId = LocalPath is not null ? Path.GetFileNameWithoutExtension(LocalPath) : null;
@@ -148,6 +144,7 @@ public sealed partial class DocumentViewModel
 
     /// <summary>
     /// Processes the current document with Popo service.
+    /// If Popo results already exist, they are deleted first (re-processing).
     /// Submits the MinerU ZIP, waits for processing, downloads the result, and loads the MinerUDocument.
     /// </summary>
     [RelayCommand]
@@ -168,6 +165,27 @@ public sealed partial class DocumentViewModel
             PopoStatusText = "Cancelling...";
             return;
         }
+
+        // Delete existing Popo results if they exist (allow re-processing)
+        if (ProjectPath is not null)
+        {
+            var popoDir = Path.Combine(ProjectPath, "popo");
+            if (Directory.Exists(popoDir))
+            {
+                try
+                {
+                    Directory.Delete(popoDir, true);
+                }
+                catch
+                {
+                    // Ignore deletion errors
+                }
+            }
+        }
+
+        // Clear current Popo data
+        PopoTreeRoot = null;
+        PopoBlocks.Clear();
 
         var service = GetPopoService();
         var docId = Path.GetFileNameWithoutExtension(LocalPath);
