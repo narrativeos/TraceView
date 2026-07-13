@@ -20,6 +20,7 @@
 
 using Avalonia.Collections;
 using Caly.Core.Models;
+using Caly.Core.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System.Collections.Generic;
@@ -377,5 +378,26 @@ public partial class AnalysisViewModel : ViewModelBase
     partial void OnBlockSearchTextChanged(string value)
     {
         ApplyFilters();
+    }
+
+    // === Alignment Report ===
+    [ObservableProperty]
+    private string _alignmentReportText = string.Empty;
+
+    [ObservableProperty]
+    private bool _showAlignmentReport;
+
+    [RelayCommand]
+    internal void GenerateAlignmentReport()
+    {
+        var report = MinerUPopoAlignmentReportService.GenerateReport(_structureDocument);
+        AlignmentReportText = report.GenerateSummary();
+        ShowAlignmentReport = true;
+    }
+
+    [RelayCommand]
+    private void CloseAlignmentReport()
+    {
+        ShowAlignmentReport = false;
     }
 }

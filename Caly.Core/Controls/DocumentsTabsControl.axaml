@@ -231,6 +231,21 @@
 							</PathIcon>
 						</ToggleButton>
 
+						<!-- Alignment Report -->
+						<Button DockPanel.Dock="Left"
+                                Margin="5,0,0,0"
+								HorizontalAlignment="Center"
+								VerticalAlignment="Stretch"
+								Background="Transparent"
+								Command="{Binding GenerateAlignmentReportCommand}"
+                                IsVisible="{Binding HasStructureDocument}">
+							<PathIcon Width="17"
+									  Height="17"
+									  Data="{StaticResource document_search_regular}">
+								<ToolTip.Tip>MinerU-Popo 对齐报告</ToolTip.Tip>
+							</PathIcon>
+						</Button>
+
 						<controls:VerticalSeparator/>
 
 						<!-- Popo Process -->

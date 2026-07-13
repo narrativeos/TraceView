@@ -188,6 +188,37 @@ public sealed partial class DocumentViewModel
         IsPopoPaneOpen = !IsPopoPaneOpen;
     }
 
+    // === Alignment Report ===
+    [ObservableProperty]
+    private string _alignmentReportText = string.Empty;
+
+    /// <summary>
+    /// Wrapper command that generates the alignment report and opens it in a window.
+    /// Used by the top toolbar button.
+    /// </summary>
+    [RelayCommand]
+    private void GenerateAlignmentReport()
+    {
+        if (StructureDocument is null)
+            return;
+
+        var report = MinerUPopoAlignmentReportService.GenerateReport(StructureDocument);
+        AlignmentReportText = report.GenerateSummary();
+
+        // Open in a new window
+        var window = new Caly.Core.Views.AlignmentReportWindow(this);
+        window.Show();
+    }
+
+    /// <summary>
+    /// Closes the alignment report dialog (for the AnalysisView overlay).
+    /// </summary>
+    [RelayCommand]
+    private void CloseAlignmentReport()
+    {
+        // No-op for the window-based approach
+    }
+
     /// <summary>
     /// Attempts to load Popo analysis data for the currently opened document.
     /// Only loads from popo/popo_result.json in the project's popo/ directory.

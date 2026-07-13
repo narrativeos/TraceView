@@ -1,0 +1,51 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Caly.Core.ViewModels"
+        x:Class="Caly.Core.Views.AlignmentReportWindow"
+        x:DataType="vm:DocumentViewModel"
+        Width="700"
+        Height="500"
+        CanResize="True"
+        Icon="{DynamicResource AppIcon}"
+        Title="MinerU-Popo 对齐报告">
+
+    <DockPanel Margin="12">
+        <!-- Header with buttons -->
+        <StackPanel DockPanel.Dock="Top"
+                    Orientation="Horizontal"
+                    Spacing="8"
+                    Margin="0,0,0,8">
+            <TextBlock Text="MinerU-Popo 对齐报告"
+                       FontWeight="Bold"
+                       FontSize="16"
+                       VerticalAlignment="Center"/>
+            
+            <Button Content="📋 复制"
+                    Click="CopyButton_OnClick"
+                    Margin="8,0,0,0"
+                    Padding="8,4"/>
+            
+            <StackPanel DockPanel.Dock="Right"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Right">
+                <Button Content="✕"
+                        Command="{Binding CloseAlignmentReportCommand}"
+                        Margin="8,0,0,0"
+                        Padding="8,4"/>
+            </StackPanel>
+        </StackPanel>
+
+        <!-- Report content - using TextBox for text selection support -->
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <TextBox Text="{Binding AlignmentReportText}"
+                     IsReadOnly="True"
+                     AcceptsReturn="True"
+                     TextWrapping="Wrap"
+                     FontFamily="Consolas, Menlo, monospace"
+                     FontSize="12"
+                     BorderThickness="1"
+                     BorderBrush="#CCCCCC"
+                     Padding="8"/>
+        </ScrollViewer>
+    </DockPanel>
+</Window>

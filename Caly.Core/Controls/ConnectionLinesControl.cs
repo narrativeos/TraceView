@@ -667,6 +667,26 @@ public sealed class ConnectionLinesControl : Control
             }
         }
 
+        // Helper to find Popo index for a MinerU block.
+        // First tries the block's own BlockId, then falls back to any of its SourceBlockIds.
+        // This handles cases where a MinerU block is a sub-block that inherited parent block_ids.
+        bool FindPopoIndexForBlock(MinerUBlockViewModel block, out int popoIdx)
+        {
+            // Try the block's own BlockId first
+            if (!string.IsNullOrEmpty(block.BlockId) && blockIdToPopoIndex.TryGetValue(block.BlockId, out popoIdx))
+                return true;
+
+            // Try any of the block's SourceBlockIds
+            foreach (var srcId in block.SourceBlockIds)
+            {
+                if (!string.IsNullOrEmpty(srcId) && blockIdToPopoIndex.TryGetValue(srcId, out popoIdx))
+                    return true;
+            }
+
+            popoIdx = -1;
+            return false;
+        }
+
         // Calculate a safe minimum horizontal span for the S-curve.
         // Because MinerU and Popo columns are very close (only 4px GridSplitter),
         // a direct curve would be nearly vertical and cause severe overlap.
@@ -683,7 +703,7 @@ public sealed class ConnectionLinesControl : Control
             if (string.IsNullOrEmpty(block.BlockId))
                 continue;
 
-            if (!blockIdToPopoIndex.TryGetValue(block.BlockId, out var popoIdx))
+            if (!FindPopoIndexForBlock(block, out var popoIdx))
                 continue;
 
             // Calculate start point (center of MinerU block)
@@ -743,8 +763,8 @@ public sealed class ConnectionLinesControl : Control
                     if (transform is Matrix m)
                     {
                         var point = m.Transform(new Point(0, 0));
-                        // Return the center of the border
-                        return new Point(point.X + border.Bounds.Width / 2.0, point.Y + border.Bounds.Height / 2.0);
+                        // Return the left edge center of the border
+                        return new Point(point.X, point.Y + border.Bounds.Height / 2.0);
                     }
                 }
             }
@@ -887,12 +907,11 @@ public sealed class ConnectionLinesControl : Control
         if (nodeHeight <= 0) nodeHeight = 80.0;
         var nodeCenterY = itemTop + nodeHeight / 2.0;
 
-        // Center X of Popo column (estimate: PopoColumnLeftEdge + half of estimated Popo column width)
-        // We don't have PopoColumnRightEdge, so estimate the center as ~150px into the Popo column
-        var itemCenterX = PopoColumnLeftEdge + 150.0;
+        // Left edge X of Popo column
+        var itemLeftX = PopoColumnLeftEdge;
         var screenY = PopoListTopOffset + nodeCenterY - PopoScrollOffsetY;
 
-        return new Point(itemCenterX, screenY);
+        return new Point(itemLeftX, screenY);
     }
 
     #endregion

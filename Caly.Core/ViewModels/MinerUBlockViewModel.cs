@@ -63,6 +63,13 @@ public partial class MinerUBlockViewModel : ObservableObject
     public System.Collections.Generic.IReadOnlyList<string> RelatedBlockIds => _block.RelatedBlockIds;
 
     /// <summary>
+    /// Source block IDs (UUID strings) referenced by this block.
+    /// For para_blocks with sub-blocks, these are the inherited parent block_ids.
+    /// Used for matching to Popo tree nodes.
+    /// </summary>
+    public System.Collections.Generic.IReadOnlyList<string> SourceBlockIds => _block.SourceBlockIds;
+
+    /// <summary>
     /// Destination type: "para" (adopted), "discarded" (rejected), or empty.
     /// </summary>
     public string DestinationType => _block.DestinationType;
