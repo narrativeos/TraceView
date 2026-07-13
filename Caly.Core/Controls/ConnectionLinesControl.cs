@@ -695,6 +695,7 @@ public sealed class ConnectionLinesControl : Control
         // The bow distance is calculated as a fraction of the vertical distance,
         // creating a smooth arc that makes each line distinguishable.
         const double minBowDistance = 40.0; // Minimum outward bow in pixels
+        const double maxBowDistance = 120.0; // Maximum outward bow to prevent excessive curvature
 
         // Draw connections: MinerU block -> Popo node
         for (int i = 0; i < minerUBlocks.Count; i++)
@@ -718,10 +719,11 @@ public sealed class ConnectionLinesControl : Control
 
             // Calculate vertical distance between start and end
             var verticalDist = Math.Abs(endPoint.Y - startPoint.Y);
-            // Bow distance: proportional to vertical distance, but with a minimum
+            // Bow distance: proportional to vertical distance, but clamped to a range
             // This creates curves that bow outward more when the Y difference is large,
-            // and still bow enough when Y is similar (preventing overlap)
-            var bowDistance = Math.Max(minBowDistance, verticalDist * 0.5);
+            // and still bow enough when Y is similar (preventing overlap),
+            // while preventing excessive curvature at large distances
+            var bowDistance = Math.Clamp(verticalDist * 0.5, minBowDistance, maxBowDistance);
 
             // S-curve: bow RIGHT from MinerU start, bow LEFT from Popo end
             // This creates a visible arc between the two columns
