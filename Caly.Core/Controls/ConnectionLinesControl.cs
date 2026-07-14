@@ -484,15 +484,97 @@ public sealed class ConnectionLinesControl : Control
     private static readonly ImmutablePen FadedDiscardedPen = new(FadedDiscardedLineBrush, 1.0);
     private static readonly ImmutablePen FadedDefaultPen = new(FadedDefaultLineBrush, 1.0);
 
-    // Purple line for MinerU → Popo connections
+    // Soft Purple line for MinerU → Popo connections
     private static readonly ImmutableSolidColorBrush PopoLineBrush =
-        new(Color.Parse("#9C27B0"), 0.7);
-    private static readonly ImmutablePen PopoPen = new(PopoLineBrush, 1.5);
+        new(Color.Parse("#BA68C8"), 0.5);
+    private static readonly ImmutablePen PopoPen = new(PopoLineBrush, 1.2);
 
-    // Orange line for Popo → Semantic connections
-    private static readonly ImmutableSolidColorBrush SemanticLineBrush =
-        new(Color.Parse("#FF9800"), 0.6);
-    private static readonly ImmutablePen SemanticPen = new(SemanticLineBrush, 1.2);
+    // Entity type colors for Popo → Semantic connections (balanced contrast, wider lines)
+    // LOCATION: Green
+    private static readonly ImmutableSolidColorBrush LocationLineBrush =
+        new(Color.Parse("#66BB6A"), 0.6);
+    private static readonly ImmutablePen LocationPen = new(LocationLineBrush, 2.0);
+    
+    // DATE: Orange
+    private static readonly ImmutableSolidColorBrush DateLineBrush =
+        new(Color.Parse("#FFA726"), 0.6);
+    private static readonly ImmutablePen DatePen = new(DateLineBrush, 2.0);
+    
+    // PERSON: Blue
+    private static readonly ImmutableSolidColorBrush PersonLineBrush =
+        new(Color.Parse("#42A5F5"), 0.6);
+    private static readonly ImmutablePen PersonPen = new(PersonLineBrush, 2.0);
+    
+    // NUMBER: Purple
+    private static readonly ImmutableSolidColorBrush NumberLineBrush =
+        new(Color.Parse("#AB47BC"), 0.6);
+    private static readonly ImmutablePen NumberPen = new(NumberLineBrush, 2.0);
+    
+    // FACILITY: Gray
+    private static readonly ImmutableSolidColorBrush FacilityLineBrush =
+        new(Color.Parse("#78909C"), 0.6);
+    private static readonly ImmutablePen FacilityPen = new(FacilityLineBrush, 2.0);
+    
+    // ORGANIZATION: Pink
+    private static readonly ImmutableSolidColorBrush OrganizationLineBrush =
+        new(Color.Parse("#EC407A"), 0.6);
+    private static readonly ImmutablePen OrganizationPen = new(OrganizationLineBrush, 2.0);
+    
+    // DEFAULT/OTHER: Gray (fallback)
+    private static readonly ImmutableSolidColorBrush DefaultSemanticLineBrush =
+        new(Color.Parse("#78909C"), 0.5);
+    private static readonly ImmutablePen DefaultSemanticPen = new(DefaultSemanticLineBrush, 2.0);
+
+    /// <summary>
+    /// Gets the dominant entity category for a Popo node's semantic result.
+    /// Used to determine the connection line color.
+    /// </summary>
+    private static string GetDominantEntityCategory(TreeNodeViewModel nodeVm)
+    {
+        var result = nodeVm.SemanticResult;
+        if (result is null || result.Entities.Count == 0)
+            return "DEFAULT";
+        
+        // Count by category and return the most frequent
+        var categoryCounts = new Dictionary<string, int>();
+        foreach (var entity in result.Entities)
+        {
+            if (!categoryCounts.ContainsKey(entity.Category))
+                categoryCounts[entity.Category] = 0;
+            categoryCounts[entity.Category]++;
+        }
+        
+        string dominant = "DEFAULT";
+        int maxCount = 0;
+        foreach (var kvp in categoryCounts)
+        {
+            if (kvp.Value > maxCount)
+            {
+                maxCount = kvp.Value;
+                dominant = kvp.Key;
+            }
+        }
+        
+        return dominant;
+    }
+
+    /// <summary>
+    /// Gets the appropriate pen for a Popo → Semantic connection based on the dominant entity type.
+    /// </summary>
+    private static ImmutablePen GetSemanticPenForNode(TreeNodeViewModel nodeVm)
+    {
+        var category = GetDominantEntityCategory(nodeVm);
+        return category switch
+        {
+            "LOCATION" => LocationPen,
+            "DATE" => DatePen,
+            "PERSON" => PersonPen,
+            "NUMBER" => NumberPen,
+            "FACILITY" => FacilityPen,
+            "ORGANIZATION" => OrganizationPen,
+            _ => DefaultSemanticPen
+        };
+    }
 
     // Cached cumulative Y positions for MinerU blocks (avoids O(n²) calculation in CalculateMinerUBlockEndPoint)
     private double[] _cachedMinerUCumulativeY = Array.Empty<double>();
@@ -1073,8 +1155,8 @@ public sealed class ConnectionLinesControl : Control
             if (semanticIdx < 0)
                 continue;
 
-            // Calculate start point (right edge of Popo node)
-            var startPoint = GetPopoNodeRightEdgePosition(i);
+            // Calculate start point (center of Popo node)
+            var startPoint = CalculatePopoNodeCenterPosition(i);
 
             // Calculate end point (left edge of Semantic item)
             var endPoint = CalculateSemanticItemLeftEdge(semanticIdx);
@@ -1099,21 +1181,23 @@ public sealed class ConnectionLinesControl : Control
                 ctx.EndFigure(false);
             }
 
-            context.DrawGeometry(null, SemanticPen, sg);
+            // Use colored pen based on dominant entity type
+            var pen = GetSemanticPenForNode(node);
+            context.DrawGeometry(null, pen, sg);
         }
     }
 
     /// <summary>
-    /// Calculates the RIGHT EDGE of a Popo node for connection start point.
+    /// Calculates the CENTER of a Popo node for connection start point.
     /// </summary>
-    private Point GetPopoNodeRightEdgePosition(int nodeIndex)
+    private Point CalculatePopoNodeCenterPosition(int nodeIndex)
     {
         if (nodeIndex < 0)
-            return new Point(PopoColumnRightEdge, PopoListTopOffset);
+            return new Point((PopoColumnLeftEdge + PopoColumnRightEdge) / 2.0, PopoListTopOffset);
 
         var nodes = VisiblePopoNodes;
         if (nodes is null || nodeIndex >= nodes.Count)
-            return new Point(PopoColumnRightEdge, PopoListTopOffset);
+            return new Point((PopoColumnLeftEdge + PopoColumnRightEdge) / 2.0, PopoListTopOffset);
 
         // Use pre-computed cumulative Y cache
         double itemTop;
@@ -1137,10 +1221,11 @@ public sealed class ConnectionLinesControl : Control
         if (nodeHeight <= 0) nodeHeight = 80.0;
         var nodeCenterY = itemTop + nodeHeight / 2.0;
 
-        // Right edge X of Popo column
+        // Center X of Popo column
+        var centerX = (PopoColumnLeftEdge + PopoColumnRightEdge) / 2.0;
         var screenY = PopoListTopOffset + nodeCenterY - PopoScrollOffsetY;
 
-        return new Point(PopoColumnRightEdge, screenY);
+        return new Point(centerX, screenY);
     }
 
     /// <summary>

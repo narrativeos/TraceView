@@ -164,7 +164,9 @@ public sealed class SemanticAnalysisService : IDisposable
         var result = new SemanticBlockResult
         {
             SourceBlockIds = node.SourceBlockIds,
-            Content = node.Content
+            Content = node.Content,
+            Type = node.Type,
+            Title = node.Title
         };
 
         if (response?.Content is null)

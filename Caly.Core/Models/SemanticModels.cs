@@ -19,6 +19,7 @@
 // SOFTWARE.
 
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json.Serialization;
 
 namespace Caly.Core.Models;
@@ -110,45 +111,192 @@ public class SemanticRelation
     public string Source { get; set; } = string.Empty;
 }
 
-/// <summary>
-/// Represents the NLP analysis result for a single Popo block/node.
-/// </summary>
-public class SemanticBlockResult
-{
-    [JsonPropertyName("block_ids")]
-    public List<int> BlockIds { get; set; } = new();
-
-    [JsonPropertyName("source_block_ids")]
-    public List<string> SourceBlockIds { get; set; } = new();
-
-    [JsonPropertyName("content")]
-    public string Content { get; set; } = string.Empty;
-
-    [JsonPropertyName("type")]
-    public string Type { get; set; } = string.Empty;
-
-    [JsonPropertyName("title")]
-    public string Title { get; set; } = string.Empty;
-
-    [JsonPropertyName("tokens")]
-    public List<SemanticToken> Tokens { get; set; } = new();
-
-    [JsonPropertyName("entities")]
-    public List<SemanticEntity> Entities { get; set; } = new();
-
-    [JsonPropertyName("relations")]
-    public List<SemanticRelation> Relations { get; set; } = new();
-
-    [JsonPropertyName("error")]
-    public string? Error { get; set; }
-
     /// <summary>
-    /// Whether this block has expandable details (tokens or relations).
-    /// Used to show/hide the collapsible details Expander in the UI.
+    /// Represents the NLP analysis result for a single Popo block/node.
     /// </summary>
-    [System.Text.Json.Serialization.JsonIgnore]
-    public bool HasExpandableDetails => Tokens.Count > 0 || Relations.Count > 0;
-}
+    public class SemanticBlockResult
+    {
+        [JsonPropertyName("block_ids")]
+        public List<int> BlockIds { get; set; } = new();
+
+        [JsonPropertyName("source_block_ids")]
+        public List<string> SourceBlockIds { get; set; } = new();
+
+        [JsonPropertyName("content")]
+        public string Content { get; set; } = string.Empty;
+
+        [JsonPropertyName("type")]
+        public string Type { get; set; } = string.Empty;
+
+        [JsonPropertyName("title")]
+        public string Title { get; set; } = string.Empty;
+
+        [JsonPropertyName("tokens")]
+        public List<SemanticToken> Tokens { get; set; } = new();
+
+        [JsonPropertyName("entities")]
+        public List<SemanticEntity> Entities { get; set; } = new();
+
+        [JsonPropertyName("relations")]
+        public List<SemanticRelation> Relations { get; set; } = new();
+
+        [JsonPropertyName("error")]
+        public string? Error { get; set; }
+
+        /// <summary>
+        /// Whether this block has expandable details (tokens or relations).
+        /// Used to show/hide the collapsible details Expander in the UI.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonIgnore]
+        public bool HasExpandableDetails => Tokens.Count > 0 || Relations.Count > 0;
+
+        /// <summary>
+        /// Whether this block has a title or type to display in the header.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonIgnore]
+        public bool HasTitleOrType => !string.IsNullOrEmpty(Title) || !string.IsNullOrEmpty(Type);
+
+        /// <summary>
+        /// Whether this block has content to preview.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonIgnore]
+        public bool HasContent => !string.IsNullOrEmpty(Content);
+
+        /// <summary>
+        /// Whether this block has any entities.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonIgnore]
+        public bool HasEntities => Entities.Count > 0;
+
+        /// <summary>
+        /// Content preview (truncated to 100 chars).
+        /// </summary>
+        [System.Text.Json.Serialization.JsonIgnore]
+        public string ContentPreview
+        {
+            get
+            {
+                if (string.IsNullOrEmpty(Content))
+                    return string.Empty;
+                return Content.Length > 100 ? Content.Substring(0, 100) + "..." : Content;
+            }
+        }
+
+        /// <summary>
+        /// Summary string for entities: "3 地点, 2 时间" etc.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonIgnore]
+        public string EntitySummary
+        {
+            get
+            {
+                if (Entities.Count == 0)
+                    return string.Empty;
+
+                var categoryCounts = new Dictionary<string, int>();
+                foreach (var entity in Entities)
+                {
+                    if (!categoryCounts.ContainsKey(entity.Category))
+                        categoryCounts[entity.Category] = 0;
+                    categoryCounts[entity.Category]++;
+                }
+
+                return string.Join(", ", categoryCounts.Select(kvp => $"{kvp.Value} {kvp.Key}"));
+            }
+        }
+
+        /// <summary>
+        /// Type color for the badge (balanced contrast colors matching entity colors).
+        /// </summary>
+        [System.Text.Json.Serialization.JsonIgnore]
+        public string TypeColorHex
+        {
+            get
+            {
+                return Type switch
+                {
+                    "text" => "#4CAF50",
+                    "page_number" => "#78909C",
+                    "image" => "#2196F3",
+                    "image_footnote" => "#2196F3",
+                    "table" => "#FF9800",
+                    "title" => "#9C27B0",
+                    "root" => "#8D6E63",
+                    _ => "#607D8B",
+                };
+            }
+        }
+
+        /// <summary>
+        /// LOCATION entities.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonIgnore]
+        public List<SemanticEntity> LocationEntities
+        {
+            get => Entities.Where(e => e.Category == "LOCATION").ToList();
+        }
+
+        /// <summary>
+        /// DATE entities.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonIgnore]
+        public List<SemanticEntity> DateEntities
+        {
+            get => Entities.Where(e => e.Category == "DATE").ToList();
+        }
+
+        /// <summary>
+        /// PERSON entities.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonIgnore]
+        public List<SemanticEntity> PersonEntities
+        {
+            get => Entities.Where(e => e.Category == "PERSON").ToList();
+        }
+
+        /// <summary>
+        /// NUMBER entities.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonIgnore]
+        public List<SemanticEntity> NumberEntities
+        {
+            get => Entities.Where(e => e.Category == "NUMBER").ToList();
+        }
+
+        /// <summary>
+        /// FACILITY entities.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonIgnore]
+        public List<SemanticEntity> FacilityEntities
+        {
+            get => Entities.Where(e => e.Category == "FACILITY").ToList();
+        }
+
+        /// <summary>
+        /// ORGANIZATION entities.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonIgnore]
+        public List<SemanticEntity> OrganizationEntities
+        {
+            get => Entities.Where(e => e.Category == "ORGANIZATION").ToList();
+        }
+
+        /// <summary>
+        /// Other entities (UNKNOWN, MATERIAL, etc.).
+        /// </summary>
+        [System.Text.Json.Serialization.JsonIgnore]
+        public List<SemanticEntity> OtherEntities
+        {
+            get
+            {
+                var knownCategories = new HashSet<string>
+                {
+                    "LOCATION", "DATE", "PERSON", "NUMBER", "FACILITY", "ORGANIZATION"
+                };
+                return Entities.Where(e => !knownCategories.Contains(e.Category)).ToList();
+            }
+        }
+    }
 
 /// <summary>
 /// Container for all semantic analysis results of a document.
