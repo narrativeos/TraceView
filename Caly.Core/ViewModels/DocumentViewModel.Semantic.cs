@@ -166,6 +166,8 @@ public sealed partial class DocumentViewModel
         OnPropertyChanged(nameof(SemanticEntityCount));
         OnPropertyChanged(nameof(SemanticRelationCount));
         OnPropertyChanged(nameof(HasSemanticResults));
+        // Critical: notify that SemanticBlockViewModels has changed so the ItemsControl re-reads the property
+        OnPropertyChanged(nameof(SemanticBlockViewModels));
     }
 
     #endregion
