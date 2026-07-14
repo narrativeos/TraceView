@@ -130,6 +130,44 @@ public sealed partial class DocumentViewModel
     /// </summary>
     public int SemanticNodeCount => SemanticResults?.Blocks.Count ?? 0;
 
+    /// <summary>
+    /// Semantic blocks wrapped in ViewModels for UI binding with expand/collapse support.
+    /// Cached to preserve IsDetailsExpanded state.
+    /// </summary>
+    private ObservableCollection<SemanticBlockViewModel>? _semanticBlockViewModels;
+
+    public ObservableCollection<SemanticBlockViewModel> SemanticBlockViewModels
+    {
+        get
+        {
+            if (_semanticBlockViewModels is not null) return _semanticBlockViewModels;
+            System.Diagnostics.Debug.WriteLine($"[Semantic] SemanticBlockViewModels getter: SemanticResults={SemanticResults != null}, Blocks={SemanticResults?.Blocks.Count ?? 0}");
+            if (SemanticResults?.Blocks is null)
+            {
+                _semanticBlockViewModels = new ObservableCollection<SemanticBlockViewModel>();
+                System.Diagnostics.Debug.WriteLine("[Semantic] Returning empty collection (no data)");
+                return _semanticBlockViewModels;
+            }
+            _semanticBlockViewModels = new ObservableCollection<SemanticBlockViewModel>(
+                SemanticResults.Blocks.Select(b => new SemanticBlockViewModel(b)));
+            System.Diagnostics.Debug.WriteLine($"[Semantic] Created {_semanticBlockViewModels.Count} view models");
+            return _semanticBlockViewModels;
+        }
+    }
+
+    /// <summary>
+    /// Overrides SemanticResults setter to reset cached ViewModels.
+    /// </summary>
+    partial void OnSemanticResultsChanged(SemanticResultFile? value)
+    {
+        _semanticBlockViewModels = null; // Reset cache to rebuild when accessed
+        // Notify dependent properties so the UI updates correctly
+        OnPropertyChanged(nameof(SemanticNodeCount));
+        OnPropertyChanged(nameof(SemanticEntityCount));
+        OnPropertyChanged(nameof(SemanticRelationCount));
+        OnPropertyChanged(nameof(HasSemanticResults));
+    }
+
     #endregion
 
     #region Semantic Commands
