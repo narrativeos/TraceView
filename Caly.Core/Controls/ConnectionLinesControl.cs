@@ -157,6 +157,43 @@ public sealed class ConnectionLinesControl : Control
     public static readonly StyledProperty<TreeView?> PopoTreeViewReferenceProperty =
         AvaloniaProperty.Register<ConnectionLinesControl, TreeView?>(nameof(PopoTreeViewReference));
 
+    /// <summary>
+    /// Right edge of the Popo column (PopoColumnLeftEdge + Popo column width).
+    /// Used for calculating the start point of Popo -> Semantic connection lines.
+    /// </summary>
+    public static readonly StyledProperty<double> PopoColumnRightEdgeProperty =
+        AvaloniaProperty.Register<ConnectionLinesControl, double>(nameof(PopoColumnRightEdge));
+
+    /// <summary>
+    /// Left edge of the Semantic column.
+    /// </summary>
+    public static readonly StyledProperty<double> SemanticColumnLeftEdgeProperty =
+        AvaloniaProperty.Register<ConnectionLinesControl, double>(nameof(SemanticColumnLeftEdge));
+
+    /// <summary>
+    /// Scroll offset Y for the Semantic column.
+    /// </summary>
+    public static readonly StyledProperty<double> SemanticScrollOffsetYProperty =
+        AvaloniaProperty.Register<ConnectionLinesControl, double>(nameof(SemanticScrollOffsetY));
+
+    /// <summary>
+    /// Top offset of the Semantic list items within the Semantic column.
+    /// </summary>
+    public static readonly StyledProperty<double> SemanticListTopOffsetProperty =
+        AvaloniaProperty.Register<ConnectionLinesControl, double>(nameof(SemanticListTopOffset));
+
+    /// <summary>
+    /// Whether to show connection lines between Popo Blocks and Semantic Blocks.
+    /// </summary>
+    public static readonly StyledProperty<bool> ShowSemanticConnectionsProperty =
+        AvaloniaProperty.Register<ConnectionLinesControl, bool>(nameof(ShowSemanticConnections), false);
+
+    /// <summary>
+    /// Flat list of SemanticBlockResult items for drawing connection lines from Popo nodes to Semantic items.
+    /// </summary>
+    public static readonly StyledProperty<IReadOnlyList<SemanticBlockResult>?> VisibleSemanticItemsProperty =
+        AvaloniaProperty.Register<ConnectionLinesControl, IReadOnlyList<SemanticBlockResult>?>(nameof(VisibleSemanticItems));
+
     static ConnectionLinesControl()
     {
         // NOTE: PdfScrollOffsetYProperty and MinerUScrollOffsetYProperty are NOT in AffectsRender.
@@ -181,7 +218,11 @@ public sealed class ConnectionLinesControl : Control
             PopoColumnLeftEdgeProperty,
             PopoScrollOffsetYProperty,
             PopoListTopOffsetProperty,
-            VisiblePopoNodesProperty);
+            VisiblePopoNodesProperty,
+            ShowSemanticConnectionsProperty,
+            VisibleSemanticItemsProperty,
+            SemanticScrollOffsetYProperty,
+            SemanticListTopOffsetProperty);
 
         // Subscribe to scroll offset property changes for throttled rendering
         PdfScrollOffsetYProperty.Changed.AddClassHandler<ConnectionLinesControl>((control, e) =>
@@ -193,6 +234,10 @@ public sealed class ConnectionLinesControl : Control
             control.ScheduleRender();
         });
         PopoScrollOffsetYProperty.Changed.AddClassHandler<ConnectionLinesControl>((control, e) =>
+        {
+            control.ScheduleRender();
+        });
+        SemanticScrollOffsetYProperty.Changed.AddClassHandler<ConnectionLinesControl>((control, e) =>
         {
             control.ScheduleRender();
         });
@@ -379,6 +424,42 @@ public sealed class ConnectionLinesControl : Control
         set => SetValue(PopoTreeViewReferenceProperty, value);
     }
 
+    public double PopoColumnRightEdge
+    {
+        get => GetValue(PopoColumnRightEdgeProperty);
+        set => SetValue(PopoColumnRightEdgeProperty, value);
+    }
+
+    public double SemanticColumnLeftEdge
+    {
+        get => GetValue(SemanticColumnLeftEdgeProperty);
+        set => SetValue(SemanticColumnLeftEdgeProperty, value);
+    }
+
+    public double SemanticScrollOffsetY
+    {
+        get => GetValue(SemanticScrollOffsetYProperty);
+        set => SetValue(SemanticScrollOffsetYProperty, value);
+    }
+
+    public double SemanticListTopOffset
+    {
+        get => GetValue(SemanticListTopOffsetProperty);
+        set => SetValue(SemanticListTopOffsetProperty, value);
+    }
+
+    public bool ShowSemanticConnections
+    {
+        get => GetValue(ShowSemanticConnectionsProperty);
+        set => SetValue(ShowSemanticConnectionsProperty, value);
+    }
+
+    public IReadOnlyList<SemanticBlockResult>? VisibleSemanticItems
+    {
+        get => GetValue(VisibleSemanticItemsProperty);
+        set => SetValue(VisibleSemanticItemsProperty, value);
+    }
+
     // High-visibility brushes (precise matches)
     private static readonly ImmutableSolidColorBrush AdoptedLineBrush =
         new(Color.Parse(MinerUConstants.AdoptedColor), 0.8);
@@ -408,6 +489,11 @@ public sealed class ConnectionLinesControl : Control
         new(Color.Parse("#9C27B0"), 0.7);
     private static readonly ImmutablePen PopoPen = new(PopoLineBrush, 1.5);
 
+    // Orange line for Popo → Semantic connections
+    private static readonly ImmutableSolidColorBrush SemanticLineBrush =
+        new(Color.Parse("#FF9800"), 0.6);
+    private static readonly ImmutablePen SemanticPen = new(SemanticLineBrush, 1.2);
+
     // Cached cumulative Y positions for MinerU blocks (avoids O(n²) calculation in CalculateMinerUBlockEndPoint)
     private double[] _cachedMinerUCumulativeY = Array.Empty<double>();
     private bool _cumulativeYCacheValid = false;
@@ -415,6 +501,10 @@ public sealed class ConnectionLinesControl : Control
     // Cached cumulative Y positions for Popo nodes
     private double[] _cachedPopoCumulativeY = Array.Empty<double>();
     private bool _popoCumulativeYCacheValid = false;
+
+    // Cached cumulative Y positions for Semantic items
+    private double[] _cachedSemanticCumulativeY = Array.Empty<double>();
+    private bool _semanticCumulativeYCacheValid = false;
 
     public override void Render(DrawingContext context)
     {
@@ -431,6 +521,12 @@ public sealed class ConnectionLinesControl : Control
         if (ShowPopoConnections)
         {
             RenderMinerUToPopoConnections(context);
+        }
+
+        // Render Popo → Semantic connections
+        if (ShowSemanticConnections)
+        {
+            RenderPopoToSemanticConnections(context);
         }
     }
 
@@ -914,6 +1010,227 @@ public sealed class ConnectionLinesControl : Control
         var screenY = PopoListTopOffset + nodeCenterY - PopoScrollOffsetY;
 
         return new Point(itemLeftX, screenY);
+    }
+
+    #endregion
+
+    #region Popo → Semantic Connections
+
+    /// <summary>
+    /// Renders connection lines from Popo Blocks to Semantic Blocks.
+    /// Each Popo node with semantic data is connected to its corresponding SemanticBlockResult.
+    /// Uses the same SourceBlockIds for matching between Popo nodes and Semantic items.
+    /// </summary>
+    private void RenderPopoToSemanticConnections(DrawingContext context)
+    {
+        var popoNodes = VisiblePopoNodes;
+        var semanticItems = VisibleSemanticItems;
+
+        if (popoNodes is null || popoNodes.Count == 0)
+            return;
+        if (semanticItems is null || semanticItems.Count == 0)
+            return;
+
+        // Build a map: SourceBlockId (UUID) -> Semantic item index
+        // A Popo node's SourceBlockIds may appear in multiple Semantic items,
+        // but we draw to the first matching item.
+        var blockIdToSemanticIndex = new Dictionary<string, int>();
+        for (int i = 0; i < semanticItems.Count; i++)
+        {
+            var item = semanticItems[i];
+            foreach (var srcId in item.SourceBlockIds)
+            {
+                if (!string.IsNullOrEmpty(srcId) && !blockIdToSemanticIndex.ContainsKey(srcId))
+                {
+                    blockIdToSemanticIndex[srcId] = i;
+                }
+            }
+        }
+
+        // Build cumulative Y cache for Semantic items
+        BuildSemanticCumulativeYCache(semanticItems);
+
+        // Draw connections: Popo node -> Semantic item
+        for (int i = 0; i < popoNodes.Count; i++)
+        {
+            var node = popoNodes[i];
+
+            // Only draw for nodes that have semantic results
+            if (!node.HasSemanticResult)
+                continue;
+
+            // Find the corresponding semantic item by matching SourceBlockIds
+            int semanticIdx = -1;
+            foreach (var srcId in node.SourceBlockIds)
+            {
+                if (!string.IsNullOrEmpty(srcId) && blockIdToSemanticIndex.TryGetValue(srcId, out var idx))
+                {
+                    semanticIdx = idx;
+                    break;
+                }
+            }
+
+            if (semanticIdx < 0)
+                continue;
+
+            // Calculate start point (right edge of Popo node)
+            var startPoint = GetPopoNodeRightEdgePosition(i);
+
+            // Calculate end point (left edge of Semantic item)
+            var endPoint = CalculateSemanticItemLeftEdge(semanticIdx);
+
+            // Skip if outside visible area
+            if (IsOutsideVisibleArea(startPoint.Y, endPoint.Y))
+                continue;
+
+            // Calculate vertical distance for bow
+            var verticalDist = Math.Abs(endPoint.Y - startPoint.Y);
+            var bowDistance = Math.Clamp(verticalDist * 0.4, 30.0, 100.0);
+
+            // S-curve: bow RIGHT from Popo start, bow LEFT from Semantic end
+            var controlPoint1 = new Point(startPoint.X + bowDistance, startPoint.Y);
+            var controlPoint2 = new Point(endPoint.X - bowDistance, endPoint.Y);
+
+            var sg = new StreamGeometry();
+            using (var ctx = sg.Open())
+            {
+                ctx.BeginFigure(startPoint, false);
+                ctx.CubicBezierTo(controlPoint1, controlPoint2, endPoint);
+                ctx.EndFigure(false);
+            }
+
+            context.DrawGeometry(null, SemanticPen, sg);
+        }
+    }
+
+    /// <summary>
+    /// Calculates the RIGHT EDGE of a Popo node for connection start point.
+    /// </summary>
+    private Point GetPopoNodeRightEdgePosition(int nodeIndex)
+    {
+        if (nodeIndex < 0)
+            return new Point(PopoColumnRightEdge, PopoListTopOffset);
+
+        var nodes = VisiblePopoNodes;
+        if (nodes is null || nodeIndex >= nodes.Count)
+            return new Point(PopoColumnRightEdge, PopoListTopOffset);
+
+        // Use pre-computed cumulative Y cache
+        double itemTop;
+        if (_popoCumulativeYCacheValid && nodeIndex < _cachedPopoCumulativeY.Length)
+        {
+            itemTop = _cachedPopoCumulativeY[nodeIndex];
+        }
+        else
+        {
+            itemTop = 0;
+            for (int i = 0; i < nodeIndex; i++)
+            {
+                var h = nodes[i].ActualHeight;
+                if (h <= 0) h = 80.0;
+                itemTop += h + 4.0;
+            }
+        }
+
+        var currentNode = nodes[nodeIndex];
+        var nodeHeight = currentNode.ActualHeight;
+        if (nodeHeight <= 0) nodeHeight = 80.0;
+        var nodeCenterY = itemTop + nodeHeight / 2.0;
+
+        // Right edge X of Popo column
+        var screenY = PopoListTopOffset + nodeCenterY - PopoScrollOffsetY;
+
+        return new Point(PopoColumnRightEdge, screenY);
+    }
+
+    /// <summary>
+    /// Calculates the LEFT EDGE of a Semantic item for connection end point.
+    /// </summary>
+    private Point CalculateSemanticItemLeftEdge(int itemIndex)
+    {
+        if (itemIndex < 0)
+            return new Point(SemanticColumnLeftEdge, SemanticListTopOffset);
+
+        var items = VisibleSemanticItems;
+        if (items is null || itemIndex >= items.Count)
+            return new Point(SemanticColumnLeftEdge, SemanticListTopOffset);
+
+        // Use pre-computed cumulative Y cache
+        double itemTop;
+        if (_semanticCumulativeYCacheValid && itemIndex < _cachedSemanticCumulativeY.Length)
+        {
+            itemTop = _cachedSemanticCumulativeY[itemIndex];
+        }
+        else
+        {
+            itemTop = 0;
+            for (int i = 0; i < itemIndex; i++)
+            {
+                var h = GetSemanticItemHeight(items[i]);
+                itemTop += h + 6.0; // 6px spacing between semantic items
+            }
+        }
+
+        var currentItem = items[itemIndex];
+        var itemHeight = GetSemanticItemHeight(currentItem);
+        var itemCenterY = itemTop + itemHeight / 2.0;
+
+        // Left edge X of Semantic column (with small padding for visual offset)
+        var screenY = SemanticListTopOffset + itemCenterY - SemanticScrollOffsetY;
+
+        return new Point(SemanticColumnLeftEdge + 8.0, screenY);
+    }
+
+    /// <summary>
+    /// Estimates the rendered height of a SemanticBlockResult item.
+    /// Based on the content length and number of entities/relations.
+    /// </summary>
+    private double GetSemanticItemHeight(SemanticBlockResult item)
+    {
+        // Base height for content preview
+        double height = 40.0;
+
+        // Add height for tokens
+        if (item.Tokens.Count > 0)
+            height += 20.0;
+
+        // Add height for entities
+        if (item.Entities.Count > 0)
+            height += 20.0;
+
+        // Add height for relations
+        if (item.Relations.Count > 0)
+            height += item.Relations.Count * 14.0;
+
+        // Clamp to reasonable range
+        return Math.Clamp(height, 40.0, 150.0);
+    }
+
+    /// <summary>
+    /// Builds cumulative Y cache for Semantic items using estimated heights.
+    /// </summary>
+    private void BuildSemanticCumulativeYCache(IReadOnlyList<SemanticBlockResult> items)
+    {
+        if (items.Count == 0)
+        {
+            _cachedSemanticCumulativeY = Array.Empty<double>();
+            _semanticCumulativeYCacheValid = true;
+            return;
+        }
+
+        var cache = new double[items.Count + 1];
+        double cumulative = 0;
+        cache[0] = 0;
+
+        for (int i = 0; i < items.Count; i++)
+        {
+            var h = GetSemanticItemHeight(items[i]);
+            cache[i + 1] = cumulative + h + 6.0; // 6px gap between items
+            cumulative = cache[i + 1];
+        }
+
+        _cachedSemanticCumulativeY = cache;
+        _semanticCumulativeYCacheValid = true;
     }
 
     #endregion

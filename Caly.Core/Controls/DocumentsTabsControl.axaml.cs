@@ -44,6 +44,7 @@ namespace Caly.Core.Controls;
 [TemplatePart("PART_ThreeColumnGrid", typeof(Grid))]
 [TemplatePart("PART_PopoScrollViewer", typeof(ScrollViewer))]
 [TemplatePart("PART_PopoTreeView", typeof(TreeView))]
+[TemplatePart("PART_SemanticScrollViewer", typeof(ScrollViewer))]
 public sealed partial class DocumentsTabsControl : UserControl
 {
     private const int MaxPaneLength = 500;
@@ -61,6 +62,7 @@ public sealed partial class DocumentsTabsControl : UserControl
     private Grid? _threeColumnGrid;
     private ScrollViewer? _popoScrollViewer;
     private TreeView? _popoTreeView;
+    private ScrollViewer? _semanticScrollViewer;
     
     // Debounce for UpdateConnectionLines to avoid excessive calls during scrolling
     private bool _updateConnectionLinesPending;
@@ -286,6 +288,11 @@ public sealed partial class DocumentsTabsControl : UserControl
         UpdateConnectionLines();
     }
 
+    private void OnSemanticScrollChanged(object? sender, ScrollChangedEventArgs e)
+    {
+        UpdateConnectionLines();
+    }
+
     private ConnectionLinesControl? GetConnectionLinesControl()
     {
         if (_connectionLinesControl is null)
@@ -359,6 +366,15 @@ public sealed partial class DocumentsTabsControl : UserControl
             _popoTreeView = this.FindDescendantOfType<TreeView>(false, tv => tv.Name == "PART_PopoTreeView");
         }
         return _popoTreeView;
+    }
+
+    private ScrollViewer? GetSemanticScrollViewer()
+    {
+        if (_semanticScrollViewer is null)
+        {
+            _semanticScrollViewer = this.FindDescendantOfType<ScrollViewer>(false, sv => sv.Name == "PART_SemanticScrollViewer");
+        }
+        return _semanticScrollViewer;
     }
 
     private void UpdateConnectionLines()
@@ -512,12 +528,20 @@ public sealed partial class DocumentsTabsControl : UserControl
             connControl.PdfColumnRightEdge = pdfColumnWidth;
             connControl.MinerUColumnLeftEdge = pdfColumnWidth + 4;
 
-            // Popo column left edge (if 3 columns exist)
+            // Popo column left edge (if 3+ columns exist)
             if (layoutGrid.ColumnDefinitions.Count >= 3)
             {
                 var minerUColumnWidth = layoutGrid.ColumnDefinitions[1].ActualWidth;
                 connControl.MinerUColumnRightEdge = connControl.MinerUColumnLeftEdge + minerUColumnWidth;
                 connControl.PopoColumnLeftEdge = connControl.MinerUColumnRightEdge + 4; // +4 for GridSplitter
+
+                // Semantic column left edge (if 4 columns exist)
+                if (layoutGrid.ColumnDefinitions.Count >= 4)
+                {
+                    var popoColumnWidth = layoutGrid.ColumnDefinitions[2].ActualWidth;
+                    connControl.PopoColumnRightEdge = connControl.PopoColumnLeftEdge + popoColumnWidth;
+                    connControl.SemanticColumnLeftEdge = connControl.PopoColumnRightEdge + 4; // +4 for GridSplitter
+                }
             }
         }
         else if (connControl.Bounds.Width > 0)
@@ -548,6 +572,24 @@ public sealed partial class DocumentsTabsControl : UserControl
 
         // Show Popo connections only when both MinerU and Popo columns are visible
         connControl.ShowPopoConnections = docVm.ShowMinerUColumn && docVm.ShowAnalysisColumn && docVm.HasPopoBlocks;
+
+        // Semantic scroll offset
+        var semanticScroll = GetSemanticScrollViewer();
+        if (semanticScroll is not null)
+        {
+            connControl.SemanticScrollOffsetY = semanticScroll.Offset.Y;
+            // Border Padding=8 + header StackPanel(~20) + margin=6 + StackPanel padding(~8)
+            connControl.SemanticListTopOffset = 42;
+        }
+
+        // Show Semantic connections only when both Popo and Semantic columns are visible with data
+        connControl.ShowSemanticConnections = docVm.ShowAnalysisColumn && docVm.ShowSemanticColumn && docVm.HasSemanticResults;
+
+        // Set Semantic items for Popo -> Semantic connections
+        if (docVm.SemanticResults is not null)
+        {
+            connControl.VisibleSemanticItems = docVm.SemanticResults.Blocks;
+        }
 
         // Force a re-render now that all properties have been set
         connControl.InvalidateVisual();
