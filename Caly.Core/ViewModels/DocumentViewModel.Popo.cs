@@ -104,6 +104,11 @@ public sealed partial class DocumentViewModel
     public bool HasPopoBlocks => PopoBlocks.Count > 0;
 
     /// <summary>
+    /// Gets whether Popo tree is available (for NLP button visibility).
+    /// </summary>
+    public bool HasPopoTree => PopoTreeRoot != null;
+
+    /// <summary>
     /// Tree root for hierarchical Popo display (Column 3).
     /// Wraps StructureDocument.TreeRoot into a TreeNodeViewModel for TreeView binding.
     /// </summary>
@@ -180,6 +185,7 @@ public sealed partial class DocumentViewModel
         OnPropertyChanged(nameof(PopoTreeNodeCount));
         OnPropertyChanged(nameof(PopoTreeRootChildren));
         OnPropertyChanged(nameof(VisiblePopoNodes));
+        OnPropertyChanged(nameof(HasPopoTree));
     }
 
     [RelayCommand]

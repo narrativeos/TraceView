@@ -45,6 +45,18 @@ namespace Caly.Core.Services;
 [JsonSerializable(typeof(PopoTaskStatusResponse), GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(PopoTaskResultResponse), GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(PopoProcessResultJson), GenerationMode = JsonSourceGenerationMode.Metadata)]
+// Semantic analysis models
+[JsonSerializable(typeof(SemanticResultFile), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(SemanticBlockResult), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(SemanticToken), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(SemanticEntity), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(SemanticRelation), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(HanLPAnalyzeRequest), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(HanLPAnalyzeResponse), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(HanLPContent), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(HanLPToken), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(HanLPEntity), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(HanLPRelation), GenerationMode = JsonSourceGenerationMode.Metadata)]
 internal partial class SourceGenerationContext : JsonSerializerContext;
 
 internal sealed class JsonSettingsService : ISettingsService

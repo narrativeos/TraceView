@@ -373,8 +373,9 @@ public sealed partial class DocumentViewModel : ViewModelBase
         {
             Dispatcher.UIThread.Invoke(() =>
             {
-                TryLoadMinerUData();  // Load MinerU from mineru/
-                TryLoadPopoData();    // Load Popo from popo/
+                TryLoadMinerUData();      // Load MinerU from mineru/
+                TryLoadPopoData();        // Load Popo from popo/
+                TryLoadSemanticData();    // Load Semantic from semantic/
             });
         }
 

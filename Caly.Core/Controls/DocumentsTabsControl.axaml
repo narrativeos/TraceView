@@ -217,21 +217,35 @@
 							</PathIcon>
 						</ToggleButton>
 
-						<!-- Toggle Popo Column -->
-						<ToggleButton DockPanel.Dock="Left"
+							<!-- Toggle Popo Column -->
+							<ToggleButton DockPanel.Dock="Left"
                                         Margin="0,0,0,0"
 									   HorizontalAlignment="Center"
 									   VerticalAlignment="Stretch"
 									   Background="Transparent"
 									   IsChecked="{Binding ShowAnalysisColumn}">
-							<PathIcon Width="17"
-									  Height="17"
-									  Data="{StaticResource popo_blocks_regular}">
-								<ToolTip.Tip>Toggle Popo Blocks</ToolTip.Tip>
-							</PathIcon>
-						</ToggleButton>
+								<PathIcon Width="17"
+										  Height="17"
+										  Data="{StaticResource popo_blocks_regular}">
+									<ToolTip.Tip>Toggle Popo Blocks</ToolTip.Tip>
+								</PathIcon>
+							</ToggleButton>
 
-						<!-- Alignment Report -->
+							<!-- Toggle Semantic Column -->
+							<ToggleButton DockPanel.Dock="Left"
+                                        Margin="0,0,0,0"
+									   HorizontalAlignment="Center"
+									   VerticalAlignment="Stretch"
+									   Background="Transparent"
+									   IsChecked="{Binding ShowSemanticColumn}">
+								<PathIcon Width="17"
+										  Height="17"
+										  Data="{StaticResource semantic_analysis_regular}">
+									<ToolTip.Tip>Toggle Semantic Analysis</ToolTip.Tip>
+								</PathIcon>
+							</ToggleButton>
+
+							<!-- Alignment Report -->
 						<Button DockPanel.Dock="Left"
                                 Margin="5,0,0,0"
 								HorizontalAlignment="Center"
@@ -247,6 +261,21 @@
 						</Button>
 
 						<controls:VerticalSeparator/>
+
+						<!-- NLP Analyze (visible when Popo tree exists) - leftmost on right side -->
+						<Button DockPanel.Dock="Right"
+                                Margin="0,0,5,0"
+								HorizontalAlignment="Center"
+								VerticalAlignment="Stretch"
+								Background="Transparent"
+								Command="{Binding ProcessWithSemanticCommand}"
+                                IsVisible="{Binding HasPopoTree}">
+							<PathIcon Width="17"
+									  Height="17"
+									  Data="{StaticResource nlp_process_regular}">
+								<ToolTip.Tip>Analyze with NLP</ToolTip.Tip>
+							</PathIcon>
+						</Button>
 
 						<!-- Popo Process (always visible when MinerU ZIP exists, allows re-processing) -->
 						<Button DockPanel.Dock="Right"
@@ -311,6 +340,7 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="{Binding ShowMinerUColumn, Converter={StaticResource BoolToGridLengthConverter}}"/>
                                 <ColumnDefinition Width="{Binding ShowAnalysisColumn, Converter={StaticResource BoolToGridLengthConverter}}"/>
+                                <ColumnDefinition Width="{Binding ShowSemanticColumn, Converter={StaticResource BoolToGridLengthConverter}}"/>
                             </Grid.ColumnDefinitions>
 
                             <!-- Column 1: PDF Document -->
@@ -702,10 +732,222 @@
                                 </DockPanel>
                             </Border>
 
-                             <!-- Connection Lines overlay between all three columns -->
+                            <!-- GridSplitter between Popo and Semantic -->
+                            <GridSplitter Grid.Column="2"
+                                          HorizontalAlignment="Right"
+                                          Width="4"
+                                          Background="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                                          IsVisible="{Binding ShowSemanticColumn}"/>
+
+                            <!-- Column 4: Semantic Analysis -->
+                            <Border Grid.Column="3"
+                                    Padding="8"
+                                    Background="{DynamicResource SystemChromeLowColor}"
+                                    BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                                    BorderThickness="1"
+                                    IsVisible="{Binding ShowSemanticColumn}">
+                                <DockPanel>
+                                    <!-- Header -->
+                                    <StackPanel DockPanel.Dock="Top"
+                                                Orientation="Horizontal"
+                                                Spacing="4"
+                                                Margin="0,0,0,6">
+                                        <TextBlock Text="Semantic"
+                                                   FontWeight="Bold"
+                                                   FontSize="12"/>
+                                        <TextBlock Text="{Binding SemanticNodeCount, StringFormat='({0} nodes)'}"
+                                                   FontSize="11"
+                                                   Opacity="0.6"
+                                                   IsVisible="{Binding !IsSemanticProcessing}"/>
+                                        <TextBlock Text="{Binding SemanticEntityCount, StringFormat='({0} entities)'}"
+                                                   FontSize="10"
+                                                   Opacity="0.4"
+                                                   IsVisible="{Binding !IsSemanticProcessing}"/>
+                                    </StackPanel>
+
+                                    <!-- Progress State: shown during NLP processing -->
+                                    <Border IsVisible="{Binding IsSemanticProcessing}"
+                                            VerticalAlignment="Center"
+                                            HorizontalAlignment="Stretch">
+                                        <StackPanel VerticalAlignment="Center"
+                                                    HorizontalAlignment="Center"
+                                                    Spacing="12">
+                                            <PathIcon Width="32"
+                                                      Height="32"
+                                                      Data="{StaticResource spinner_regular}"
+                                                      Foreground="{DynamicResource SystemAccentColor}"
+                                                      HorizontalAlignment="Center"/>
+                                            <TextBlock Text="{Binding SemanticStatusText}"
+                                                       FontSize="13"
+                                                       HorizontalAlignment="Center"
+                                                       TextAlignment="Center"/>
+                                            <ProgressBar Width="200"
+                                                         Minimum="0"
+                                                         Maximum="100"
+                                                         Value="{Binding SemanticProgress}"
+                                                         HorizontalAlignment="Center"/>
+                                            <Button Content="Cancel"
+                                                    Command="{Binding CancelSemanticProcessCommand}"
+                                                    HorizontalAlignment="Center"
+                                                    Padding="20,4"/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- Error State -->
+                                    <Border IsVisible="{Binding SemanticStatus, Converter={StaticResource EqualsConverter}, ConverterParameter=Failed}"
+                                            VerticalAlignment="Center"
+                                            HorizontalAlignment="Stretch"
+                                            Padding="12"
+                                            Background="#FFF2F2"
+                                            CornerRadius="4">
+                                        <StackPanel Spacing="8">
+                                            <TextBlock Text="{Binding SemanticStatusText}"
+                                                       FontSize="12"
+                                                       Foreground="#FF4444"
+                                                       TextAlignment="Center"
+                                                       TextWrapping="Wrap"/>
+                                            <Button Content="Retry"
+                                                    Command="{Binding ProcessWithSemanticCommand}"
+                                                    HorizontalAlignment="Center"
+                                                    Padding="20,4"/>
+                                        </StackPanel>
+                                    </Border>
+
+                                      <!-- Placeholder when no results -->
+                                      <Border IsVisible="{Binding ShowSemanticPlaceholder}"
+                                              VerticalAlignment="Center"
+                                              HorizontalAlignment="Stretch"
+                                              Padding="16">
+                                          <StackPanel Spacing="8"
+                                                      HorizontalAlignment="Center">
+                                              <TextBlock Text="NLP Analysis"
+                                                         FontSize="14"
+                                                         FontWeight="SemiBold"
+                                                         HorizontalAlignment="Center"/>
+                                              <TextBlock Text="Click 'Analyze with NLP' to process Popo blocks"
+                                                         FontSize="11"
+                                                         Opacity="0.6"
+                                                         TextAlignment="Center"/>
+                                          </StackPanel>
+                                      </Border>
+
+                                      <!-- Semantic Results List -->
+                                      <ScrollViewer Name="PART_SemanticScrollViewer"
+                                                    IsVisible="{Binding ShowSemanticBlocksList}"
+                                                    ScrollChanged="OnSemanticScrollChanged">
+                                          <StackPanel Spacing="6">
+                                              <ItemsControl ItemsSource="{Binding SemanticResults.Blocks}">
+                                                  <ItemsControl.ItemTemplate>
+                                                      <DataTemplate x:DataType="models:SemanticBlockResult">
+                                                          <Border Padding="8"
+                                                                  Margin="0,2"
+                                                                  Background="{DynamicResource SystemChromeMediumLowColor}"
+                                                                  CornerRadius="4"
+                                                                  BorderThickness="1"
+                                                                  BorderBrush="{DynamicResource SystemControlTransparentBrush}">
+                                                              <StackPanel Spacing="4">
+                                                                  <TextBlock Text="{Binding Content}"
+                                                                             FontSize="11"
+                                                                             FontWeight="SemiBold"
+                                                                             TextTrimming="CharacterEllipsis"
+                                                                             MaxLines="2"
+                                                                             TextWrapping="Wrap"/>
+                                                                  <StackPanel IsVisible="{Binding Tokens.Count}"
+                                                                              Orientation="Horizontal"
+                                                                              Spacing="2"
+                                                                              Margin="4,2,0,0">
+                                                                      <TextBlock Text="🔤" FontSize="9"/>
+                                                                      <ItemsControl ItemsSource="{Binding Tokens}">
+                                                                          <ItemsControl.ItemsPanel>
+                                                                              <ItemsPanelTemplate>
+                                                                                  <StackPanel Orientation="Horizontal" Spacing="1"/>
+                                                                              </ItemsPanelTemplate>
+                                                                          </ItemsControl.ItemsPanel>
+                                                                          <ItemsControl.ItemTemplate>
+                                                                              <DataTemplate x:DataType="models:SemanticToken">
+                                                                                  <Border Padding="2,1"
+                                                                                          Background="#E3F2FD"
+                                                                                          CornerRadius="2">
+                                                                                      <StackPanel Orientation="Horizontal" Spacing="1">
+                                                                                          <TextBlock Text="{Binding Text}"
+                                                                                                     FontSize="9"
+                                                                                                     Foreground="#1565C0"/>
+                                                                                          <TextBlock Text="{Binding Pos}"
+                                                                                                     FontSize="8"
+                                                                                                     Foreground="#64B5F6"/>
+                                                                                      </StackPanel>
+                                                                                  </Border>
+                                                                              </DataTemplate>
+                                                                          </ItemsControl.ItemTemplate>
+                                                                      </ItemsControl>
+                                                                  </StackPanel>
+                                                                  <StackPanel IsVisible="{Binding Entities.Count}"
+                                                                              Orientation="Horizontal"
+                                                                              Spacing="2"
+                                                                              Margin="4,2,0,0">
+                                                                      <TextBlock Text="🏷️" FontSize="9"/>
+                                                                      <ItemsControl ItemsSource="{Binding Entities}">
+                                                                          <ItemsControl.ItemsPanel>
+                                                                              <ItemsPanelTemplate>
+                                                                                  <StackPanel Orientation="Horizontal" Spacing="2"/>
+                                                                              </ItemsPanelTemplate>
+                                                                          </ItemsControl.ItemsPanel>
+                                                                          <ItemsControl.ItemTemplate>
+                                                                              <DataTemplate x:DataType="models:SemanticEntity">
+                                                                                  <Border Padding="3,1"
+                                                                                          CornerRadius="2"
+                                                                                          Background="#E8F5E9">
+                                                                                      <StackPanel Orientation="Horizontal" Spacing="2">
+                                                                                          <TextBlock Text="{Binding Text}"
+                                                                                                     FontSize="9"
+                                                                                                     FontWeight="SemiBold"
+                                                                                                     Foreground="#2E7D32"/>
+                                                                                          <TextBlock Text="{Binding Category}"
+                                                                                                     FontSize="8"
+                                                                                                     Foreground="#81C784"/>
+                                                                                      </StackPanel>
+                                                                                  </Border>
+                                                                              </DataTemplate>
+                                                                          </ItemsControl.ItemTemplate>
+                                                                      </ItemsControl>
+                                                                  </StackPanel>
+                                                                  <StackPanel IsVisible="{Binding Relations.Count}"
+                                                                              Spacing="2"
+                                                                              Margin="4,2,0,0">
+                                                                      <TextBlock Text="🔗 Relations:"
+                                                                                 FontSize="9"
+                                                                                 Foreground="#7B1FA2"/>
+                                                                      <ItemsControl ItemsSource="{Binding Relations}">
+                                                                          <ItemsControl.ItemTemplate>
+                                                                              <DataTemplate x:DataType="models:SemanticRelation">
+                                                                                  <TextBlock FontSize="9"
+                                                                                             Margin="8,1,0,0"
+                                                                                             Foreground="#6A1B9A">
+                                                                                      <Run Text="  " />
+                                                                                      <Run Text="{Binding Subject}" FontWeight="SemiBold"/>
+                                                                                      <Run Text=" → "/>
+                                                                                      <Run Text="{Binding Predicate}" Foreground="#AB47BC"/>
+                                                                                      <Run Text=" → "/>
+                                                                                      <Run Text="{Binding ObjectText}" FontWeight="SemiBold"/>
+                                                                                  </TextBlock>
+                                                                              </DataTemplate>
+                                                                          </ItemsControl.ItemTemplate>
+                                                                      </ItemsControl>
+                                                                  </StackPanel>
+                                                              </StackPanel>
+                                                          </Border>
+                                                      </DataTemplate>
+                                                  </ItemsControl.ItemTemplate>
+                                              </ItemsControl>
+                                          </StackPanel>
+                                      </ScrollViewer>
+                                 </DockPanel>
+                             </Border>
+
+                             <!-- Connection Lines overlay between all four columns -->
                              <controls:ConnectionLinesControl 
                                  Grid.Column="0"
-                                 Grid.ColumnSpan="3"
+                                 Grid.ColumnSpan="4"
                                  Name="PART_ConnectionLinesControl"
                                  IsVisible="True"
                                  IsHitTestVisible="False"/>

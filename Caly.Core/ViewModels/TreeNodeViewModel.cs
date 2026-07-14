@@ -549,4 +549,74 @@ public partial class TreeNodeViewModel : ObservableObject
             OnBlockSelected?.Invoke(null);
         }
     }
+
+    #region Semantic Analysis
+
+    private SemanticBlockResult? _semanticResult;
+
+    /// <summary>
+    /// Gets the semantic analysis result for this node (populated after NLP processing).
+    /// </summary>
+    public SemanticBlockResult? SemanticResult => _semanticResult;
+
+    /// <summary>
+    /// Whether this node has semantic analysis results.
+    /// </summary>
+    public bool HasSemanticResult => _semanticResult is not null;
+
+    /// <summary>
+    /// Sets the semantic analysis result for this node.
+    /// </summary>
+    public void SetSemanticResult(SemanticBlockResult result)
+    {
+        _semanticResult = result;
+    }
+
+    /// <summary>
+    /// Gets the underlying source AnalysisTreeNode.
+    /// </summary>
+    public AnalysisTreeNode GetSourceNode() => _node;
+
+    /// <summary>
+    /// Display string for entities: "MATERIAL:碳钢, LOCATION:海淀区"
+    /// </summary>
+    public string EntitiesDisplay
+    {
+        get
+        {
+            if (_semanticResult is null || _semanticResult.Entities.Count == 0)
+                return string.Empty;
+            return string.Join(", ", _semanticResult.Entities.Select(e => $"{e.Category}:{e.Text}"));
+        }
+    }
+
+    /// <summary>
+    /// Display string for relations: "碳钢->COMPOSED_OF->钢"
+    /// </summary>
+    public string RelationsDisplay
+    {
+        get
+        {
+            if (_semanticResult is null || _semanticResult.Relations.Count == 0)
+                return string.Empty;
+            return string.Join("; ", _semanticResult.Relations.Select(r => $"{r.Subject}->{r.Predicate}->{r.ObjectText}"));
+        }
+    }
+
+    /// <summary>
+    /// Entity count for this node.
+    /// </summary>
+    public int EntityCount => _semanticResult?.Entities.Count ?? 0;
+
+    /// <summary>
+    /// Relation count for this node.
+    /// </summary>
+    public int RelationCount => _semanticResult?.Relations.Count ?? 0;
+
+    /// <summary>
+    /// Token count for this node.
+    /// </summary>
+    public int TokenCount => _semanticResult?.Tokens.Count ?? 0;
+
+    #endregion
 }
