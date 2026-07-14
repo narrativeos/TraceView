@@ -141,6 +141,13 @@ public class SemanticBlockResult
 
     [JsonPropertyName("error")]
     public string? Error { get; set; }
+
+    /// <summary>
+    /// Whether this block has expandable details (tokens or relations).
+    /// Used to show/hide the collapsible details Expander in the UI.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool HasExpandableDetails => Tokens.Count > 0 || Relations.Count > 0;
 }
 
 /// <summary>

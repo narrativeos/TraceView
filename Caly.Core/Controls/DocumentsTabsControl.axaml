@@ -813,7 +813,7 @@
                                         </StackPanel>
                                     </Border>
 
-                                      <!-- Placeholder when no results -->
+                                       <!-- Placeholder when no results -->
                                       <Border IsVisible="{Binding ShowSemanticPlaceholder}"
                                               VerticalAlignment="Center"
                                               HorizontalAlignment="Stretch"
@@ -846,94 +846,124 @@
                                                                   BorderThickness="1"
                                                                   BorderBrush="{DynamicResource SystemControlTransparentBrush}">
                                                               <StackPanel Spacing="4">
-                                                                  <TextBlock Text="{Binding Content}"
-                                                                             FontSize="11"
-                                                                             FontWeight="SemiBold"
-                                                                             TextTrimming="CharacterEllipsis"
-                                                                             MaxLines="2"
-                                                                             TextWrapping="Wrap"/>
-                                                                  <StackPanel IsVisible="{Binding Tokens.Count}"
-                                                                              Orientation="Horizontal"
-                                                                              Spacing="2"
-                                                                              Margin="4,2,0,0">
-                                                                      <TextBlock Text="🔤" FontSize="9"/>
-                                                                      <ItemsControl ItemsSource="{Binding Tokens}">
-                                                                          <ItemsControl.ItemsPanel>
-                                                                              <ItemsPanelTemplate>
-                                                                                  <StackPanel Orientation="Horizontal" Spacing="1"/>
-                                                                              </ItemsPanelTemplate>
-                                                                          </ItemsControl.ItemsPanel>
-                                                                          <ItemsControl.ItemTemplate>
-                                                                              <DataTemplate x:DataType="models:SemanticToken">
-                                                                                  <Border Padding="2,1"
-                                                                                          Background="#E3F2FD"
-                                                                                          CornerRadius="2">
-                                                                                      <StackPanel Orientation="Horizontal" Spacing="1">
+                                                                  <!-- Entities: each entity on its own row, right-aligned, not expanding -->
+                                                                  <ItemsControl ItemsSource="{Binding Entities}"
+                                                                                IsVisible="{Binding Entities.Count}">
+                                                                      <ItemsControl.ItemTemplate>
+                                                                          <DataTemplate x:DataType="models:SemanticEntity">
+                                                                              <Border Padding="4,2"
+                                                                                      Margin="0,1"
+                                                                                      CornerRadius="3"
+                                                                                      Background="#E8F5E9"
+                                                                                      BorderThickness="1"
+                                                                                      BorderBrush="#C8E6C9"
+                                                                                      HorizontalAlignment="Right">
+                                                                                  <StackPanel Orientation="Horizontal" Spacing="4">
                                                                                           <TextBlock Text="{Binding Text}"
-                                                                                                     FontSize="9"
-                                                                                                     Foreground="#1565C0"/>
-                                                                                          <TextBlock Text="{Binding Pos}"
-                                                                                                     FontSize="8"
-                                                                                                     Foreground="#64B5F6"/>
-                                                                                      </StackPanel>
-                                                                                  </Border>
-                                                                              </DataTemplate>
-                                                                          </ItemsControl.ItemTemplate>
-                                                                      </ItemsControl>
-                                                                  </StackPanel>
-                                                                  <StackPanel IsVisible="{Binding Entities.Count}"
-                                                                              Orientation="Horizontal"
-                                                                              Spacing="2"
-                                                                              Margin="4,2,0,0">
-                                                                      <TextBlock Text="🏷️" FontSize="9"/>
-                                                                      <ItemsControl ItemsSource="{Binding Entities}">
-                                                                          <ItemsControl.ItemsPanel>
-                                                                              <ItemsPanelTemplate>
-                                                                                  <StackPanel Orientation="Horizontal" Spacing="2"/>
-                                                                              </ItemsPanelTemplate>
-                                                                          </ItemsControl.ItemsPanel>
-                                                                          <ItemsControl.ItemTemplate>
-                                                                              <DataTemplate x:DataType="models:SemanticEntity">
-                                                                                  <Border Padding="3,1"
-                                                                                          CornerRadius="2"
-                                                                                          Background="#E8F5E9">
-                                                                                      <StackPanel Orientation="Horizontal" Spacing="2">
-                                                                                          <TextBlock Text="{Binding Text}"
-                                                                                                     FontSize="9"
+                                                                                                     FontSize="11"
                                                                                                      FontWeight="SemiBold"
                                                                                                      Foreground="#2E7D32"/>
-                                                                                          <TextBlock Text="{Binding Category}"
-                                                                                                     FontSize="8"
-                                                                                                     Foreground="#81C784"/>
+                                                                                          <Border Padding="2,1"
+                                                                                                  CornerRadius="2"
+                                                                                                  Background="#A5D6A7">
+                                                                                              <TextBlock Text="{Binding Category}"
+                                                                                                         FontSize="9"
+                                                                                                         Foreground="#1B5E20"/>
+                                                                                          </Border>
                                                                                       </StackPanel>
                                                                                   </Border>
                                                                               </DataTemplate>
                                                                           </ItemsControl.ItemTemplate>
                                                                       </ItemsControl>
-                                                                  </StackPanel>
-                                                                  <StackPanel IsVisible="{Binding Relations.Count}"
-                                                                              Spacing="2"
-                                                                              Margin="4,2,0,0">
-                                                                      <TextBlock Text="🔗 Relations:"
-                                                                                 FontSize="9"
-                                                                                 Foreground="#7B1FA2"/>
-                                                                      <ItemsControl ItemsSource="{Binding Relations}">
-                                                                          <ItemsControl.ItemTemplate>
-                                                                              <DataTemplate x:DataType="models:SemanticRelation">
-                                                                                  <TextBlock FontSize="9"
-                                                                                             Margin="8,1,0,0"
-                                                                                             Foreground="#6A1B9A">
-                                                                                      <Run Text="  " />
-                                                                                      <Run Text="{Binding Subject}" FontWeight="SemiBold"/>
-                                                                                      <Run Text=" → "/>
-                                                                                      <Run Text="{Binding Predicate}" Foreground="#AB47BC"/>
-                                                                                      <Run Text=" → "/>
-                                                                                      <Run Text="{Binding ObjectText}" FontWeight="SemiBold"/>
-                                                                                  </TextBlock>
-                                                                              </DataTemplate>
-                                                                          </ItemsControl.ItemTemplate>
-                                                                      </ItemsControl>
-                                                                  </StackPanel>
+
+                                                                  <!-- Collapsible details: Tokens + Relations -->
+                                                                  <Expander IsExpanded="False"
+                                                                            IsVisible="{Binding HasExpandableDetails}">
+                                                                      <Expander.Header>
+                                                                          <StackPanel Orientation="Horizontal" Spacing="4">
+                                                                              <TextBlock Text="▼"
+                                                                                         FontSize="8"
+                                                                                         Foreground="#666"/>
+                                                                              <TextBlock Text="详细信息"
+                                                                                         FontSize="10"
+                                                                                         Foreground="#666"/>
+                                                                          </StackPanel>
+                                                                      </Expander.Header>
+                                                                      <StackPanel Spacing="6"
+                                                                                  Margin="8,4,0,0">
+                                                                          <!-- Tokens section -->
+                                                                          <StackPanel IsVisible="{Binding Tokens.Count}"
+                                                                                      Spacing="2">
+                                                                              <TextBlock Text="🔤 分词"
+                                                                                         FontSize="9"
+                                                                                         FontWeight="SemiBold"
+                                                                                         Foreground="#1565C0"/>
+                                                                              <ItemsControl ItemsSource="{Binding Tokens}">
+                                                                                  <ItemsControl.ItemsPanel>
+                                                                                      <ItemsPanelTemplate>
+                                                                                          <WrapPanel/>
+                                                                                      </ItemsPanelTemplate>
+                                                                                  </ItemsControl.ItemsPanel>
+                                                                                  <ItemsControl.ItemTemplate>
+                                                                                      <DataTemplate x:DataType="models:SemanticToken">
+                                                                                          <Border Padding="3,1"
+                                                                                                  Margin="1"
+                                                                                                  Background="#E3F2FD"
+                                                                                                  CornerRadius="2">
+                                                                                              <StackPanel Orientation="Horizontal" Spacing="2">
+                                                                                                  <TextBlock Text="{Binding Text}"
+                                                                                                             FontSize="9"
+                                                                                                             Foreground="#1565C0"/>
+                                                                                                  <TextBlock Text="{Binding Pos}"
+                                                                                                             FontSize="8"
+                                                                                                             Foreground="#64B5F6"/>
+                                                                                              </StackPanel>
+                                                                                          </Border>
+                                                                                      </DataTemplate>
+                                                                                  </ItemsControl.ItemTemplate>
+                                                                              </ItemsControl>
+                                                                          </StackPanel>
+
+                                                                          <!-- Relations section -->
+                                                                          <StackPanel IsVisible="{Binding Relations.Count}"
+                                                                                      Spacing="2">
+                                                                              <TextBlock Text="🔗 关系"
+                                                                                         FontSize="9"
+                                                                                         FontWeight="SemiBold"
+                                                                                         Foreground="#7B1FA2"/>
+                                                                              <ItemsControl ItemsSource="{Binding Relations}">
+                                                                                  <ItemsControl.ItemTemplate>
+                                                                                      <DataTemplate x:DataType="models:SemanticRelation">
+                                                                                          <Border Padding="4,2"
+                                                                                                  Margin="0,1"
+                                                                                                  Background="#F3E5F5"
+                                                                                                  CornerRadius="2">
+                                                                                              <StackPanel Orientation="Horizontal" Spacing="2">
+                                                                                                  <TextBlock Text="{Binding Subject}"
+                                                                                                             FontSize="9"
+                                                                                                             FontWeight="SemiBold"
+                                                                                                             Foreground="#6A1B9A"/>
+                                                                                                  <TextBlock Text="→"
+                                                                                                             FontSize="9"
+                                                                                                             Foreground="#AB47BC"/>
+                                                                                                  <TextBlock Text="{Binding Predicate}"
+                                                                                                             FontSize="9"
+                                                                                                             Foreground="#AB47BC"/>
+                                                                                                  <TextBlock Text="→"
+                                                                                                             FontSize="9"
+                                                                                                             Foreground="#AB47BC"/>
+                                                                                                  <TextBlock Text="{Binding ObjectText}"
+                                                                                                             FontSize="9"
+                                                                                                             FontWeight="SemiBold"
+                                                                                                             Foreground="#6A1B9A"/>
+                                                                                              </StackPanel>
+                                                                                          </Border>
+                                                                                      </DataTemplate>
+                                                                                  </ItemsControl.ItemTemplate>
+                                                                              </ItemsControl>
+                                                                          </StackPanel>
+                                                                      </StackPanel>
+                                                                  </Expander>
                                                               </StackPanel>
                                                           </Border>
                                                       </DataTemplate>
