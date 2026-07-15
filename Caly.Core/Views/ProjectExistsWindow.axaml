@@ -3,9 +3,9 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:views="clr-namespace:Caly.Core.Views"
-        mc:Ignorable="d" d:DesignWidth="520" d:DesignHeight="400"
+        mc:Ignorable="d" d:DesignWidth="500" d:DesignHeight="400"
         x:Class="Caly.Core.Views.ProjectExistsWindow"
-        Width="520" Height="400"
+        Width="500" Height="400"
         CanResize="False"
         ShowInTaskbar="False"
         WindowStartupLocation="CenterOwner"
@@ -13,26 +13,38 @@
         ExtendClientAreaToDecorationsHint="True"
         ShowActivated="True"
         Title="选择项目">
+    <Window.Styles>
+        <Style Selector="ListBoxItem">
+            <Setter Value="0,0,0,1" Property="Margin"/>
+            <Setter Value="Transparent" Property="Background"/>
+        </Style>
+        <Style Selector="ListBoxItem:pointerover">
+            <Setter Value="{DynamicResource SystemControlHighlightListLowBrush}" Property="Background"/>
+        </Style>
+        <Style Selector="ListBoxItem:selected">
+            <Setter Value="{DynamicResource SystemControlHighlightListAccentLowBrush}" Property="Background"/>
+        </Style>
+    </Window.Styles>
     <Grid Margin="20" RowDefinitions="Auto,Auto,Auto,*,Auto">
         <!-- Header with message -->
         <StackPanel Grid.Row="0" Spacing="6" Margin="0,0,0,10">
             <TextBlock Text="发现已有项目，请选择："
                        FontWeight="Bold"
                        FontSize="14"/>
-            <TextBlock Text="选择一个现有项目打开，或创建新项目。"
+            <TextBlock Text="点击项目名直接打开，或创建新项目。"
                        FontSize="12"
                        Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
                        TextWrapping="Wrap"/>
         </StackPanel>
 
         <!-- Divider -->
-        <Rectangle Grid.Row="1" Height="1" 
+        <Rectangle Grid.Row="1" Height="1"
                    Margin="0,5,0,10"
                    Fill="{DynamicResource SystemControlForegroundBaseLowBrush}"/>
 
         <!-- Project List -->
         <StackPanel Grid.Row="2" Spacing="8">
-            <TextBlock Text="现有项目："
+            <TextBlock Text="现有项目（点击打开）："
                        FontWeight="SemiBold"
                        FontSize="12"/>
             <Border BorderBrush="{DynamicResource SystemControlForegroundBaseMediumBrush}"
@@ -42,33 +54,39 @@
                 <ListBox x:Name="PART_ProjectList"
                          MaxHeight="200"
                          Padding="4"
-                         BorderThickness="0">
+                         BorderThickness="0"
+                         SelectionChanged="ProjectList_OnSelectionChanged">
                     <ListBox.ItemTemplate>
                         <DataTemplate DataType="views:ProjectListItem">
-                            <Border Padding="10,8"
-                                    Background="Transparent"
-                                    CornerRadius="2"
-                                    Margin="0,2">
-                                <TextBlock Text="{Binding Name}"
+                            <Grid ColumnDefinitions="Auto,*" MinHeight="36">
+                                <Panel Grid.Column="0" Margin="8,0,8,0">
+                                    <Rectangle Width="8" Height="8" RadiusX="4" RadiusY="4"
+                                               Fill="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                                               VerticalAlignment="Center"/>
+                                </Panel>
+                                <TextBlock Grid.Column="1"
+                                           Text="{Binding Name}"
                                            FontSize="13"
-                                           FontWeight="Normal"/>
-                            </Border>
+                                           VerticalAlignment="Center"/>
+                            </Grid>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
             </Border>
         </StackPanel>
 
-        <!-- Buttons -->
-        <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="10" HorizontalAlignment="Right" Margin="0,10,0,0">
-            <Button Content="创建新项目"
-                    Padding="16,8"
-                    Click="CreateNewButton_OnClick"/>
-            <Button Content="打开选中项目"
-                    Padding="16,8"
-                    IsDefault="True"
-                    Classes="accent"
-                    Click="OpenProjectButton_OnClick"/>
-        </StackPanel>
+        <!-- Spacer -->
+        <StackPanel Grid.Row="3"/>
+
+        <!-- Create New Project Button -->
+        <Button Grid.Row="4"
+                Content="+ 创建新项目"
+                Padding="16,10"
+                FontSize="14"
+                FontWeight="SemiBold"
+                Classes="accent"
+                HorizontalAlignment="Stretch"
+                Click="CreateNewButton_OnClick"
+                Margin="0,10,0,0"/>
     </Grid>
 </Window>

@@ -1,7 +1,7 @@
 // Copyright (c) 2025 BobLd
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
+// of this software and associated associated documentation files (the "Software"), to deal
 // in the Software without restriction, including without limitation the rights
 // to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 // copies of the Software, and to permit persons to whom the Software is
@@ -66,25 +66,17 @@ public partial class ProjectExistsWindow : Window
                 items.Add(new ProjectListItem { Name = name, Path = path });
             }
             _projectList.ItemsSource = items;
-            // Select the first item by default
-            if (items.Count > 0)
-                _projectList.SelectedIndex = 0;
         }
     }
 
-    private void OpenProjectButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    /// <summary>
+    /// When user clicks a project item, immediately close with that project's path.
+    /// </summary>
+    private void ProjectList_OnSelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
         if (_projectList?.SelectedItem is ProjectListItem item)
         {
             Close(item.Path);
-        }
-        else
-        {
-            // No valid selection, default to first project
-            if (_existingProjects.Count > 0)
-                Close(_existingProjects[0]);
-            else
-                Close(null);
         }
     }
 
