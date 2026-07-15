@@ -84,6 +84,13 @@ public sealed class CalySettings
     /// </summary>
     public string PopoModel { get; set; } = "mineru";
 
+    // ========== GeoLibre Configuration ==========
+
+    /// <summary>
+    /// GeoLibre base URL for map visualization (e.g., "https://web.geolibre.app")
+    /// </summary>
+    public string GeoLibreBaseUrl { get; set; } = "https://web.geolibre.app";
+
     // ========== Project Configuration ==========
 
     /// <summary>

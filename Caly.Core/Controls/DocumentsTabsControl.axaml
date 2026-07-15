@@ -19,6 +19,7 @@
         <utilities:NotEqualsConverter x:Key="NotEqualsConverter"/>
         <utilities:IsNotNullConverter x:Key="IsNotNullConverter"/>
         <utilities:IsNullConverter x:Key="IsNullConverter"/>
+        <utilities:IsGreaterThanConverter x:Key="IsGreaterThanConverter"/>
     </UserControl.Resources>
 
     <Design.DataContext>
@@ -231,21 +232,35 @@
 								</PathIcon>
 							</ToggleButton>
 
-							<!-- Toggle Semantic Column -->
-							<ToggleButton DockPanel.Dock="Left"
+                            <!-- Toggle Semantic Column -->
+                            <ToggleButton DockPanel.Dock="Left"
                                         Margin="0,0,0,0"
-									   HorizontalAlignment="Center"
-									   VerticalAlignment="Stretch"
-									   Background="Transparent"
-									   IsChecked="{Binding ShowSemanticColumn}">
-								<PathIcon Width="17"
-										  Height="17"
-										  Data="{StaticResource semantic_analysis_regular}">
-									<ToolTip.Tip>Toggle Semantic Analysis</ToolTip.Tip>
-								</PathIcon>
-							</ToggleButton>
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Stretch"
+                                       Background="Transparent"
+                                       IsChecked="{Binding ShowSemanticColumn}">
+                                <PathIcon Width="17"
+                                          Height="17"
+                                          Data="{StaticResource semantic_analysis_regular}">
+                                    <ToolTip.Tip>Toggle Semantic Analysis</ToolTip.Tip>
+                                </PathIcon>
+                            </ToggleButton>
 
-							<!-- Alignment Report -->
+                            <!-- Toggle Map Column -->
+                            <ToggleButton DockPanel.Dock="Left"
+                                        Margin="0,0,0,0"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Stretch"
+                                       Background="Transparent"
+                                       IsChecked="{Binding ShowMapColumn}">
+                                <PathIcon Width="17"
+                                          Height="17"
+                                          Data="{StaticResource map_regular}">
+                                    <ToolTip.Tip>Toggle Map View</ToolTip.Tip>
+                                </PathIcon>
+                            </ToggleButton>
+
+                            <!-- Alignment Report -->
 						<Button DockPanel.Dock="Left"
                                 Margin="5,0,0,0"
 								HorizontalAlignment="Center"
@@ -262,7 +277,22 @@
 
 						<controls:VerticalSeparator/>
 
-						<!-- NLP Analyze (visible when Popo tree exists) - leftmost on right side -->
+						<!-- GeoJSON Generate (visible when semantic results exist) - before NLP -->
+						<Button DockPanel.Dock="Right"
+                                Margin="0,0,5,0"
+								HorizontalAlignment="Center"
+								VerticalAlignment="Stretch"
+								Background="Transparent"
+								Command="{Binding GenerateMapGeoJsonCommand}"
+                                IsVisible="{Binding HasSemanticResults}">
+							<PathIcon Width="17"
+									  Height="17"
+									  Data="{StaticResource map_regular}">
+								<ToolTip.Tip>Generate GeoJSON</ToolTip.Tip>
+							</PathIcon>
+						</Button>
+
+						<!-- NLP Analyze (visible when Popo tree exists) -->
 						<Button DockPanel.Dock="Right"
                                 Margin="0,0,5,0"
 								HorizontalAlignment="Center"
@@ -336,12 +366,13 @@
                     <SplitView.Content>
                         <Grid>
                             <Grid Name="PART_ThreeColumnGrid">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="{Binding ShowMinerUColumn, Converter={StaticResource BoolToGridLengthConverter}}"/>
-                                <ColumnDefinition Width="{Binding ShowAnalysisColumn, Converter={StaticResource BoolToGridLengthConverter}}"/>
-                                <ColumnDefinition Width="{Binding ShowSemanticColumn, Converter={StaticResource BoolToGridLengthConverter}}"/>
-                            </Grid.ColumnDefinitions>
+                             <Grid.ColumnDefinitions>
+                                 <ColumnDefinition Width="*"/>
+                                 <ColumnDefinition Width="{Binding ShowMinerUColumn, Converter={StaticResource BoolToGridLengthConverter}}"/>
+                                 <ColumnDefinition Width="{Binding ShowAnalysisColumn, Converter={StaticResource BoolToGridLengthConverter}}"/>
+                                 <ColumnDefinition Width="{Binding ShowSemanticColumn, Converter={StaticResource BoolToGridLengthConverter}}"/>
+                                 <ColumnDefinition Width="{Binding ShowMapColumn, Converter={StaticResource BoolToGridLengthConverter}}"/>
+                             </Grid.ColumnDefinitions>
 
                             <!-- Column 1: PDF Document -->
                             <controls:DocumentControl Grid.Column="0"
@@ -1228,10 +1259,169 @@
                                  </DockPanel>
                              </Border>
 
-                             <!-- Connection Lines overlay between all four columns -->
+                             <!-- GridSplitter between Semantic and Map -->
+                             <GridSplitter Grid.Column="3"
+                                           HorizontalAlignment="Right"
+                                           Width="4"
+                                           Background="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                                           IsVisible="{Binding ShowMapColumn}"/>
+
+                              <!-- Column 5: Map View -->
+                              <Border Grid.Column="4"
+                                      Padding="8"
+                                      Background="{DynamicResource SystemChromeLowColor}"
+                                      BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                                      BorderThickness="1"
+                                      IsVisible="{Binding ShowMapColumn}">
+                                  <DockPanel>
+                                      <!-- Header -->
+                                      <StackPanel DockPanel.Dock="Top"
+                                                  Orientation="Horizontal"
+                                                  Spacing="4"
+                                                  Margin="0,0,0,6">
+                                          <TextBlock Text="Map"
+                                                     FontWeight="Bold"
+                                                     FontSize="12"/>
+                                          <TextBlock Text="{Binding MapStatusText}"
+                                                     FontSize="10"
+                                                     Opacity="0.5"/>
+                                      </StackPanel>
+
+                                       <!-- Location Table -->
+                                       <ScrollViewer IsVisible="{Binding GeocodingTotalCount, Converter={StaticResource IsGreaterThanConverter}, ConverterParameter=0}"
+                                                     HorizontalScrollBarVisibility="Disabled">
+                                           <StackPanel>
+                                                <!-- Header row -->
+                                                <Border Margin="0,0,0,4"
+                                                        Background="{DynamicResource SystemChromeMediumColor}">
+                                                    <Grid ColumnDefinitions="*,140,60,70,70">
+                                                        <TextBlock Text="地点"
+                                                                   FontSize="10"
+                                                                   FontWeight="SemiBold"
+                                                                   Margin="4,2,0,2"/>
+                                                        <TextBlock Grid.Column="1"
+                                                                   Text="标准名"
+                                                                   FontSize="10"
+                                                                   FontWeight="SemiBold"
+                                                                   Margin="0,2,0,2"/>
+                                                        <TextBlock Grid.Column="2"
+                                                                   Text="状态"
+                                                                   FontSize="10"
+                                                                   FontWeight="SemiBold"
+                                                                   Margin="0,2,0,2"/>
+                                                        <TextBlock Grid.Column="3"
+                                                                   Text="纬度"
+                                                                   FontSize="10"
+                                                                   FontWeight="SemiBold"
+                                                                   Margin="0,2,0,2"/>
+                                                        <TextBlock Grid.Column="4"
+                                                                   Text="经度"
+                                                                   FontSize="10"
+                                                                   FontWeight="SemiBold"
+                                                                   Margin="0,2,0,2"/>
+                                                    </Grid>
+                                                </Border>
+
+                                                <!-- Location rows -->
+                                                <ItemsControl ItemsSource="{Binding GeocodingLocations}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate x:DataType="vm:GeocodingLocationViewModel">
+                                                            <Border Margin="0,1"
+                                                                    Padding="4,2"
+                                                                    Background="#33333308">
+                                                                <Grid ColumnDefinitions="*,140,60,70,70">
+                                                                    <!-- Location name -->
+                                                                    <TextBlock Grid.Column="0"
+                                                                               Text="{Binding Name}"
+                                                                               FontSize="10"
+                                                                               TextTrimming="CharacterEllipsis"/>
+
+                                                                    <!-- Display name (standard name) -->
+                                                                    <TextBlock Grid.Column="1"
+                                                                               Text="{Binding DisplayName}"
+                                                                               FontSize="9"
+                                                                               Opacity="0.7"
+                                                                               TextTrimming="CharacterEllipsis"/>
+
+                                                                    <!-- Status -->
+                                                                    <TextBlock Grid.Column="2"
+                                                                               Text="{Binding StatusLabel}"
+                                                                               FontSize="9"
+                                                                               FontWeight="SemiBold"
+                                                                               Foreground="{Binding StatusColor}"/>
+
+                                                                    <!-- Latitude -->
+                                                                    <TextBlock Grid.Column="3"
+                                                                               Text="{Binding Latitude, StringFormat='{}{0:F4}'}"
+                                                                               FontSize="9"
+                                                                               IsVisible="{Binding HasCoordinates}"/>
+                                                                    <TextBlock Grid.Column="3"
+                                                                               Text="-"
+                                                                               FontSize="9"
+                                                                               Opacity="0.4"
+                                                                               IsVisible="{Binding !HasCoordinates}"/>
+
+                                                                    <!-- Longitude -->
+                                                                    <TextBlock Grid.Column="4"
+                                                                               Text="{Binding Longitude, StringFormat='{}{0:F4}'}"
+                                                                               FontSize="9"
+                                                                               IsVisible="{Binding HasCoordinates}"/>
+                                                                    <TextBlock Grid.Column="4"
+                                                                               Text="-"
+                                                                               FontSize="9"
+                                                                               Opacity="0.4"
+                                                                               IsVisible="{Binding !HasCoordinates}"/>
+                                                                </Grid>
+                                                            </Border>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                           </StackPanel>
+                                       </ScrollViewer>
+
+                                      <!-- Error State: shown when geocoding failed (all failed) -->
+                                      <Border IsVisible="{Binding MapStatus, Converter={StaticResource EqualsConverter}, ConverterParameter={x:Static vm:MapProcessStatus.Failed}}"
+                                              VerticalAlignment="Center"
+                                              HorizontalAlignment="Stretch"
+                                              Padding="12"
+                                              Margin="0,8,0,0"
+                                              Background="#FFF2F2"
+                                              CornerRadius="4">
+                                          <StackPanel Spacing="8"
+                                                      HorizontalAlignment="Center">
+                                              <TextBlock Text="{Binding MapStatusText}"
+                                                         FontSize="12"
+                                                         Foreground="#FF4444"
+                                                         TextAlignment="Center"
+                                                         TextWrapping="Wrap"/>
+                                              <Button Content="Retry"
+                                                      Command="{Binding GenerateMapGeoJsonCommand}"
+                                                      HorizontalAlignment="Center"
+                                                      Padding="20,4"/>
+                                          </StackPanel>
+                                      </Border>
+
+                                      <!-- Cancel Button during processing (at bottom) -->
+                                      <Button DockPanel.Dock="Bottom"
+                                              IsVisible="{Binding IsMapProcessing}"
+                                              Content="Cancel"
+                                              Command="{Binding CancelMapProcessCommand}"
+                                              HorizontalAlignment="Center"
+                                              Margin="0,8,0,8"
+                                              Padding="20,4"/>
+
+                                      <!-- Map Control: shown when completed -->
+                                      <controls:MapViewControl
+                                          IsVisible="{Binding MapStatus, Converter={StaticResource EqualsConverter}, ConverterParameter={x:Static vm:MapProcessStatus.Completed}}"
+                                          GeoJsonFilePath="{Binding GeoJsonFilePath}"
+                                          GeoLibreBaseUrl="https://web.geolibre.app"/>
+                                  </DockPanel>
+                              </Border>
+
+                             <!-- Connection Lines overlay between all five columns -->
                              <controls:ConnectionLinesControl 
                                  Grid.Column="0"
-                                 Grid.ColumnSpan="4"
+                                 Grid.ColumnSpan="5"
                                  Name="PART_ConnectionLinesControl"
                                  IsVisible="True"
                                  IsHitTestVisible="False"/>
