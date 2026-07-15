@@ -1489,15 +1489,29 @@
                                                     <controls:ThumbnailItemsControl.ItemTemplate>
                                                         <DataTemplate x:DataType="vm:PageViewModel">
                                                             
-                                                            <Grid Margin="3,4"
-                                                                  Width="{Binding ThumbnailSize.Width}"
-                                                                  Height="{Binding ThumbnailSize.Height}">
-                                                                <controls:ThumbnailControl VisibleArea="{Binding VisibleArea}"
-                                                                        ThumbnailSize="{Binding ThumbnailSize}"
-                                                                        PageSize="{Binding Size}"
-                                                                        HorizontalAlignment="Stretch"
-                                                                        VerticalAlignment="Stretch"/>
-                                                                <Label Content="{Binding PageNumber}"
+                                                             <Grid Margin="3,4"
+                                                                   Width="{Binding ThumbnailSize.Width}"
+                                                                   Height="{Binding ThumbnailSize.Height}">
+                                                                 <controls:ThumbnailControl VisibleArea="{Binding VisibleArea}"
+                                                                         ThumbnailSize="{Binding ThumbnailSize}"
+                                                                         PageSize="{Binding Size}"
+                                                                         HorizontalAlignment="Stretch"
+                                                                         VerticalAlignment="Stretch"/>
+                                                                 <!-- Page Type Badge -->
+                                                                 <Label Content="{Binding PageTypeDisplayName}"
+                                                                        IsVisible="{Binding HasPageType}"
+                                                                        MinWidth="25"
+                                                                        HorizontalAlignment="Left"
+                                                                        HorizontalContentAlignment="Center"
+                                                                        VerticalAlignment="Top"
+                                                                        Padding="3,0"
+                                                                        Margin="3"
+                                                                        FontSize="9"
+                                                                        Background="#80000000"
+                                                                        Foreground="White"
+                                                                        BorderThickness="0"
+                                                                        CornerRadius="7"/>
+                                                                 <Label Content="{Binding PageNumber}"
                                                                        MinWidth="25"
                                                                        HorizontalAlignment="Center"
                                                                        HorizontalContentAlignment="Center"

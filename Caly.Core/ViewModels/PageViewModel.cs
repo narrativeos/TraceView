@@ -91,6 +91,40 @@ public sealed partial class PageViewModel : ViewModelBase, IDisposable
 
     [ObservableProperty] private bool _isPageRendering;
 
+    /// <summary>
+    /// Page type classification from MinerU's page-level analysis (cover, toc, body, etc.).
+    /// </summary>
+    [ObservableProperty] private PageType _minerUPageType = PageType.unknown;
+
+    /// <summary>
+    /// Display name for the page type (Chinese).
+    /// Only returns a value when the page type is known (not unknown).
+    /// </summary>
+    public string? PageTypeDisplayName => MinerUPageType switch
+    {
+        PageType.cover => "封面",
+        PageType.half_title => "半标题",
+        PageType.toc => "目录",
+        PageType.body => "正文",
+        PageType.chapter_start => "章节起始",
+        PageType.image_dominant => "图片为主",
+        PageType.table_dominant => "表格为主",
+        PageType.blank => "空白",
+        PageType.back_cover => "封底",
+        PageType.copyright => "版权",
+        PageType.colophon => "版本记录",
+        PageType.acknowledgment => "致谢",
+        PageType.appendix => "附录",
+        PageType.glossary => "术语表",
+        PageType.reference => "参考文献",
+        _ => null
+    };
+
+    /// <summary>
+    /// Whether this page has a known MinerU page type.
+    /// </summary>
+    public bool HasPageType => MinerUPageType != PageType.unknown;
+
     public TextSelection TextSelection { get; }
 
     public double PpiScale { get; }

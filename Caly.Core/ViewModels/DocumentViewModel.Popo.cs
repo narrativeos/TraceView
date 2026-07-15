@@ -76,6 +76,10 @@ public sealed partial class DocumentViewModel
                 {
                     page.PreprocBlocks = doc.GetPreprocBlocksForPage(page.PageNumber);
                 }
+                if (page.MinerUPageType == PageType.unknown && doc.PageTypes.TryGetValue(page.PageNumber, out var pageType))
+                {
+                    page.MinerUPageType = pageType;
+                }
             }
         }
     }

@@ -240,6 +240,15 @@ public static class MinerUJsonService
                         ? GetDoubleValue(pageSizeElemForPage2[1])
                         : 0.0;
 
+                    // Parse page_type if present (MinerU v2.3+)
+                    var pageTypeStr = GetStringProperty(pageInfoElem, "page_type");
+                    if (!string.IsNullOrEmpty(pageTypeStr))
+                    {
+                        var pageType = ParsePageType(pageTypeStr);
+                        // Store with 0-based page index (will be normalized to 1-based later)
+                        minerUDoc.PageTypes[pageNum] = pageType;
+                    }
+
                     var blocks = new List<MinerUBlock>();
                     // Parse para_blocks (semantic paragraphs) and discarded_blocks for the MinerU Blocks column.
                     // This allows users to see which blocks were adopted/merged (para_blocks) vs rejected (discarded_blocks),
@@ -442,6 +451,17 @@ public static class MinerUJsonService
                         normalizedPreproc[newKey] = kvp.Value;
                     }
                     minerUDoc.PreprocBlocks = normalizedPreproc;
+                }
+
+                // Also normalize PageTypes (page_type enum values)
+                if (minerUDoc.PageTypes.Count > 0)
+                {
+                    var normalizedPageTypes = new Dictionary<int, PageType>();
+                    foreach (var kvp in minerUDoc.PageTypes)
+                    {
+                        normalizedPageTypes[kvp.Key + 1] = kvp.Value;
+                    }
+                    minerUDoc.PageTypes = normalizedPageTypes;
                 }
             }
 
@@ -852,6 +872,36 @@ public static class MinerUJsonService
         }
 
         return node;
+    }
+
+    /// <summary>
+    /// Parses a page_type string from MinerU into a PageType enum value.
+    /// Supports 15 page types: cover, half_title, toc, body, chapter_start,
+    /// image_dominant, table_dominant, blank, back_cover, copyright, colophon,
+    /// acknowledgment, appendix, glossary, reference.
+    /// </summary>
+    static PageType ParsePageType(string pageTypeStr)
+    {
+        var type = pageTypeStr.ToLowerInvariant().Trim();
+        return type switch
+        {
+            "cover" => PageType.cover,
+            "half_title" => PageType.half_title,
+            "toc" => PageType.toc,
+            "body" => PageType.body,
+            "chapter_start" => PageType.chapter_start,
+            "image_dominant" => PageType.image_dominant,
+            "table_dominant" => PageType.table_dominant,
+            "blank" => PageType.blank,
+            "back_cover" => PageType.back_cover,
+            "copyright" => PageType.copyright,
+            "colophon" => PageType.colophon,
+            "acknowledgment" => PageType.acknowledgment,
+            "appendix" => PageType.appendix,
+            "glossary" => PageType.glossary,
+            "reference" => PageType.reference,
+            _ => PageType.unknown
+        };
     }
 
     /// <summary>

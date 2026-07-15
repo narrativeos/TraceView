@@ -600,11 +600,15 @@ public sealed partial class DocumentViewModel
         StructureDocument = minerUDoc;
         AnalysisViewModel = new AnalysisViewModel(minerUDoc, artifactsDirectory);
 
-        // Assign blocks to each page view model
+        // Assign blocks and page type to each page view model
         foreach (var page in Pages)
         {
             page.MinerUBlocks = minerUDoc.GetBlocksForPage(page.PageNumber);
             page.PreprocBlocks = minerUDoc.GetPreprocBlocksForPage(page.PageNumber);
+            if (minerUDoc.PageTypes.TryGetValue(page.PageNumber, out var pageType))
+            {
+                page.MinerUPageType = pageType;
+            }
         }
 
 
@@ -683,7 +687,7 @@ public sealed partial class DocumentViewModel
         StructureDocument = minerUDoc;
         AnalysisViewModel = new AnalysisViewModel(minerUDoc, artifactsDir);
 
-        // Assign blocks to existing pages (the CollectionChanged handler only covers future additions)
+        // Assign blocks and page type to existing pages (the CollectionChanged handler only covers future additions)
         foreach (var page in Pages)
         {
             if (page.MinerUBlocks is null)
@@ -693,6 +697,10 @@ public sealed partial class DocumentViewModel
             if (page.PreprocBlocks is null)
             {
                 page.PreprocBlocks = minerUDoc.GetPreprocBlocksForPage(page.PageNumber);
+            }
+            if (page.MinerUPageType == PageType.unknown && minerUDoc.PageTypes.TryGetValue(page.PageNumber, out var pageType2))
+            {
+                page.MinerUPageType = pageType2;
             }
         }
 

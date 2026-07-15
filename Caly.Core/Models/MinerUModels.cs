@@ -27,6 +27,93 @@ using System.Text.Json.Serialization;
 namespace Caly.Core.Models;
 
 /// <summary>
+/// Page type classification from MinerU's page-level analysis.
+/// Represents 15 distinct page types identified by MinerU's layout analysis.
+/// </summary>
+public enum PageType
+{
+    /// <summary>
+    /// Unknown or unspecified page type.
+    /// </summary>
+    unknown = 0,
+
+    /// <summary>
+    /// Cover page (封面) - The front cover of the document.
+    /// </summary>
+    cover = 1,
+
+    /// <summary>
+    /// Half title page (半标题) - A page with the title, usually before the main title page.
+    /// </summary>
+    half_title = 2,
+
+    /// <summary>
+    /// Table of contents (目录) - The index or table of contents page.
+    /// </summary>
+    toc = 3,
+
+    /// <summary>
+    /// Body page (正文) - Regular content page.
+    /// </summary>
+    body = 4,
+
+    /// <summary>
+    /// Chapter start page (章节起始) - The first page of a new chapter.
+    /// </summary>
+    chapter_start = 5,
+
+    /// <summary>
+    /// Image dominant page (图片为主) - A page primarily containing images.
+    /// </summary>
+    image_dominant = 6,
+
+    /// <summary>
+    /// Table dominant page (表格为主) - A page primarily containing tables.
+    /// </summary>
+    table_dominant = 7,
+
+    /// <summary>
+    /// Blank page (空白) - An empty or nearly empty page.
+    /// </summary>
+    blank = 8,
+
+    /// <summary>
+    /// Back cover (封底) - The back cover of the document.
+    /// </summary>
+    back_cover = 9,
+
+    /// <summary>
+    /// Copyright page (版权) - The copyright and publication information page.
+    /// </summary>
+    copyright = 10,
+
+    /// <summary>
+    /// Colophon (版本记录) - Publication history and version information.
+    /// </summary>
+    colophon = 11,
+
+    /// <summary>
+    /// Acknowledgment page (致谢) - Acknowledgments and thanks section.
+    /// </summary>
+    acknowledgment = 12,
+
+    /// <summary>
+    /// Appendix (附录) - Supplementary material at the end of the document.
+    /// </summary>
+    appendix = 13,
+
+    /// <summary>
+    /// Glossary (术语表) - A list of terms and their definitions.
+    /// </summary>
+    glossary = 14,
+
+    /// <summary>
+    /// Reference page (参考文献) - Bibliography and references section.
+    /// </summary>
+    reference = 15
+}
+
+/// <summary>
 /// Response from POST /tasks endpoint (MinerU v3.4.0+).
 /// </summary>
 public class MinerUTaskSubmitResponse

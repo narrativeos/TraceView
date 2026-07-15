@@ -80,6 +80,14 @@ public partial class StructureDocument : ObservableObject
     private List<AnalysisAggregation> _aggregations = new();
 
     /// <summary>
+    /// Page type classification from MinerU's page-level analysis.
+    /// Maps page number (1-based) to the PageType enum value.
+    /// Populated when parsing MinerU middle.json with "page_type" field.
+    /// </summary>
+    [ObservableProperty]
+    private Dictionary<int, PageType> _pageTypes = new();
+
+    /// <summary>
     /// Gets all blocks across all pages as a flat list.
     /// </summary>
     public List<MinerUBlock> GetAllBlocks()
