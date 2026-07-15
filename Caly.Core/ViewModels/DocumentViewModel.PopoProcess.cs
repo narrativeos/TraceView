@@ -32,7 +32,7 @@ using PopoProcessStatus = Caly.Core.Services.PopoProcessStatus;
 
 namespace Caly.Core.ViewModels;
 
-public sealed partial class DocumentViewModel
+public sealed partial class DocumentViewModel : PopoService.IPopoProgressCallback
 {
     #region Popo Process Properties
 
@@ -49,6 +49,12 @@ public sealed partial class DocumentViewModel
 
     [ObservableProperty]
     private string _popoStatusText = "Ready";
+
+    /// <summary>
+    /// Detailed progress message from the Popo API (e.g., "Image-text association (1 chunks)").
+    /// </summary>
+    [ObservableProperty]
+    private string? _popoProgressMessage;
 
     [ObservableProperty]
     private bool _isPopoProcessing;
@@ -238,6 +244,8 @@ public sealed partial class DocumentViewModel
                 docId,
                 settings.PopoModel,
                 OnPopoProgress,
+                this,
+                null,
                 _popoCts.Token);
 
             if (result.StructureDocument is not null)
@@ -311,6 +319,20 @@ public sealed partial class DocumentViewModel
             PopoStatus = status;
             PopoProgress = progress;
             PopoStatusText = status.ToDisplayName();
+        });
+    }
+
+    /// <summary>
+    /// IPopoProgressCallback implementation that also updates the detailed progress message.
+    /// </summary>
+    public void OnProgress(PopoProcessStatus status, int progress, string? progressMessage = null)
+    {
+        Dispatcher.UIThread.Invoke(() =>
+        {
+            PopoStatus = status;
+            PopoProgress = progress;
+            PopoStatusText = status.ToDisplayName();
+            PopoProgressMessage = progressMessage;
         });
     }
 

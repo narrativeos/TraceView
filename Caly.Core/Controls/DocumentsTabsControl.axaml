@@ -579,46 +579,56 @@
                                                    IsVisible="{Binding !IsPopoProcessing}"/>
                                     </StackPanel>
 
-                                    <!-- Progress State: shown during Popo processing -->
-                                    <Border IsVisible="{Binding IsPopoProcessing}"
-                                            VerticalAlignment="Center"
-                                            HorizontalAlignment="Stretch">
-                                        <StackPanel VerticalAlignment="Center"
-                                                    HorizontalAlignment="Center"
-                                                    Spacing="12">
-                                            <!-- Spinner -->
-                                            <PathIcon Width="32"
-                                                      Height="32"
-                                                      Data="{StaticResource spinner_regular}"
-                                                      Foreground="{DynamicResource SystemAccentColor}"
-                                                      HorizontalAlignment="Center"/>
+                                     <!-- Progress State: shown during Popo processing -->
+                                     <Border IsVisible="{Binding IsPopoProcessing}"
+                                             VerticalAlignment="Center"
+                                             HorizontalAlignment="Stretch">
+                                         <StackPanel VerticalAlignment="Center"
+                                                     HorizontalAlignment="Center"
+                                                     Spacing="12">
+                                             <!-- Spinner -->
+                                             <PathIcon Width="32"
+                                                       Height="32"
+                                                       Data="{StaticResource spinner_regular}"
+                                                       Foreground="{DynamicResource SystemAccentColor}"
+                                                       HorizontalAlignment="Center"/>
 
-                                            <!-- Status Text -->
-                                            <TextBlock Text="{Binding PopoStatusText}"
-                                                       FontSize="13"
-                                                       HorizontalAlignment="Center"
-                                                       TextAlignment="Center"/>
+                                             <!-- Status Text -->
+                                             <TextBlock Text="{Binding PopoStatusText}"
+                                                        FontSize="13"
+                                                        HorizontalAlignment="Center"
+                                                        TextAlignment="Center"/>
 
-                                            <!-- Progress Bar -->
-                                            <ProgressBar Width="200"
-                                                         Minimum="0"
-                                                         Maximum="100"
-                                                         Value="{Binding PopoProgress}"
-                                                         HorizontalAlignment="Center"/>
+                                             <!-- Progress Bar -->
+                                             <ProgressBar Width="200"
+                                                          Minimum="0"
+                                                          Maximum="100"
+                                                          Value="{Binding PopoProgress}"
+                                                          HorizontalAlignment="Center"/>
 
-                                            <!-- Progress Percentage -->
-                                            <TextBlock Text="{Binding PopoProgress, StringFormat='{}{0}%'}"
-                                                       FontSize="11"
-                                                       HorizontalAlignment="Center"
-                                                       Opacity="0.7"/>
+                                             <!-- Progress Percentage -->
+                                             <TextBlock Text="{Binding PopoProgress, StringFormat='{}{0}%'}"
+                                                        FontSize="11"
+                                                        HorizontalAlignment="Center"
+                                                        Opacity="0.7"/>
 
-                                            <!-- Cancel Button -->
-                                            <Button Content="Cancel"
-                                                    Command="{Binding CancelPopoProcessCommand}"
-                                                    HorizontalAlignment="Center"
-                                                    Padding="20,4"/>
-                                        </StackPanel>
-                                    </Border>
+                                             <!-- Detailed Progress Message from Popo API -->
+                                             <TextBlock Text="{Binding PopoProgressMessage}"
+                                                        FontSize="10"
+                                                        HorizontalAlignment="Center"
+                                                        TextAlignment="Center"
+                                                        Opacity="0.5"
+                                                        TextWrapping="Wrap"
+                                                        MaxWidth="250"
+                                                        IsVisible="{Binding PopoProgressMessage}"/>
+
+                                             <!-- Cancel Button -->
+                                             <Button Content="Cancel"
+                                                     Command="{Binding CancelPopoProcessCommand}"
+                                                     HorizontalAlignment="Center"
+                                                     Padding="20,4"/>
+                                         </StackPanel>
+                                     </Border>
 
                                     <!-- Error/Status Message: shown when processing failed -->
                                     <Border IsVisible="{Binding PopoStatus, Converter={StaticResource EqualsConverter}, ConverterParameter={x:Static services:PopoProcessStatus.Failed}}"

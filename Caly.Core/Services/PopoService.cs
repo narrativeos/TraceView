@@ -167,38 +167,78 @@ public sealed class PopoService : IDisposable
     }
 
     /// <summary>
+    /// Progress callback that includes detailed status information.
+    /// </summary>
+    public interface IPopoProgressCallback
+    {
+        void OnProgress(PopoProcessStatus status, int progress, string? progressMessage = null);
+    }
+
+    /// <summary>
     /// Polls the task status until it completes or fails.
     /// Uses the actual progress percentage from the API's progress field.
+    /// Includes timeout protection and detailed logging.
     /// </summary>
+    /// <param name="taskId">Task ID to poll.</param>
+    /// <param name="onProgress">Simple progress callback (status, percent).</param>
+    /// <param name="detailedCallback">Optional callback with progress message details.</param>
+    /// <param name="timeout">Maximum time to wait. Default 30 minutes.</param>
+    /// <param name="ct">Cancellation token.</param>
     public async Task PollUntilCompleteAsync(
         string taskId,
         Action<PopoProcessStatus, int>? onProgress = null,
+        IPopoProgressCallback? detailedCallback = null,
+        TimeSpan? timeout = null,
         CancellationToken ct = default)
     {
+        var effectiveTimeout = timeout ?? TimeSpan.FromMinutes(30);
+        var deadline = DateTime.UtcNow.Add(effectiveTimeout);
         int lastProgress = -1;
+        int pollCount = 0;
 
         while (!ct.IsCancellationRequested)
         {
+            // Check timeout
+            if (DateTime.UtcNow > deadline)
+            {
+                var elapsed = deadline.Subtract(effectiveTimeout);
+                throw new PopoServiceException(
+                    $"Popo task timed out after {effectiveTimeout.TotalMinutes:F1} minutes "
+                    + $"(poll #{pollCount}, last progress: {lastProgress}%). "
+                    + $"The server may be stuck processing your document.");
+            }
+
             var status = await GetTaskStatusAsync(taskId, ct);
+            pollCount++;
 
             if (status.IsRunning)
             {
                 // Parse actual progress percentage from API response
                 // Format: "[60%] Image-text association (1 chunks)"
                 var apiProgress = status.ParseProgressPercent() ?? 35;
+                var progressMessage = status.Progress;
+
+                // Log polling activity
+                System.Diagnostics.Debug.WriteLine(
+                    $"[Popo] Poll #{pollCount}: status={status.Status}, progress={progressMessage ?? "N/A"}");
+
                 if (apiProgress != lastProgress)
                 {
                     lastProgress = apiProgress;
                     onProgress?.Invoke(PopoProcessStatus.Processing, apiProgress);
+                    detailedCallback?.OnProgress(PopoProcessStatus.Processing, apiProgress, progressMessage);
                 }
             }
             else if (status.IsCompleted)
             {
+                System.Diagnostics.Debug.WriteLine($"[Popo] Poll #{pollCount}: task completed!");
                 onProgress?.Invoke(PopoProcessStatus.Downloading, 70);
+                detailedCallback?.OnProgress(PopoProcessStatus.Downloading, 70, "Task completed, downloading result...");
                 return;
             }
             else if (status.IsFailed)
             {
+                System.Diagnostics.Debug.WriteLine($"[Popo] Poll #{pollCount}: task failed!");
                 onProgress?.Invoke(PopoProcessStatus.Failed, -1);
                 var errorMessage = status.GetErrorMessage() ?? "Unknown error";
                 throw new PopoServiceException($"Popo task failed: {errorMessage}");
@@ -259,21 +299,25 @@ public sealed class PopoService : IDisposable
     /// <param name="sourceDocId">Document ID for result caching.</param>
     /// <param name="model">Model name (e.g., "mineru"). Required by Popo API.</param>
     /// <param name="onProgress">Progress callback (status, percent 0-100).</param>
+    /// <param name="detailedCallback">Optional callback with progress message details.</param>
+    /// <param name="timeout">Maximum polling timeout. Default 30 minutes.</param>
     /// <param name="ct">Cancellation token.</param>
     public async Task<PopoProcessResult> ProcessAsync(
         string zipPath,
         string sourceDocId,
         string model = "mineru",
         Action<PopoProcessStatus, int>? onProgress = null,
+        IPopoProgressCallback? detailedCallback = null,
+        TimeSpan? timeout = null,
         CancellationToken ct = default)
     {
         // Step 1: Submit task
         onProgress?.Invoke(PopoProcessStatus.Submitting, 10);
         var taskId = await SubmitTaskAsync(zipPath, model, ct);
 
-        // Step 2: Poll until complete (progress from API parsed automatically)
+        // Step 2: Poll until complete (progress from API parsed automatically, with timeout protection)
         onProgress?.Invoke(PopoProcessStatus.Queued, 15);
-        await PollUntilCompleteAsync(taskId, onProgress, ct);
+        await PollUntilCompleteAsync(taskId, onProgress, detailedCallback, timeout, ct);
 
         // Step 3: Download and parse result (builds MinerUDocument from the API tree)
         onProgress?.Invoke(PopoProcessStatus.Downloading, 70);
