@@ -19,6 +19,7 @@
 // SOFTWARE.
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
@@ -201,7 +202,7 @@ internal sealed class DialogService : IDialogService
         }, DispatcherPriority.Loaded);
     }
 
-    public async Task<bool> ShowProjectExistsDialogAsync(string projectName)
+    public async Task<string?> ShowProjectExistsDialogAsync(string pdfPath, List<string> existingProjects)
     {
         return await Dispatcher.UIThread.InvokeAsync(async () =>
         {
@@ -209,12 +210,12 @@ internal sealed class DialogService : IDialogService
 
             if (_target is not Window w)
             {
-                return false;
+                return null;
             }
 
-            var window = new ProjectExistsWindow(projectName);
-            var result = await window.ShowDialog<bool?>(w);
-            return result ?? false;
+            var window = new ProjectExistsWindow(pdfPath, existingProjects);
+            var result = await window.ShowDialog<string?>(w);
+            return result;
         }, DispatcherPriority.Loaded);
     }
 }

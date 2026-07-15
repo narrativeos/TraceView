@@ -22,6 +22,7 @@ using Avalonia.Controls.Notifications;
 using Caly.Core.Models;
 using Caly.Core.ViewModels;
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -74,9 +75,10 @@ namespace Caly.Core.Services.Interfaces
             CancellationToken token);
 
         /// <summary>
-        /// Shows a dialog asking whether to create a new project or open the existing one.
-        /// Returns true for "Create New Project", false for "Open Existing Project".
+        /// Shows a dialog listing existing projects for a given PDF and allows the user
+        /// to select one or create a new project.
+        /// Returns the selected project path, or null if the user chose to create a new project.
         /// </summary>
-        Task<bool> ShowProjectExistsDialogAsync(string projectName);
+        Task<string?> ShowProjectExistsDialogAsync(string pdfPath, List<string> existingProjects);
     }
 }

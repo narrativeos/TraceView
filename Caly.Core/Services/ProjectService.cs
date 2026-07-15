@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using Caly.Core.Models;
 using Caly.Core.Services.Interfaces;
@@ -49,6 +51,66 @@ public class ProjectService
     }
 
     /// <summary>
+    /// Finds all existing project directories for a given PDF file.
+    /// Projects follow the naming pattern: {basename}, {basename}_2, {basename}_3, etc.
+    /// Returns a list of full project paths that have valid project.json metadata matching the PDF.
+    /// </summary>
+    public List<string> FindAllProjects(string pdfPath)
+    {
+        var projectHome = GetProjectHome();
+        var fileNameWithoutExtension = Path.GetFileNameWithoutExtension(pdfPath);
+        var results = new List<string>();
+
+        if (!Directory.Exists(projectHome))
+            return results;
+
+        // Find all directories that match the pattern: {basename} or {basename}_N
+        var dirs = Directory.GetDirectories(projectHome, fileNameWithoutExtension + "*");
+        foreach (var dir in dirs)
+        {
+            var dirName = Path.GetFileName(dir);
+            // Must match exactly {basename} or {basename}_N pattern
+            if (dirName == fileNameWithoutExtension || 
+                (dirName.StartsWith(fileNameWithoutExtension + "_") && IsNumeric(dirName.Substring(fileNameWithoutExtension.Length + 1))))
+            {
+                // Verify it's a valid project by checking for project.json
+                var metadataPath = Path.Combine(dir, "project.json");
+                if (File.Exists(metadataPath))
+                {
+                    var metadata = LoadProjectMetadata(dir);
+                    // Verify the project.json references the same PDF file
+                    if (metadata is not null && string.Equals(metadata.PdfPath, pdfPath, StringComparison.OrdinalIgnoreCase))
+                    {
+                        results.Add(dir);
+                    }
+                }
+            }
+        }
+
+        // Sort: base name first, then by numeric suffix
+        results.Sort((a, b) =>
+        {
+            var nameA = Path.GetFileName(a);
+            var nameB = Path.GetFileName(b);
+            if (nameA == fileNameWithoutExtension) return -1;
+            if (nameB == fileNameWithoutExtension) return 1;
+            
+            var suffixA = nameA.Substring(fileNameWithoutExtension.Length + 1);
+            var suffixB = nameB.Substring(fileNameWithoutExtension.Length + 1);
+            if (int.TryParse(suffixA, out var numA) && int.TryParse(suffixB, out var numB))
+                return numA.CompareTo(numB);
+            return string.Compare(nameA, nameB, StringComparison.Ordinal);
+        });
+
+        return results;
+    }
+
+    private static bool IsNumeric(string value)
+    {
+        return int.TryParse(value, out _);
+    }
+
+    /// <summary>
     /// Gets a unique project path. If the default path already exists,
     /// appends _2, _3, etc. to create a new unique directory.
     /// </summary>
@@ -85,8 +147,10 @@ public class ProjectService
         // Create subdirectories
         var minerUDir = Path.Combine(projectPath, "mineru");
         var popoDir = Path.Combine(projectPath, "popo");
+        var semanticDir = Path.Combine(projectPath, "semantic");
         Directory.CreateDirectory(minerUDir);
         Directory.CreateDirectory(popoDir);
+        Directory.CreateDirectory(semanticDir);
 
         // Create project metadata
         var metadata = new ProjectMetadata

@@ -18,46 +18,89 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-using System.Diagnostics.CodeAnalysis;
+using System.Collections.Generic;
+using System.IO;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
-using Avalonia.Interactivity;
 
 namespace Caly.Core.Views;
 
 /// <summary>
-/// Dialog window asking user whether to create a new project or open an existing one.
-/// Returns true for "Create New Project", false for "Open Existing Project".
+/// Dialog window that lists existing projects for a given PDF and allows the user
+/// to select one or create a new project.
+/// Returns the selected project path, or null if the user chose "Create New Project".
 /// </summary>
 public partial class ProjectExistsWindow : Window
 {
-    private readonly string _projectName;
-    private TextBlock? _messageText;
+    private readonly string _pdfPath;
+    private readonly List<string> _existingProjects;
+    private ListBox? _projectList;
 
-    public ProjectExistsWindow(string projectName)
+    /// <summary>
+    /// Default constructor required by Avalonia XAML loader.
+    /// </summary>
+    public ProjectExistsWindow()
     {
-        _projectName = projectName;
+        _pdfPath = string.Empty;
+        _existingProjects = new List<string>();
         InitializeComponent();
     }
 
-    [MemberNotNull(nameof(_messageText))]
+    public ProjectExistsWindow(string pdfPath, List<string> existingProjects)
+    {
+        _pdfPath = pdfPath;
+        _existingProjects = existingProjects;
+        InitializeComponent();
+    }
+
     protected override void OnApplyTemplate(TemplateAppliedEventArgs e)
     {
         base.OnApplyTemplate(e);
-        _messageText = this.Find<TextBlock>("PART_MessageText")!;
-        if (_messageText is not null)
+        _projectList = this.Find<ListBox>("PART_ProjectList");
+        if (_projectList is not null)
         {
-            _messageText.Text = $"项目 '{_projectName}' 已存在，请选择：";
+            var items = new List<ProjectListItem>();
+            foreach (var path in _existingProjects)
+            {
+                var name = Path.GetFileName(path);
+                items.Add(new ProjectListItem { Name = name, Path = path });
+            }
+            _projectList.ItemsSource = items;
+            // Select the first item by default
+            if (items.Count > 0)
+                _projectList.SelectedIndex = 0;
         }
     }
 
-    private void CreateNewButton_OnClick(object? sender, RoutedEventArgs e)
+    private void OpenProjectButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
-        Close(true);
+        if (_projectList?.SelectedItem is ProjectListItem item)
+        {
+            Close(item.Path);
+        }
+        else
+        {
+            // No valid selection, default to first project
+            if (_existingProjects.Count > 0)
+                Close(_existingProjects[0]);
+            else
+                Close(null);
+        }
     }
 
-    private void OpenExistingButton_OnClick(object? sender, RoutedEventArgs e)
+    private void CreateNewButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
-        Close(false);
+        Close(null);
     }
+}
+
+/// <summary>
+/// Simple model for displaying a project in the ListBox.
+/// </summary>
+public class ProjectListItem
+{
+    public string Name { get; set; } = string.Empty;
+    public string Path { get; set; } = string.Empty;
+
+    public override string ToString() => Name;
 }

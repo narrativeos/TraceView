@@ -262,12 +262,6 @@ public sealed partial class DocumentViewModel
             }
         }
 
-        // Phase 2: Check standard outputs/ directory (sibling to PDF)
-        if (minerUDoc is null && LocalPath is not null)
-        {
-            minerUDoc = PopoJsonService.LoadStructureDocument(LocalPath);
-        }
-
         if (minerUDoc is null)
             return;
 

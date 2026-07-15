@@ -240,26 +240,25 @@ internal sealed partial class PdfDocumentsManagerService : IPdfDocumentsManagerS
         }
 
 
-        // Determine project path - check if project already exists
+        // Determine project path - check if any projects already exist for this PDF
         string projectPath;
-        bool projectExists = _projectService.ProjectExists(pdfPath);
+        var existingProjects = _projectService.FindAllProjects(pdfPath);
 
-        if (projectExists)
+        if (existingProjects.Count > 0)
         {
-            // Show dialog asking user to choose: create new project or open existing
-            var projectName = Path.GetFileName(_projectService.GetDefaultProjectPath(pdfPath));
-            bool createNew = await _dialogService.ShowProjectExistsDialogAsync(projectName);
+            // Show dialog listing all existing projects, user can select one or create new
+            var selectedPath = await _dialogService.ShowProjectExistsDialogAsync(pdfPath, existingProjects);
 
-            if (createNew)
+            if (selectedPath is not null)
             {
-                // Create a new project with unique name
-                projectPath = _projectService.GetUniqueProjectPath(pdfPath);
-                _projectService.CreateProject(pdfPath, projectPath);
+                // User selected an existing project
+                projectPath = selectedPath;
             }
             else
             {
-                // Open the existing project
-                projectPath = _projectService.GetDefaultProjectPath(pdfPath);
+                // User chose to create a new project with unique name
+                projectPath = _projectService.GetUniqueProjectPath(pdfPath);
+                _projectService.CreateProject(pdfPath, projectPath);
             }
         }
         else

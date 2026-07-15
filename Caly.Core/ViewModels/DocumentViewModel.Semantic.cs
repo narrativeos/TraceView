@@ -372,45 +372,23 @@ public sealed partial class DocumentViewModel
 
     /// <summary>
     /// Gets the output directory for semantic analysis results.
-    /// Always uses ~/.TraceView/{docId}/semantic/ pattern.
+    /// Uses the project's semantic/ subdirectory when available, ensuring isolation between projects.
     /// </summary>
     private string GetSemanticOutputDir()
     {
-        string docId;
-
-        // Try to get docId from MinerU zip file in project
+        // Use the project's semantic/ directory for proper isolation between projects
         if (ProjectPath is not null)
         {
-            var mineruDir = Path.Combine(ProjectPath, "mineru");
-            if (Directory.Exists(mineruDir))
-            {
-                var zipFiles = Directory.GetFiles(mineruDir, "*.zip");
-                if (zipFiles.Length > 0)
-                {
-                    docId = Path.GetFileNameWithoutExtension(zipFiles[0]);
-                    System.Diagnostics.Debug.WriteLine($"[Semantic] GetSemanticOutputDir: docId from zip = '{docId}'");
-                    return Path.Combine(
-                        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-                        ".TraceView", docId, "semantic");
-                }
-            }
-            docId = LocalPath is not null ? Path.GetFileNameWithoutExtension(LocalPath) : "unknown";
-        }
-        else if (LocalPath is not null)
-        {
-            docId = Path.GetFileNameWithoutExtension(LocalPath);
-        }
-        else
-        {
-            docId = "unknown";
+            var semanticDir = Path.Combine(ProjectPath, "semantic");
+            System.Diagnostics.Debug.WriteLine($"[Semantic] GetSemanticOutputDir: using project path {semanticDir}");
+            return semanticDir;
         }
 
-        System.Diagnostics.Debug.WriteLine($"[Semantic] GetSemanticOutputDir: docId from LocalPath = '{docId}'");
-
-        // Use ~/.TraceView/{docId}/semantic/
-        return Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".TraceView", docId, "semantic");
+        // No project path available - cannot determine a safe output directory
+        // Return a path that won't exist, so TryLoadSemanticResultFromFile will return null
+        System.Diagnostics.Debug.WriteLine("[Semantic] GetSemanticOutputDir: no ProjectPath available");
+        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            ".TraceView", "__no_project__", "semantic");
     }
 
     /// <summary>
