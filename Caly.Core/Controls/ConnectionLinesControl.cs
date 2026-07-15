@@ -241,11 +241,60 @@ public sealed class ConnectionLinesControl : Control
         {
             control.ScheduleRender();
         });
+
+        // Subscribe to property changes that may not trigger AffectsRender
+        // (e.g., when the collection reference is the same but contents change via Clear+Add)
+        MinerUBlocksProperty.Changed.AddClassHandler<ConnectionLinesControl>((control, e) =>
+        {
+            control.InvalidateCaches();
+            control.InvalidateVisual();
+        });
+        PreprocBlocksByPageProperty.Changed.AddClassHandler<ConnectionLinesControl>((control, e) =>
+        {
+            control.InvalidateCaches();
+            control.InvalidateVisual();
+        });
+        VisiblePopoNodesProperty.Changed.AddClassHandler<ConnectionLinesControl>((control, e) =>
+        {
+            control._popoCumulativeYCacheValid = false;
+            control.InvalidateVisual();
+        });
+        VisibleSemanticItemsProperty.Changed.AddClassHandler<ConnectionLinesControl>((control, e) =>
+        {
+            control._semanticCumulativeYCacheValid = false;
+            control.InvalidateVisual();
+        });
+        ShowConnectionsProperty.Changed.AddClassHandler<ConnectionLinesControl>((control, e) =>
+        {
+            control.InvalidateCaches();
+            control.InvalidateVisual();
+        });
+        ShowPopoConnectionsProperty.Changed.AddClassHandler<ConnectionLinesControl>((control, e) =>
+        {
+            control.InvalidateCaches();
+            control.InvalidateVisual();
+        });
+        ShowSemanticConnectionsProperty.Changed.AddClassHandler<ConnectionLinesControl>((control, e) =>
+        {
+            control.InvalidateCaches();
+            control.InvalidateVisual();
+        });
     }
 
     private int _renderToken;
     private bool _renderPending;
     private System.Threading.Timer? _pendingTimer;
+
+    /// <summary>
+    /// Invalidates all cached cumulative Y positions. Called when underlying data
+    /// may have changed without the collection reference changing (e.g., Clear+Add).
+    /// </summary>
+    private void InvalidateCaches()
+    {
+        _cumulativeYCacheValid = false;
+        _popoCumulativeYCacheValid = false;
+        _semanticCumulativeYCacheValid = false;
+    }
 
     private void ScheduleRender()
     {
