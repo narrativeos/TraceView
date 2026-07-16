@@ -410,12 +410,11 @@ public sealed partial class DocumentsTabsControl : UserControl
 
     private void UpdateConnectionLines()
     {
-        // Debounce: if an update is already scheduled, skip
-        if (_updateConnectionLinesPending)
-            return;
-        
-        _updateConnectionLinesPending = true;
+        // Always reschedule: if an update is already pending, dispose it and start a new one.
+        // This ensures that property changes (e.g., VisiblePages being set after data loads)
+        // are not lost due to debouncing.
         _updateConnectionLinesTimer?.Dispose();
+        
         // Use 100ms debounce during scrolling to reduce expensive DOM queries.
         // Scroll events fire at ~60fps (16ms interval), so 100ms means we process
         // only ~10 updates per second instead of ~60, dramatically reducing CPU usage.
@@ -428,6 +427,8 @@ public sealed partial class DocumentsTabsControl : UserControl
                 UpdateConnectionLinesCore();
             });
         }, null, 100, -1);
+        
+        _updateConnectionLinesPending = true;
     }
 
     private void UpdateConnectionLinesCore()
