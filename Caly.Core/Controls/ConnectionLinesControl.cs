@@ -575,15 +575,25 @@ public sealed class ConnectionLinesControl : Control
     private static readonly ImmutablePen DefaultSemanticPen = new(DefaultSemanticLineBrush, 2.0);
 
     /// <summary>
-    /// Gets the dominant entity category for a Popo node's semantic result.
-    /// Used to determine the connection line color.
+    /// Force a re-render by calling InvalidateVisual().
+    /// This is called after setting multiple properties to ensure
+    /// the render pipeline picks up all changes.
     /// </summary>
+    public void ForceRenderNextFrame()
+    {
+        // Simply invalidate the visual - the AffectsRender mechanism
+        // will handle the actual rendering when properties change.
+        // On project reopen, the control is freshly created so InvalidateVisual
+        // should work correctly.
+        InvalidateVisual();
+    }
+
     private static string GetDominantEntityCategory(TreeNodeViewModel nodeVm)
     {
         var result = nodeVm.SemanticResult;
         if (result is null || result.Entities.Count == 0)
             return "DEFAULT";
-        
+
         // Count by category and return the most frequent
         var categoryCounts = new Dictionary<string, int>();
         foreach (var entity in result.Entities)
@@ -592,7 +602,7 @@ public sealed class ConnectionLinesControl : Control
                 categoryCounts[entity.Category] = 0;
             categoryCounts[entity.Category]++;
         }
-        
+
         string dominant = "DEFAULT";
         int maxCount = 0;
         foreach (var kvp in categoryCounts)
@@ -603,7 +613,7 @@ public sealed class ConnectionLinesControl : Control
                 dominant = kvp.Key;
             }
         }
-        
+
         return dominant;
     }
 
@@ -640,7 +650,12 @@ public sealed class ConnectionLinesControl : Control
     public override void Render(DrawingContext context)
     {
         if (Bounds.Width <= 0 || Bounds.Height <= 0)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ConnectionLines] Render: Bounds zero {Bounds.Width}x{Bounds.Height} - skipping");
             return;
+        }
+
+        System.Diagnostics.Debug.WriteLine($"[ConnectionLines] Render called! ShowConnections={ShowConnections}, ShowPopo={ShowPopoConnections}, ShowSemantic={ShowSemanticConnections}, Bounds={Bounds.Width}x{Bounds.Height}");
 
         // Render PDF → MinerU connections
         if (ShowConnections)

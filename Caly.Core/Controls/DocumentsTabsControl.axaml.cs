@@ -65,7 +65,6 @@ public sealed partial class DocumentsTabsControl : UserControl
     private ScrollViewer? _semanticScrollViewer;
     
     // Debounce for UpdateConnectionLines to avoid excessive calls during scrolling
-    private bool _updateConnectionLinesPending;
     private System.Threading.Timer? _updateConnectionLinesTimer;
 
     public DocumentsTabsControl()
@@ -86,6 +85,99 @@ public sealed partial class DocumentsTabsControl : UserControl
                 textBox.SelectAll();
             })
         });
+    }
+
+    protected override void OnLoaded(RoutedEventArgs e)
+    {
+        base.OnLoaded(e);
+        
+        System.Diagnostics.Debug.WriteLine("[ConnectionLines] OnLoaded called");
+        
+        // DataContext is MainViewModel (inherited from parent window).
+        // Subscribe immediately on load to ensure we catch async data loading
+        // (e.g., TryLoadMinerUData/TryLoadPopoData on project reopen).
+        SubscribeToCurrentDocument();
+        
+        DataContextChanged += OnDataContextChanged;
+    }
+
+    protected override void OnUnloaded(RoutedEventArgs e)
+    {
+        base.OnUnloaded(e);
+        System.Diagnostics.Debug.WriteLine("[ConnectionLines] OnUnloaded called");
+        DataContextChanged -= OnDataContextChanged;
+        UnsubscribeFromDocument();
+    }
+
+    private void OnDataContextChanged(object? sender, EventArgs e)
+    {
+        System.Diagnostics.Debug.WriteLine("[ConnectionLines] DataContextChanged called");
+        UnsubscribeFromDocument();
+        SubscribeToCurrentDocument();
+        UpdateConnectionLines();
+    }
+
+    private void SubscribeToCurrentDocument()
+    {
+        if (DataContext is MainViewModel mainVm)
+        {
+            // Subscribe to MainViewModel's SelectedDocument changes (tab switches)
+            mainVm.PropertyChanged += OnMainViewModelPropertyChanged;
+            System.Diagnostics.Debug.WriteLine($"[ConnectionLines] Subscribed to MainViewModel, SelectedDocument={mainVm.SelectedDocument?.FileName ?? "null"}");
+            
+            if (mainVm.SelectedDocument is DocumentViewModel docVm)
+            {
+                SubscribeToDocumentPropertyChanged(docVm);
+            }
+        }
+    }
+
+    private void OnMainViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        System.Diagnostics.Debug.WriteLine($"[ConnectionLines] MainViewModel property changed: {e.PropertyName}");
+        
+        // Handle document tab switches
+        if (e.PropertyName == "SelectedDocument")
+        {
+            System.Diagnostics.Debug.WriteLine($"[ConnectionLines] SelectedDocument changed, new={((MainViewModel?)sender)?.SelectedDocument?.FileName ?? "null"}");
+            UnsubscribeFromDocument();
+            SubscribeToCurrentDocument();
+            UpdateConnectionLines();
+        }
+    }
+
+    private void UnsubscribeFromDocument()
+    {
+        if (_lastSubscribedDocument is not null)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ConnectionLines] Unsubscribing from {_lastSubscribedDocument.FileName}");
+            _lastSubscribedDocument.PropertyChanged -= OnDocumentPropertyChanged;
+            _lastSubscribedDocument = null;
+        }
+        
+        // Also unsubscribe from MainViewModel
+        if (DataContext is MainViewModel mainVm)
+        {
+            mainVm.PropertyChanged -= OnMainViewModelPropertyChanged;
+        }
+        
+        // CRITICAL: Clear cached control references when document changes.
+        // ConnectionLinesControl is inside the TabControl.ContentTemplate's DataTemplate,
+        // meaning it gets destroyed and recreated on each tab switch/document reopen.
+        // If we don't clear these caches, we hold references to destroyed controls,
+        // causing property changes to be silently ignored (no render, no effect).
+        if (_connectionLinesControl is not null)
+        {
+            _connectionLinesControl.SizeChanged -= (_, _) => UpdateConnectionLines();
+            _connectionLinesControl = null;
+        }
+        _documentControl = null;
+        _minerUScrollViewer = null;
+        _threeColumnGrid = null;
+        _minerUItemsControl = null;
+        _popoScrollViewer = null;
+        _popoTreeView = null;
+        _semanticScrollViewer = null;
     }
 
     private TextBox? GetTextBoxPageNumber()
@@ -420,36 +512,42 @@ public sealed partial class DocumentsTabsControl : UserControl
         // only ~10 updates per second instead of ~60, dramatically reducing CPU usage.
         _updateConnectionLinesTimer = new System.Threading.Timer(_ =>
         {
-            _updateConnectionLinesPending = false;
             _updateConnectionLinesTimer = null;
             Avalonia.Threading.Dispatcher.UIThread.Post(() =>
             {
                 UpdateConnectionLinesCore();
             });
         }, null, 100, -1);
-        
-        _updateConnectionLinesPending = true;
     }
 
     private void UpdateConnectionLinesCore()
     {
+        // DataContext is MainViewModel (inherited from parent window).
+        // Subscribe to property changes FIRST, before any early returns.
+        if (DataContext is MainViewModel mainVm && mainVm.SelectedDocument is DocumentViewModel docVm)
+        {
+            SubscribeToDocumentPropertyChanged(docVm);
+        }
+
         var connControl = GetConnectionLinesControl();
         if (connControl is null)
         {
+            System.Diagnostics.Debug.WriteLine("[ConnectionLines] UpdateConnectionLinesCore: connControl is null");
             return;
         }
 
-        if (DataContext is not MainViewModel mainVm || mainVm.SelectedDocument is not DocumentViewModel docVm)
+        if (DataContext is not MainViewModel mainVm2 || mainVm2.SelectedDocument is not DocumentViewModel docVm2)
         {
+            System.Diagnostics.Debug.WriteLine($"[ConnectionLines] UpdateConnectionLinesCore: no selected doc, DataContext={DataContext?.GetType().Name}");
             connControl.ShowConnections = false;
             return;
         }
 
-        // Subscribe to property changes to detect when data loads (e.g., on project reopen)
-        SubscribeToDocumentPropertyChanged(docVm);
+        System.Diagnostics.Debug.WriteLine($"[ConnectionLines] UpdateConnectionLinesCore: doc={docVm2.FileName}, ShowMinerUColumn={docVm2.ShowMinerUColumn}, HasMinerUBlocks={docVm2.HasMinerUBlocks}, VisiblePages={docVm2.VisiblePages?.ToString() ?? "null"}");
 
-        if (!docVm.ShowMinerUColumn || !docVm.HasMinerUBlocks)
+        if (!docVm2.ShowMinerUColumn || !docVm2.HasMinerUBlocks)
         {
+            System.Diagnostics.Debug.WriteLine($"[ConnectionLines] UpdateConnectionLinesCore: ShowMinerUColumn={docVm2.ShowMinerUColumn}, HasMinerUBlocks={docVm2.HasMinerUBlocks} - hiding");
             connControl.ShowConnections = false;
             return;
         }
@@ -458,12 +556,13 @@ public sealed partial class DocumentsTabsControl : UserControl
         // Don't set ShowConnections = false here — if VisiblePages is not yet set
         // (e.g., on project reopen, data loads before layout completes), just return
         // and wait for VisiblePages property change to trigger another update.
-        if (!docVm.VisiblePages.HasValue)
+        if (!docVm2.VisiblePages.HasValue)
         {
+            System.Diagnostics.Debug.WriteLine("[ConnectionLines] UpdateConnectionLinesCore: VisiblePages is null - returning");
             return;
         }
 
-        var visibleRange = docVm.VisiblePages.Value;
+        var visibleRange = docVm2.VisiblePages.Value;
         int startPage = visibleRange.Start.Value;
         int endPage = visibleRange.End.Value; // exclusive
 
@@ -474,7 +573,7 @@ public sealed partial class DocumentsTabsControl : UserControl
 
         for (int pageNum = startPage; pageNum < endPage; pageNum++)
         {
-            var page = docVm.Pages.FirstOrDefault(p => p.PageNumber == pageNum);
+            var page = docVm2.Pages.FirstOrDefault(p => p.PageNumber == pageNum);
             if (page?.PreprocBlocks is { Count: > 0 })
             {
                 preprocBlocksByPage[pageNum] = (page.PreprocBlocks, page.Size);
@@ -486,17 +585,35 @@ public sealed partial class DocumentsTabsControl : UserControl
 
         if (preprocBlocksByPage.Count == 0 || totalPreproc == 0)
         {
+            System.Diagnostics.Debug.WriteLine($"[ConnectionLines] No preproc blocks found - hiding");
             connControl.ShowConnections = false;
             return;
         }
 
+        System.Diagnostics.Debug.WriteLine($"[ConnectionLines] Showing connections! preprocBlocks={totalPreproc}, minerUBlocks={docVm2.VisibleMinerUBlocks?.Count ?? 0}");
+        
+        // Check if MinerUBlockViewModels have ActualHeight set (from MinerUBlockBorder_OnLoaded).
+        // On project reopen, the new MinerUBlockViewModels may not have had their borders loaded yet,
+        // meaning ActualHeight is 0. In this case, defer the update to allow UI to render first.
+        bool anyBlockHasHeight = docVm2.VisibleMinerUBlocks?.Any(b => b.ActualHeight > 0) == true;
+        System.Diagnostics.Debug.WriteLine($"[ConnectionLines] anyBlockHasHeight={anyBlockHasHeight}");
+        
+        if (!anyBlockHasHeight)
+        {
+            // Defer: schedule another update after a frame to allow MinerUBlockBorder_OnLoaded to fire
+            System.Diagnostics.Debug.WriteLine("[ConnectionLines] Deferring update - waiting for blocks to render");
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => UpdateConnectionLines(), 
+                Avalonia.Threading.DispatcherPriority.Render);
+            // Still set ShowConnections=true to show the control, but it will re-render once heights are available
+        }
+        
         connControl.ShowConnections = true;
         connControl.PreprocBlocksByPage = preprocBlocksByPage;
-        connControl.MinerUBlocks = docVm.VisibleMinerUBlocks;
+        connControl.MinerUBlocks = docVm2.VisibleMinerUBlocks;
         connControl.PageSize = firstPageWithBlocks?.Size ?? new Size(0, 0);
-        connControl.ZoomLevel = docVm.ZoomLevel;
+        connControl.ZoomLevel = docVm2.ZoomLevel;
         connControl.PpiScale = firstPageWithBlocks?.PpiScale ?? 1.0;
-        connControl.SelectedBlockId = docVm.SelectedMinerUBlockId;
+        connControl.SelectedBlockId = docVm2.SelectedMinerUBlockId;
 
         // PDF scroll offset + page left offset (get actual page position)
         var docControl = GetDocumentControl();
@@ -506,7 +623,7 @@ public sealed partial class DocumentsTabsControl : UserControl
             if (pageItemsControl?.Scroll is { } pdfScroll)
             {
                 // Use the first visible page for scroll offset calculation
-                var firstVisiblePage = docVm.Pages.FirstOrDefault(p => p.PageNumber >= startPage && p.PreprocBlocks?.Count > 0);
+                var firstVisiblePage = docVm2.Pages.FirstOrDefault(p => p.PageNumber >= startPage && p.PreprocBlocks?.Count > 0);
                 if (firstVisiblePage is not null)
                 {
                     var pageItem = pageItemsControl.GetPageItem(firstVisiblePage.PageNumber);
@@ -598,7 +715,7 @@ public sealed partial class DocumentsTabsControl : UserControl
         }
 
         // Set Popo visible nodes for MinerU -> Popo connections
-        connControl.VisiblePopoNodes = docVm.VisiblePopoNodes;
+        connControl.VisiblePopoNodes = docVm2.VisiblePopoNodes;
 
         // Set Popo TreeView reference for accurate position queries
         var popoTreeView = GetPopoTreeView();
@@ -608,7 +725,7 @@ public sealed partial class DocumentsTabsControl : UserControl
         }
 
         // Show Popo connections only when both MinerU and Popo columns are visible
-        connControl.ShowPopoConnections = docVm.ShowMinerUColumn && docVm.ShowAnalysisColumn && docVm.HasPopoBlocks;
+        connControl.ShowPopoConnections = docVm2.ShowMinerUColumn && docVm2.ShowAnalysisColumn && docVm2.HasPopoBlocks;
 
         // Semantic scroll offset
         var semanticScroll = GetSemanticScrollViewer();
@@ -620,15 +737,18 @@ public sealed partial class DocumentsTabsControl : UserControl
         }
 
         // Show Semantic connections only when both Popo and Semantic columns are visible with data
-        connControl.ShowSemanticConnections = docVm.ShowAnalysisColumn && docVm.ShowSemanticColumn && docVm.HasSemanticResults;
+        connControl.ShowSemanticConnections = docVm2.ShowAnalysisColumn && docVm2.ShowSemanticColumn && docVm2.HasSemanticResults;
 
         // Set Semantic items for Popo -> Semantic connections
-        if (docVm.SemanticResults is not null)
+        if (docVm2.SemanticResults is not null)
         {
-            connControl.VisibleSemanticItems = docVm.SemanticResults.Blocks;
+            connControl.VisibleSemanticItems = docVm2.SemanticResults.Blocks;
         }
 
-        // Force a re-render now that all properties have been set
-        connControl.InvalidateVisual();
+        // Force a deferred re-render on the next UI frame.
+        // Using Dispatcher.Post ensures the render happens after all property changes
+        // are processed, fixing the issue where InvalidateVisual() is called during
+        // a frame that's already being rendered (causing it to be silently dropped).
+        connControl.ForceRenderNextFrame();
     }
 }
