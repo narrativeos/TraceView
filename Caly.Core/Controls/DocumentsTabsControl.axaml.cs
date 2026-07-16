@@ -454,9 +454,11 @@ public sealed partial class DocumentsTabsControl : UserControl
         }
 
         // Get visible page range from VisiblePages
+        // Don't set ShowConnections = false here — if VisiblePages is not yet set
+        // (e.g., on project reopen, data loads before layout completes), just return
+        // and wait for VisiblePages property change to trigger another update.
         if (!docVm.VisiblePages.HasValue)
         {
-            connControl.ShowConnections = false;
             return;
         }
 
