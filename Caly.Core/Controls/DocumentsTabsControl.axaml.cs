@@ -91,8 +91,6 @@ public sealed partial class DocumentsTabsControl : UserControl
     {
         base.OnLoaded(e);
         
-        System.Diagnostics.Debug.WriteLine("[ConnectionLines] OnLoaded called");
-        
         // DataContext is MainViewModel (inherited from parent window).
         // Subscribe immediately on load to ensure we catch async data loading
         // (e.g., TryLoadMinerUData/TryLoadPopoData on project reopen).
@@ -104,14 +102,12 @@ public sealed partial class DocumentsTabsControl : UserControl
     protected override void OnUnloaded(RoutedEventArgs e)
     {
         base.OnUnloaded(e);
-        System.Diagnostics.Debug.WriteLine("[ConnectionLines] OnUnloaded called");
         DataContextChanged -= OnDataContextChanged;
         UnsubscribeFromDocument();
     }
 
     private void OnDataContextChanged(object? sender, EventArgs e)
     {
-        System.Diagnostics.Debug.WriteLine("[ConnectionLines] DataContextChanged called");
         UnsubscribeFromDocument();
         SubscribeToCurrentDocument();
         UpdateConnectionLines();
@@ -123,7 +119,6 @@ public sealed partial class DocumentsTabsControl : UserControl
         {
             // Subscribe to MainViewModel's SelectedDocument changes (tab switches)
             mainVm.PropertyChanged += OnMainViewModelPropertyChanged;
-            System.Diagnostics.Debug.WriteLine($"[ConnectionLines] Subscribed to MainViewModel, SelectedDocument={mainVm.SelectedDocument?.FileName ?? "null"}");
             
             if (mainVm.SelectedDocument is DocumentViewModel docVm)
             {
@@ -134,12 +129,9 @@ public sealed partial class DocumentsTabsControl : UserControl
 
     private void OnMainViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        System.Diagnostics.Debug.WriteLine($"[ConnectionLines] MainViewModel property changed: {e.PropertyName}");
-        
         // Handle document tab switches
         if (e.PropertyName == "SelectedDocument")
         {
-            System.Diagnostics.Debug.WriteLine($"[ConnectionLines] SelectedDocument changed, new={((MainViewModel?)sender)?.SelectedDocument?.FileName ?? "null"}");
             UnsubscribeFromDocument();
             SubscribeToCurrentDocument();
             UpdateConnectionLines();
@@ -150,7 +142,6 @@ public sealed partial class DocumentsTabsControl : UserControl
     {
         if (_lastSubscribedDocument is not null)
         {
-            System.Diagnostics.Debug.WriteLine($"[ConnectionLines] Unsubscribing from {_lastSubscribedDocument.FileName}");
             _lastSubscribedDocument.PropertyChanged -= OnDocumentPropertyChanged;
             _lastSubscribedDocument = null;
         }
@@ -532,22 +523,17 @@ public sealed partial class DocumentsTabsControl : UserControl
         var connControl = GetConnectionLinesControl();
         if (connControl is null)
         {
-            System.Diagnostics.Debug.WriteLine("[ConnectionLines] UpdateConnectionLinesCore: connControl is null");
             return;
         }
 
         if (DataContext is not MainViewModel mainVm2 || mainVm2.SelectedDocument is not DocumentViewModel docVm2)
         {
-            System.Diagnostics.Debug.WriteLine($"[ConnectionLines] UpdateConnectionLinesCore: no selected doc, DataContext={DataContext?.GetType().Name}");
             connControl.ShowConnections = false;
             return;
         }
 
-        System.Diagnostics.Debug.WriteLine($"[ConnectionLines] UpdateConnectionLinesCore: doc={docVm2.FileName}, ShowMinerUColumn={docVm2.ShowMinerUColumn}, HasMinerUBlocks={docVm2.HasMinerUBlocks}, VisiblePages={docVm2.VisiblePages?.ToString() ?? "null"}");
-
         if (!docVm2.ShowMinerUColumn || !docVm2.HasMinerUBlocks)
         {
-            System.Diagnostics.Debug.WriteLine($"[ConnectionLines] UpdateConnectionLinesCore: ShowMinerUColumn={docVm2.ShowMinerUColumn}, HasMinerUBlocks={docVm2.HasMinerUBlocks} - hiding");
             connControl.ShowConnections = false;
             return;
         }
@@ -558,7 +544,6 @@ public sealed partial class DocumentsTabsControl : UserControl
         // and wait for VisiblePages property change to trigger another update.
         if (!docVm2.VisiblePages.HasValue)
         {
-            System.Diagnostics.Debug.WriteLine("[ConnectionLines] UpdateConnectionLinesCore: VisiblePages is null - returning");
             return;
         }
 
@@ -585,26 +570,20 @@ public sealed partial class DocumentsTabsControl : UserControl
 
         if (preprocBlocksByPage.Count == 0 || totalPreproc == 0)
         {
-            System.Diagnostics.Debug.WriteLine($"[ConnectionLines] No preproc blocks found - hiding");
             connControl.ShowConnections = false;
             return;
         }
 
-        System.Diagnostics.Debug.WriteLine($"[ConnectionLines] Showing connections! preprocBlocks={totalPreproc}, minerUBlocks={docVm2.VisibleMinerUBlocks?.Count ?? 0}");
-        
         // Check if MinerUBlockViewModels have ActualHeight set (from MinerUBlockBorder_OnLoaded).
         // On project reopen, the new MinerUBlockViewModels may not have had their borders loaded yet,
         // meaning ActualHeight is 0. In this case, defer the update to allow UI to render first.
         bool anyBlockHasHeight = docVm2.VisibleMinerUBlocks?.Any(b => b.ActualHeight > 0) == true;
-        System.Diagnostics.Debug.WriteLine($"[ConnectionLines] anyBlockHasHeight={anyBlockHasHeight}");
         
         if (!anyBlockHasHeight)
         {
             // Defer: schedule another update after a frame to allow MinerUBlockBorder_OnLoaded to fire
-            System.Diagnostics.Debug.WriteLine("[ConnectionLines] Deferring update - waiting for blocks to render");
             Avalonia.Threading.Dispatcher.UIThread.Post(() => UpdateConnectionLines(), 
                 Avalonia.Threading.DispatcherPriority.Render);
-            // Still set ShowConnections=true to show the control, but it will re-render once heights are available
         }
         
         connControl.ShowConnections = true;

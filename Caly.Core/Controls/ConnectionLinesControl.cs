@@ -650,12 +650,7 @@ public sealed class ConnectionLinesControl : Control
     public override void Render(DrawingContext context)
     {
         if (Bounds.Width <= 0 || Bounds.Height <= 0)
-        {
-            System.Diagnostics.Debug.WriteLine($"[ConnectionLines] Render: Bounds zero {Bounds.Width}x{Bounds.Height} - skipping");
             return;
-        }
-
-        System.Diagnostics.Debug.WriteLine($"[ConnectionLines] Render called! ShowConnections={ShowConnections}, ShowPopo={ShowPopoConnections}, ShowSemantic={ShowSemanticConnections}, Bounds={Bounds.Width}x{Bounds.Height}");
 
         // Render PDF → MinerU connections
         if (ShowConnections)
