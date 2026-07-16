@@ -293,6 +293,37 @@ public sealed partial class DocumentsTabsControl : UserControl
         UpdateConnectionLines();
     }
 
+    private void SubscribeToDocumentPropertyChanged(DocumentViewModel docVm)
+    {
+        // Unsubscribe first to avoid duplicate handlers if called multiple times
+        // (e.g., when switching between documents)
+        if (_lastSubscribedDocument is not null)
+        {
+            _lastSubscribedDocument.PropertyChanged -= OnDocumentPropertyChanged;
+        }
+
+        _lastSubscribedDocument = docVm;
+        docVm.PropertyChanged += OnDocumentPropertyChanged;
+    }
+
+    private DocumentViewModel? _lastSubscribedDocument;
+
+    private void OnDocumentPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        // Trigger connection lines update when key properties change,
+        // ensuring lines appear immediately after data loads (e.g., on project reopen).
+        // These properties are set by TryLoadMinerUData(), TryLoadPopoData(), TryLoadSemanticData()
+        // when reopening an existing project.
+        if (e.PropertyName is "MinerUStatus" or "HasMinerUBlocks" or "ShowMinerUColumn" or
+                                                    "ShowAnalysisColumn" or "HasPopoBlocks" or "PopoTreeRoot" or
+                                                    "ShowSemanticColumn" or "HasSemanticResults" or "SemanticResults" or
+                                                    "ShowMapColumn" or "MapStatus" or
+                                                    "VisiblePages" or "ZoomLevel")
+        {
+            UpdateConnectionLines();
+        }
+    }
+
     private ConnectionLinesControl? GetConnectionLinesControl()
     {
         if (_connectionLinesControl is null)
@@ -412,6 +443,9 @@ public sealed partial class DocumentsTabsControl : UserControl
             connControl.ShowConnections = false;
             return;
         }
+
+        // Subscribe to property changes to detect when data loads (e.g., on project reopen)
+        SubscribeToDocumentPropertyChanged(docVm);
 
         if (!docVm.ShowMinerUColumn || !docVm.HasMinerUBlocks)
         {
