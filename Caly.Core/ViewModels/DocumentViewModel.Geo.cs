@@ -217,7 +217,7 @@ public sealed partial class DocumentViewModel
         _geoCts = new CancellationTokenSource();
         IsGeoProcessing = true;
         GeoStatus = GeoProcessStatus.Processing;
-        GeoStatusText = "Generating GeoJSON...";
+        GeoStatusText = "提取地点清单...";
         // Ensure Geo column is visible
         ShowGeoColumn = true;
 
@@ -226,7 +226,7 @@ public sealed partial class DocumentViewModel
             var outputDir = GetSemanticOutputDir();
             var geoJsonService = new GeoJsonService();
 
-            // Collect all unique location entities (preserve entity info for syntactic role)
+            // Step 1: Collect all unique location entities from semantic results
             var locationByName = new Dictionary<string, SemanticEntity>();
             foreach (var block in SemanticResults.Blocks)
             {
@@ -239,7 +239,7 @@ public sealed partial class DocumentViewModel
                 }
             }
 
-            // Create location ViewModels in UI thread
+            // Step 2: Create location ViewModels with syntactic role info from semantic analysis
             var locationVms = new ObservableCollection<GeocodingLocationViewModel>();
             foreach (var kvp in locationByName)
             {
@@ -255,8 +255,9 @@ public sealed partial class DocumentViewModel
                 vmLookup[vm.Name] = vm;
             }
 
-            // Set the collection immediately (before await) to trigger UI binding
+            // Display locations with syntactic roles immediately (before calling geo API)
             GeocodingLocations = locationVms;
+            GeoStatusText = $"已提取 {locationByName.Count} 个地点，开始获取坐标...";
 
             // Callback for when a location starts processing
             Action<string> onProcessing = (name) =>
