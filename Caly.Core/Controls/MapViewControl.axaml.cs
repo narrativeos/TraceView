@@ -39,6 +39,7 @@ public partial class MapViewControl : UserControl
     private TextBlock? _statusText;
     private TextBlock? _geoJsonPathText;
     private Button? _openInGeoLibreBtn;
+    private Button? _exportGeoLibreBtn;
     private Button? _refreshBtn;
 
     private string? _geoJsonFilePath;
@@ -73,6 +74,33 @@ public partial class MapViewControl : UserControl
         _geoJsonFilePath = "";
         _geoLibreBaseUrl = "https://web.geolibre.app";
     }
+
+    private IRelayCommand? _refreshCommand;
+    private IRelayCommand? _exportGeoLibreCommand;
+
+    public IRelayCommand? RefreshCommand
+    {
+        get => _refreshCommand;
+        set => SetAndRaise(RefreshCommandProperty, ref _refreshCommand, value);
+    }
+
+    public static readonly DirectProperty<MapViewControl, IRelayCommand?> RefreshCommandProperty =
+        AvaloniaProperty.RegisterDirect<MapViewControl, IRelayCommand?>(
+            nameof(RefreshCommand),
+            o => o._refreshCommand,
+            (o, v) => o.RefreshCommand = v);
+
+    public IRelayCommand? ExportGeoLibreCommand
+    {
+        get => _exportGeoLibreCommand;
+        set => SetAndRaise(ExportGeoLibreCommandProperty, ref _exportGeoLibreCommand, value);
+    }
+
+    public static readonly DirectProperty<MapViewControl, IRelayCommand?> ExportGeoLibreCommandProperty =
+        AvaloniaProperty.RegisterDirect<MapViewControl, IRelayCommand?>(
+            nameof(ExportGeoLibreCommand),
+            o => o._exportGeoLibreCommand,
+            (o, v) => o.ExportGeoLibreCommand = v);
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
@@ -111,6 +139,11 @@ public partial class MapViewControl : UserControl
         if (_openInGeoLibreBtn != null)
         {
             _openInGeoLibreBtn.IsEnabled = !string.IsNullOrEmpty(_geoJsonFilePath) && File.Exists(_geoJsonFilePath);
+        }
+
+        if (_exportGeoLibreBtn != null)
+        {
+            _exportGeoLibreBtn.IsEnabled = !string.IsNullOrEmpty(_geoJsonFilePath) && File.Exists(_geoJsonFilePath);
         }
     }
 
@@ -166,5 +199,10 @@ public partial class MapViewControl : UserControl
         RefreshCommand?.Execute(null);
     }
 
-    public IRelayCommand? RefreshCommand { get; set; }
+    private void OnExportGeoLibre(object? sender, RoutedEventArgs e)
+    {
+        // Trigger the export command - the parent ViewModel should handle this
+        ExportGeoLibreCommand?.Execute(null);
+    }
+
 }

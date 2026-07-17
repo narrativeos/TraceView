@@ -56,6 +56,17 @@ public sealed partial class DocumentViewModel
     public bool HasGeoJsonFile => !string.IsNullOrEmpty(GeoJsonFilePath) && File.Exists(GeoJsonFilePath);
 
     /// <summary>
+    /// Path to the generated GeoLibre JSON file for this document.
+    /// </summary>
+    [ObservableProperty]
+    private string? _geoLibreFilePath;
+
+    /// <summary>
+    /// Whether GeoLibre JSON file exists and is available.
+    /// </summary>
+    public bool HasGeoLibreFile => !string.IsNullOrEmpty(GeoLibreFilePath) && File.Exists(GeoLibreFilePath);
+
+    /// <summary>
     /// Map processing status.
     /// </summary>
     [ObservableProperty]
@@ -157,7 +168,23 @@ public sealed partial class DocumentViewModel
         }
     }
 
+    /// <summary>
+    /// Human-readable status for the GeoLibre Export button tooltip.
+    /// </summary>
+    public string ExportGeoLibreButtonTooltip
+    {
+        get
+        {
+            if (HasGeoLibreFile)
+                return "GeoLibre JSON 已导出 · 点击重新导出";
+            if (_geoLibreCts is not null)
+                return "导出 GeoLibre JSON 中...";
+            return "导出 GeoLibre JSON";
+        }
+    }
+
     private CancellationTokenSource? _mapCts;
+    private CancellationTokenSource? _geoLibreCts;
 
     #endregion
 
@@ -369,6 +396,128 @@ public sealed partial class DocumentViewModel
         }
     }
 
+    [RelayCommand]
+    private async Task ExportGeoLibreJsonAsync()
+    {
+        if (SemanticResults is null || !HasSemanticResults)
+        {
+            MapStatus = MapProcessStatus.Failed;
+            MapStatusText = "No semantic data available. Run NLP analysis first.";
+            return;
+        }
+
+        // If already processing, cancel
+        if (_geoLibreCts is not null)
+        {
+            _geoLibreCts?.Cancel();
+            MapStatusText = "Cancelling...";
+            return;
+        }
+
+        _geoLibreCts = new CancellationTokenSource();
+        MapStatus = MapProcessStatus.Processing;
+        MapStatusText = "Exporting GeoLibre JSON...";
+        ShowMapColumn = true;
+
+        try
+        {
+            var outputDir = GetSemanticOutputDir();
+            var geoJsonService = new GeoJsonService();
+
+            var filePath = await geoJsonService.GenerateGeoLibreJsonAsync(
+                SemanticResults,
+                outputDir,
+                _geoLibreCts.Token);
+
+            if (filePath is not null)
+            {
+                GeoLibreFilePath = filePath;
+                MapStatus = MapProcessStatus.Completed;
+                MapStatusText = "GeoLibre JSON exported successfully";
+                ShowMapColumn = true;
+            }
+            else
+            {
+                MapStatus = MapProcessStatus.Failed;
+                MapStatusText = "No location entities found in semantic data.";
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            MapStatus = MapProcessStatus.Idle;
+            MapStatusText = "Export cancelled";
+        }
+        catch (Exception ex)
+        {
+            MapStatus = MapProcessStatus.Failed;
+            MapStatusText = $"Export error: {ex.Message}";
+        }
+        finally
+        {
+            _geoLibreCts?.Dispose();
+            _geoLibreCts = null;
+        }
+    }
+
+    [RelayCommand]
+    private void OpenGeoLibreFile()
+    {
+        // Prefer GeoLibre JSON file if available, fallback to GeoJSON
+        string? filePath = null;
+        if (!string.IsNullOrEmpty(GeoLibreFilePath) && File.Exists(GeoLibreFilePath))
+        {
+            filePath = GeoLibreFilePath;
+        }
+        else if (!string.IsNullOrEmpty(GeoJsonFilePath) && File.Exists(GeoJsonFilePath))
+        {
+            filePath = GeoJsonFilePath;
+        }
+
+        if (string.IsNullOrEmpty(filePath))
+            return;
+
+        // Get GeoLibre base URL from settings
+        var geoLibreBaseUrl = _settingsService.GetSettings().GeoLibreBaseUrl;
+        var fileUri = new Uri(filePath).AbsoluteUri;
+        var url = $"{geoLibreBaseUrl.TrimEnd('/')}?url={Uri.EscapeDataString(fileUri)}";
+
+        // Open in default browser
+        try
+        {
+#if WINDOWS
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = url,
+                UseShellExecute = true
+            });
+#elif MACOS
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "open",
+                Arguments = url,
+                UseShellExecute = false
+            });
+#elif LINUX
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "xdg-open",
+                Arguments = url,
+                UseShellExecute = false
+            });
+#else
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = url,
+                UseShellExecute = true
+            });
+#endif
+        }
+        catch (Exception ex)
+        {
+            MapStatusText = $"Failed to open: {ex.Message}";
+        }
+    }
+
     #endregion
 
     #region Map Data Loading
@@ -525,6 +674,14 @@ public sealed partial class DocumentViewModel
                     : "GeoJSON loaded (no locations)";
                 
                 System.Diagnostics.Debug.WriteLine($"[Map] TryLoadMapData: loaded {locations.Count} locations from {geoJsonPath}");
+            }
+
+            // Also check for existing GeoLibre JSON file
+            var geoLibrePath = Path.Combine(outputDir, "locations.geolibre.json");
+            if (File.Exists(geoLibrePath))
+            {
+                GeoLibreFilePath = geoLibrePath;
+                System.Diagnostics.Debug.WriteLine($"[Map] TryLoadMapData: found GeoLibre file {geoLibrePath}");
             }
         }
         catch (Exception ex)

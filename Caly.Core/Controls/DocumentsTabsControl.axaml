@@ -302,6 +302,30 @@
 							</Grid>
 						</Button>
 
+						<!-- GeoLibre JSON Export (visible when semantic results exist) -->
+						<Button DockPanel.Dock="Right"
+                                Margin="0,0,5,0"
+								HorizontalAlignment="Center"
+								VerticalAlignment="Stretch"
+								Background="Transparent"
+								Command="{Binding ExportGeoLibreJsonCommand}"
+                                IsVisible="{Binding HasSemanticResults}">
+							<Grid>
+								<PathIcon Width="17"
+										  Height="17"
+										  Data="{StaticResource share_regular}"
+										  IsVisible="{Binding HasGeoLibreFile, Converter={StaticResource InverseBoolConverter}}"/>
+								<PathIcon Width="17"
+										  Height="17"
+										  Data="{StaticResource checkmark_circle_regular}"
+										  Foreground="#2196F3"
+										  IsVisible="{Binding HasGeoLibreFile}"/>
+								<ToolTip.Tip>
+									<TextBlock Text="{Binding ExportGeoLibreButtonTooltip}"/>
+								</ToolTip.Tip>
+							</Grid>
+						</Button>
+
 						<!-- NLP Analyze (visible when Popo tree exists) -->
 						<Button DockPanel.Dock="Right"
                                 Margin="0,0,5,0"
@@ -1457,12 +1481,14 @@
                                               Margin="0,8,0,8"
                                               Padding="20,4"/>
 
-                                      <!-- Map Control: shown when completed -->
-                                      <controls:MapViewControl
-                                          IsVisible="{Binding MapStatus, Converter={StaticResource EqualsConverter}, ConverterParameter={x:Static vm:MapProcessStatus.Completed}}"
-                                          GeoJsonFilePath="{Binding GeoJsonFilePath}"
-                                          GeoLibreBaseUrl="https://web.geolibre.app"/>
-                                  </DockPanel>
+                                       <!-- Map Control: shown when completed -->
+                                       <controls:MapViewControl
+                                           IsVisible="{Binding MapStatus, Converter={StaticResource EqualsConverter}, ConverterParameter={x:Static vm:MapProcessStatus.Completed}}"
+                                           GeoJsonFilePath="{Binding GeoJsonFilePath}"
+                                           GeoLibreBaseUrl="https://web.geolibre.app"
+                                           RefreshCommand="{Binding GenerateMapGeoJsonCommand}"
+                                           ExportGeoLibreCommand="{Binding ExportGeoLibreJsonCommand}"/>
+                                   </DockPanel>
                               </Border>
 
                              <!-- Connection Lines overlay between all five columns -->

@@ -46,6 +46,11 @@
                     IsEnabled="False"
                     HorizontalAlignment="Stretch"/>
             
+            <Button Name="PART_ExportGeoLibreBtn"
+                    Content="导出 GeoLibre JSON"
+                    Click="OnExportGeoLibre"
+                    HorizontalAlignment="Stretch"/>
+            
             <Button Name="PART_RefreshBtn"
                     Content="Refresh GeoJSON"
                     Click="OnRefreshGeoJson"
