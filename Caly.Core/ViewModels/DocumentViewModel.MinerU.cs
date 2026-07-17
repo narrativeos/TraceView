@@ -78,6 +78,33 @@ public sealed partial class DocumentViewModel
     /// </summary>
     public bool MinerUEnabled => _settingsService.GetSettings().MinerUEnabled;
 
+    /// <summary>
+    /// Whether MinerU parsing has been completed successfully.
+    /// </summary>
+    public bool IsMinerUCompleted => MinerUStatus == MinerUParseStatus.Completed;
+
+    /// <summary>
+    /// Whether MinerU parsing has failed.
+    /// </summary>
+    public bool IsMinerUFailed => MinerUStatus == MinerUParseStatus.Failed;
+
+    /// <summary>
+    /// Human-readable status for the MinerU button tooltip.
+    /// </summary>
+    public string MinerUButtonTooltip
+    {
+        get
+        {
+            return MinerUStatus switch
+            {
+                MinerUParseStatus.Completed => "MinerU 已完成 · 点击重新解析",
+                MinerUParseStatus.Failed => "MinerU 失败 · 点击重试",
+                MinerUParseStatus.Processing or MinerUParseStatus.Queued or MinerUParseStatus.Submitting or MinerUParseStatus.Downloading or MinerUParseStatus.Caching => $"MinerU 处理中... {MinerUProgress}%",
+                _ => "AI 解析 PDF 结构"
+            };
+        }
+    }
+
     private CancellationTokenSource? _minerUCts;
 
     /// <summary>

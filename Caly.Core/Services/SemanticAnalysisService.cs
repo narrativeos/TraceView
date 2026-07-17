@@ -153,7 +153,35 @@ public sealed class SemanticAnalysisService : IDisposable
             return null;
 
         var json = File.ReadAllText(filePath);
-        return JsonSerializer.Deserialize(json, SourceGenerationContext.Default.SemanticResultFile);
+        
+        // Try source-generated deserialization first (fastest)
+        try
+        {
+            var result = JsonSerializer.Deserialize(json, SourceGenerationContext.Default.SemanticResultFile);
+            System.Diagnostics.Debug.WriteLine($"[SemanticAnalysisService] LoadFromFile (source-gen) succeeded: {result?.Blocks.Count ?? 0} blocks");
+            return result;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SemanticAnalysisService] Source-gen deserialization failed: {ex.Message}");
+        }
+        
+        // Fallback to reflection-based deserialization (slower but more tolerant)
+        try
+        {
+            var options = new System.Text.Json.JsonSerializerOptions 
+            { 
+                PropertyNameCaseInsensitive = true 
+            };
+            var result = JsonSerializer.Deserialize(json, typeof(SemanticResultFile), options) as SemanticResultFile;
+            System.Diagnostics.Debug.WriteLine($"[SemanticAnalysisService] LoadFromFile (fallback) succeeded: {result?.Blocks.Count ?? 0} blocks");
+            return result;
+        }
+        catch (Exception ex2)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SemanticAnalysisService] Fallback deserialization also failed: {ex2.Message}");
+            return null;
+        }
     }
 
     /// <summary>

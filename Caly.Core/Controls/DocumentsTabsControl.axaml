@@ -20,6 +20,7 @@
         <utilities:IsNotNullConverter x:Key="IsNotNullConverter"/>
         <utilities:IsNullConverter x:Key="IsNullConverter"/>
         <utilities:IsGreaterThanConverter x:Key="IsGreaterThanConverter"/>
+        <utilities:InverseBoolConverter x:Key="InverseBoolConverter"/>
     </UserControl.Resources>
 
     <Design.DataContext>
@@ -277,7 +278,7 @@
 
 						<controls:VerticalSeparator/>
 
-						<!-- GeoJSON Generate (visible when semantic results exist) - before NLP -->
+						<!-- GeoJSON Generate (visible when semantic results exist) -->
 						<Button DockPanel.Dock="Right"
                                 Margin="0,0,5,0"
 								HorizontalAlignment="Center"
@@ -285,11 +286,20 @@
 								Background="Transparent"
 								Command="{Binding GenerateMapGeoJsonCommand}"
                                 IsVisible="{Binding HasSemanticResults}">
-							<PathIcon Width="17"
-									  Height="17"
-									  Data="{StaticResource map_regular}">
-								<ToolTip.Tip>Generate GeoJSON</ToolTip.Tip>
-							</PathIcon>
+							<Grid>
+								<PathIcon Width="17"
+										  Height="17"
+										  Data="{StaticResource map_regular}"
+										  IsVisible="{Binding IsMapCompleted, Converter={StaticResource InverseBoolConverter}}"/>
+								<PathIcon Width="17"
+										  Height="17"
+										  Data="{StaticResource checkmark_circle_regular}"
+										  Foreground="#4CAF50"
+										  IsVisible="{Binding IsMapCompleted}"/>
+								<ToolTip.Tip>
+									<TextBlock Text="{Binding MapButtonTooltip}"/>
+								</ToolTip.Tip>
+							</Grid>
 						</Button>
 
 						<!-- NLP Analyze (visible when Popo tree exists) -->
@@ -300,11 +310,20 @@
 								Background="Transparent"
 								Command="{Binding ProcessWithSemanticCommand}"
                                 IsVisible="{Binding HasPopoTree}">
-							<PathIcon Width="17"
-									  Height="17"
-									  Data="{StaticResource nlp_process_regular}">
-								<ToolTip.Tip>Analyze with NLP</ToolTip.Tip>
-							</PathIcon>
+							<Grid>
+								<PathIcon Width="17"
+										  Height="17"
+										  Data="{StaticResource nlp_process_regular}"
+										  IsVisible="{Binding IsSemanticCompleted, Converter={StaticResource InverseBoolConverter}}"/>
+								<PathIcon Width="17"
+										  Height="17"
+										  Data="{StaticResource checkmark_circle_regular}"
+										  Foreground="#9C27B0"
+										  IsVisible="{Binding IsSemanticCompleted}"/>
+								<ToolTip.Tip>
+									<TextBlock Text="{Binding SemanticButtonTooltip}"/>
+								</ToolTip.Tip>
+							</Grid>
 						</Button>
 
 						<!-- Popo Process (always visible when MinerU ZIP exists, allows re-processing) -->
@@ -315,11 +334,20 @@
 								Background="Transparent"
 								Command="{Binding ProcessWithPopoCommand}"
                                 IsVisible="{Binding HasMinerUZip}">
-							<PathIcon Width="17"
-									  Height="17"
-									  Data="{StaticResource popo_process_regular}">
-								<ToolTip.Tip>Process with Popo</ToolTip.Tip>
-							</PathIcon>
+							<Grid>
+								<PathIcon Width="17"
+										  Height="17"
+										  Data="{StaticResource popo_process_regular}"
+										  IsVisible="{Binding IsPopoCompleted, Converter={StaticResource InverseBoolConverter}}"/>
+								<PathIcon Width="17"
+										  Height="17"
+										  Data="{StaticResource checkmark_circle_regular}"
+										  Foreground="#2196F3"
+										  IsVisible="{Binding IsPopoCompleted}"/>
+								<ToolTip.Tip>
+									<TextBlock Text="{Binding PopoButtonTooltip}"/>
+								</ToolTip.Tip>
+							</Grid>
 						</Button>
 
 						<!-- MinerU AI Parse -->
@@ -330,11 +358,20 @@
 								Background="Transparent"
 								Command="{Binding ParseWithMinerUCommand}"
                                 IsVisible="{Binding MinerUEnabled}">
-							<PathIcon Width="17"
-									  Height="17"
-									  Data="{StaticResource mineru_parse_regular}">
-								<ToolTip.Tip>AI Parse with MinerU</ToolTip.Tip>
-							</PathIcon>
+							<Grid>
+								<PathIcon Width="17"
+										  Height="17"
+										  Data="{StaticResource mineru_parse_regular}"
+										  IsVisible="{Binding IsMinerUCompleted, Converter={StaticResource InverseBoolConverter}}"/>
+								<PathIcon Width="17"
+										  Height="17"
+										  Data="{StaticResource checkmark_circle_regular}"
+										  Foreground="#4CAF50"
+										  IsVisible="{Binding IsMinerUCompleted}"/>
+								<ToolTip.Tip>
+									<TextBlock Text="{Binding MinerUButtonTooltip}"/>
+								</ToolTip.Tip>
+							</Grid>
 						</Button>
 
 						<!-- Print -->

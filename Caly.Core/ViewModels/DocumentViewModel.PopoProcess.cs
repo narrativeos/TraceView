@@ -75,6 +75,33 @@ public sealed partial class DocumentViewModel : PopoService.IPopoProgressCallbac
     public bool PopoEnabled => !string.IsNullOrEmpty(_settingsService.GetSettings().PopoBaseUrl);
 
     /// <summary>
+    /// Whether Popo processing has been completed successfully.
+    /// </summary>
+    public bool IsPopoCompleted => PopoStatus == PopoProcessStatus.Completed;
+
+    /// <summary>
+    /// Whether Popo processing has failed.
+    /// </summary>
+    public bool IsPopoFailed => PopoStatus == PopoProcessStatus.Failed;
+
+    /// <summary>
+    /// Human-readable status for the Popo button tooltip.
+    /// </summary>
+    public string PopoButtonTooltip
+    {
+        get
+        {
+            return PopoStatus switch
+            {
+                PopoProcessStatus.Completed => "Popo 已完成 · 点击重新处理",
+                PopoProcessStatus.Failed => "Popo 失败 · 点击重试",
+                PopoProcessStatus.Processing or PopoProcessStatus.Submitting or PopoProcessStatus.Downloading or PopoProcessStatus.ParsingResult or PopoProcessStatus.Queued => $"Popo 处理中... {PopoProgress}%",
+                _ => "结构化处理 (Popo)"
+            };
+        }
+    }
+
+    /// <summary>
     /// Whether Popo-processed results already exist in the project's popo/ directory.
     /// Checks for popo_result.json directly in the popo/ directory.
     /// </summary>

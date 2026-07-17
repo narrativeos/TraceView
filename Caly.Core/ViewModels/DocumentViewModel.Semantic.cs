@@ -131,6 +131,33 @@ public sealed partial class DocumentViewModel
     public int SemanticNodeCount => SemanticResults?.Blocks.Count ?? 0;
 
     /// <summary>
+    /// Whether semantic analysis has been completed successfully.
+    /// </summary>
+    public bool IsSemanticCompleted => SemanticStatus == SemanticProcessStatus.Completed;
+
+    /// <summary>
+    /// Whether semantic analysis has failed.
+    /// </summary>
+    public bool IsSemanticFailed => SemanticStatus == SemanticProcessStatus.Failed;
+
+    /// <summary>
+    /// Human-readable status for the NLP button tooltip.
+    /// </summary>
+    public string SemanticButtonTooltip
+    {
+        get
+        {
+            return SemanticStatus switch
+            {
+                SemanticProcessStatus.Completed => "NLP 分析已完成 · 点击重新分析",
+                SemanticProcessStatus.Failed => "NLP 分析失败 · 点击重试",
+                SemanticProcessStatus.Processing => $"NLP 分析中... {SemanticProgress}%",
+                _ => "NLP 语义分析"
+            };
+        }
+    }
+
+    /// <summary>
     /// Semantic blocks wrapped in ViewModels for UI binding with expand/collapse support.
     /// Cached to preserve IsDetailsExpanded state.
     /// </summary>
@@ -354,19 +381,63 @@ public sealed partial class DocumentViewModel
         var outputDir = GetSemanticOutputDir();
         var filePath = Path.Combine(outputDir, "semantic_result.json");
         System.Diagnostics.Debug.WriteLine($"[Semantic] TryLoadSemanticResultFromFile: checking {filePath}, exists={File.Exists(filePath)}");
-        var result = SemanticAnalysisService.LoadFromFile(filePath);
         
-        // Only use cache if it has no errors
-        if (result is not null && result.Blocks.Count > 0)
+        if (!File.Exists(filePath))
         {
-            bool hasErrors = result.Blocks.Any(b => !string.IsNullOrEmpty(b.Error));
-            if (hasErrors)
-            {
-                System.Diagnostics.Debug.WriteLine("[Semantic] Cache has errors, will re-process");
-                return null;
-            }
+            System.Diagnostics.Debug.WriteLine("[Semantic] File does not exist");
+            return null;
         }
         
+        // Read raw content for debugging
+        var rawJson = File.ReadAllText(filePath);
+        System.Diagnostics.Debug.WriteLine($"[Semantic] Raw JSON length: {rawJson.Length} chars");
+        // Check if the JSON contains "blocks" key
+        bool hasBlocksKey = rawJson.Contains("\"blocks\"");
+        System.Diagnostics.Debug.WriteLine($"[Semantic] JSON contains 'blocks' key: {hasBlocksKey}");
+        
+        var result = SemanticAnalysisService.LoadFromFile(filePath);
+        
+        if (result is null)
+        {
+            System.Diagnostics.Debug.WriteLine("[Semantic] LoadFromFile returned null (deserialization failed)");
+            return null;
+        }
+        
+        int totalEntities = result.Blocks.Sum(b => b.Entities.Count);
+        int totalRelations = result.Blocks.Sum(b => b.Relations.Count);
+        System.Diagnostics.Debug.WriteLine($"[Semantic] LoadFromFile succeeded: {result.Blocks.Count} blocks, {totalEntities} entities, {totalRelations} relations");
+        System.Diagnostics.Debug.WriteLine($"[Semantic] Version={result.Version}, Source={result.Source}, Timestamp={result.Timestamp}");
+        
+        // Log first block details for debugging
+        if (result.Blocks.Count > 0)
+        {
+            var first = result.Blocks[0];
+            System.Diagnostics.Debug.WriteLine($"[Semantic] First block: type={first.Type}, title={first.Title}, source_ids={first.SourceBlockIds?.Count ?? 0}, tokens={first.Tokens?.Count ?? 0}, entities={first.Entities?.Count ?? 0}, error={first.Error ?? "null"}");
+        }
+        
+        // Only use cache if it has blocks
+        if (result.Blocks.Count == 0)
+        {
+            System.Diagnostics.Debug.WriteLine("[Semantic] Cache has no blocks, will re-process");
+            return null;
+        }
+        
+        // Check for errors - allow partial results (some blocks may have errors but others are valid)
+        int errorCount = result.Blocks.Count(b => !string.IsNullOrEmpty(b.Error));
+        int validCount = result.Blocks.Count(b => string.IsNullOrEmpty(b.Error));
+        if (errorCount > 0)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Semantic] Cache has {errorCount} errors out of {result.Blocks.Count} blocks ({validCount} valid), loading partial results");
+        }
+        
+        // Only reject if ALL blocks have errors
+        if (validCount == 0)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Semantic] Cache has all errors ({errorCount} blocks), will re-process");
+            return null;
+        }
+        
+        System.Diagnostics.Debug.WriteLine("[Semantic] Cache loaded successfully");
         return result;
     }
 

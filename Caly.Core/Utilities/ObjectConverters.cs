@@ -69,6 +69,24 @@ public class IsNullConverter : IValueConverter
 }
 
 /// <summary>
+/// Inverts a boolean value.
+/// </summary>
+public class InverseBoolConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is bool boolValue)
+            return !boolValue;
+        return value == null;
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+/// <summary>
 /// Converts to true if value > parameter, false otherwise. Supports int, double, etc.
 /// </summary>
 public class IsGreaterThanConverter : IValueConverter

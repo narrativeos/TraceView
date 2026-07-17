@@ -130,6 +130,33 @@ public sealed partial class DocumentViewModel
         }
     }
 
+    /// <summary>
+    /// Whether map GeoJSON generation has been completed successfully.
+    /// </summary>
+    public bool IsMapCompleted => MapStatus == MapProcessStatus.Completed;
+
+    /// <summary>
+    /// Whether map GeoJSON generation has failed.
+    /// </summary>
+    public bool IsMapFailed => MapStatus == MapProcessStatus.Failed;
+
+    /// <summary>
+    /// Human-readable status for the Map button tooltip.
+    /// </summary>
+    public string MapButtonTooltip
+    {
+        get
+        {
+            return MapStatus switch
+            {
+                MapProcessStatus.Completed => "地图已生成 · 点击重新生成",
+                MapProcessStatus.Failed => "地图生成失败 · 点击重试",
+                MapProcessStatus.Processing => $"地图生成中...",
+                _ => "生成地理地图"
+            };
+        }
+    }
+
     private CancellationTokenSource? _mapCts;
 
     #endregion
