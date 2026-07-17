@@ -22,8 +22,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text.Json;
-using System.Text.Json.Serialization;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Caly.Core.Models;
@@ -36,11 +35,6 @@ namespace Caly.Core.Services;
 public sealed class GeoJsonService
 {
     private readonly GeocodingService _geocodingService;
-    private readonly JsonSerializerOptions _jsonOptions = new()
-    {
-        WriteIndented = true,
-        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-    };
 
     public GeoJsonService()
     {
@@ -135,10 +129,10 @@ public sealed class GeoJsonService
             { "features", features }
         };
 
-        // Save to file
+        // Save to file (use manual JSON building to avoid AOT serialization issues)
         Directory.CreateDirectory(outputDir);
         var filePath = Path.Combine(outputDir, "locations.geojson");
-        var json = JsonSerializer.Serialize(geoJson, _jsonOptions);
+        var json = BuildJson(geoJson);
         await File.WriteAllTextAsync(filePath, json, cancellationToken);
 
         return filePath;
@@ -269,14 +263,86 @@ public sealed class GeoJsonService
             }
         };
 
-        // Save to file
+        // Save to file (use manual JSON building to avoid AOT serialization issues)
         Directory.CreateDirectory(outputDir);
         var filePath = Path.Combine(outputDir, "locations.geolibre.json");
-        var json = JsonSerializer.Serialize(geoLibreJson, _jsonOptions);
+        var json = BuildJson(geoLibreJson);
         await File.WriteAllTextAsync(filePath, json, cancellationToken);
 
         return filePath;
     }
+
+    /// <summary>
+    /// Build a JSON string from a dictionary structure (AOT-safe, no reflection).
+    /// </summary>
+    string BuildJson(object obj)
+    {
+        var sb = new StringBuilder();
+        BuildJsonRecursive(sb, obj, 0);
+        return sb.ToString();
+    }
+
+    void BuildJsonRecursive(StringBuilder sb, object? value, int indent)
+    {
+        var pad = new string(' ', indent * 2);
+
+        if (value is null)
+        {
+            sb.Append("null");
+        }
+        else if (value is string s)
+        {
+            sb.Append('"').Append(EscapeJson(s)).Append('"');
+        }
+        else if (value is bool b)
+        {
+            sb.Append(b ? "true" : "false");
+        }
+        else if (value is double d)
+        {
+            sb.Append(d.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+        else if (value is float f)
+        {
+            sb.Append(f.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+        else if (value is int || value is long || value is short || value is byte)
+        {
+            sb.Append(Convert.ChangeType(value, typeof(long)).ToString());
+        }
+        else if (value is IDictionary<string, object> dict)
+        {
+            sb.Append("{\n");
+            var items = dict.ToList();
+            for (int idx = 0; idx < items.Count; idx++)
+            {
+                var kvp = items[idx];
+                sb.Append(pad).Append(' ').Append('"').Append(EscapeJson(kvp.Key)).Append("\": ");
+                BuildJsonRecursive(sb, kvp.Value, indent + 2);
+                if (idx < items.Count - 1)
+                    sb.Append(',');
+                sb.Append('\n');
+            }
+            sb.Append(pad).Append('}');
+        }
+        else if (value is object[] arr)
+        {
+            sb.Append("[");
+            for (int idx = 0; idx < arr.Length; idx++)
+            {
+                if (idx > 0)
+                    sb.Append(", ");
+                BuildJsonRecursive(sb, arr[idx], indent);
+            }
+            sb.Append("]");
+        }
+        else
+        {
+            sb.Append('"').Append(EscapeJson(value.ToString() ?? "")).Append('"');
+        }
+    }
+
+    static string EscapeJson(string s) => s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "\\r").Replace("\t", "\\t");
 
     /// <summary>
     /// Get the GeoLibre URL to load the generated JSON file.

@@ -23,8 +23,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -53,18 +51,11 @@ public class GeocodingResult
     public double? BoundingBoxMaxLon { get; set; }
 }
 
-/// <summary>
-/// Service for geocoding location names to coordinates using Nominatim API.
-/// </summary>
 public sealed class GeocodingService : IDisposable
 {
     private readonly HttpClient _httpClient;
     private readonly string _cacheDirectory;
     private readonly Dictionary<string, GeocodingResult> _memoryCache = new();
-    private readonly JsonSerializerOptions _jsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true
-    };
 
     // Built-in coordinate map for common Chinese cities (offline fallback)
     private static readonly Dictionary<string, (double Longitude, double Latitude)> CommonCities = new()
@@ -147,7 +138,8 @@ public sealed class GeocodingService : IDisposable
             try
             {
                 var json = await File.ReadAllTextAsync(cachedFile, cancellationToken);
-                var result = JsonSerializer.Deserialize<GeocodingResult>(json, _jsonOptions);
+                // Use simple string parsing for cached results to avoid AOT issues
+                var result = ParseCachedJson(json, locationName);
                 if (result is not null)
                 {
                     result.IsCached = true;
@@ -177,65 +169,207 @@ public sealed class GeocodingService : IDisposable
             return result;
         }
 
-        // Try Nominatim API
+        // Try geo search API
+        // Note: The backend server requires lowercase URL encoding, so we convert to lowercase
+        // We use string-based JSON parsing to avoid AOT serialization issues
         try
         {
-            var url = $"https://nominatim.openstreetmap.org/search?q={Uri.EscapeDataString(locationName)}&format=json&limit=1&accept-language=zh";
-            
-            _httpClient.DefaultRequestHeaders.Add("User-Agent", "TraceView/1.0 (Geocoding Service)");
+            var encoded = System.Net.WebUtility.UrlEncode(locationName).ToLowerInvariant();
+            var url = $"http://192.168.1.100:8088/search?q={encoded}&format=json&limit=1&accept-language=zh";
             
             using var response = await _httpClient.GetAsync(url, cancellationToken);
             if (response.IsSuccessStatusCode)
             {
                 var json = await response.Content.ReadAsStringAsync(cancellationToken);
-                var results = JsonSerializer.Deserialize<JsonElement[]>(json, _jsonOptions);
                 
-                if (results is not null && results.Length > 0)
+                // Parse API response using string extraction (AOT-safe, no reflection)
+                var result = ParseApiResult(json, locationName);
+                if (result is not null)
                 {
-                    var first = results[0];
-                    var result = new GeocodingResult
-                    {
-                        Name = locationName,
-                        Longitude = double.Parse(first.GetProperty("lon").GetString() ?? "0"),
-                        Latitude = double.Parse(first.GetProperty("lat").GetString() ?? "0"),
-                        DisplayName = first.GetProperty("display_name").GetString() ?? locationName,
-                        IsCached = false,
-                        PlaceId = first.TryGetProperty("place_id", out var pid) ? pid.GetString() ?? string.Empty : string.Empty,
-                        OsmType = first.TryGetProperty("osm_type", out var ot) ? ot.GetString() ?? string.Empty : string.Empty,
-                        OsmId = first.TryGetProperty("osm_id", out var oid) ? long.Parse(oid.GetString() ?? "0") : 0,
-                        Class = first.TryGetProperty("class", out var c) ? c.GetString() ?? string.Empty : string.Empty,
-                        Type = first.TryGetProperty("type", out var t) ? t.GetString() ?? string.Empty : string.Empty,
-                        Importance = first.TryGetProperty("importance", out var imp) ? double.Parse(imp.GetString() ?? "0") : 0,
-                    };
-
-                    // Parse boundingbox if present: [minlat, maxlat, minlon, maxlon]
-                    if (first.TryGetProperty("boundingbox", out var bbox) && bbox.ValueKind == JsonValueKind.Array)
-                    {
-                        var elements = bbox.EnumerateArray().ToList();
-                        if (elements.Count >= 4)
-                        {
-                            result.BoundingBoxMinLat = double.Parse(elements[0].GetString() ?? "0");
-                            result.BoundingBoxMaxLat = double.Parse(elements[1].GetString() ?? "0");
-                            result.BoundingBoxMinLon = double.Parse(elements[2].GetString() ?? "0");
-                            result.BoundingBoxMaxLon = double.Parse(elements[3].GetString() ?? "0");
-                        }
-                    }
-                    
                     _memoryCache[locationName] = result;
                     SaveToCache(locationName, result);
                     return result;
                 }
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // If API call fails, return a default result with the location name
-            // The user can manually correct the coordinates later
+            // Log the actual error for debugging
+            System.Diagnostics.Debug.WriteLine($"Geocoding failed for '{locationName}': {ex.Message}");
         }
 
         // Return a placeholder result if geocoding fails
         // User can manually set coordinates
         return null;
+    }
+
+    /// <summary>
+    /// Parse a cached GeocodingResult JSON without reflection (AOT-safe).
+    /// </summary>
+    GeocodingResult? ParseCachedJson(string json, string name)
+    {
+        // Simple manual parsing to avoid AOT issues with JsonElement
+        // This parses the JSON we wrote ourselves in SaveToCache
+        try
+        {
+            var result = new GeocodingResult { Name = name };
+            
+            // Use string-based extraction for key values
+            ExtractJsonString(json, "Longitude", out var lonStr);
+            ExtractJsonString(json, "Latitude", out var latStr);
+            ExtractJsonString(json, "DisplayName", out var displayName);
+            ExtractJsonString(json, "PlaceId", out var placeId);
+            ExtractJsonString(json, "OsmType", out var osmType);
+            ExtractJsonString(json, "OsmId", out var osmId);
+            ExtractJsonString(json, "Class", out var cls);
+            ExtractJsonString(json, "Type", out var type);
+            ExtractJsonString(json, "Importance", out var importance);
+            
+            result.Longitude = double.TryParse(lonStr, out var lon) ? lon : 0;
+            result.Latitude = double.TryParse(latStr, out var lat) ? lat : 0;
+            result.DisplayName = displayName ?? name;
+            result.PlaceId = placeId ?? string.Empty;
+            result.OsmType = osmType ?? string.Empty;
+            result.OsmId = long.TryParse(osmId, out var oid) ? oid : 0;
+            result.Class = cls ?? string.Empty;
+            result.Type = type ?? string.Empty;
+            result.Importance = double.TryParse(importance, out var imp) ? imp : 0;
+            
+            return result;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Extract a string value for a given JSON property name.
+    /// </summary>
+    void ExtractJsonString(string json, string propertyName, out string? value)
+    {
+        var keyPattern = $"\"{propertyName}\"";
+        var idx = json.IndexOf(keyPattern, StringComparison.Ordinal);
+        if (idx < 0)
+        {
+            value = null;
+            return;
+        }
+        
+        // Find the colon after the key
+        idx = json.IndexOf(':', idx + keyPattern.Length);
+        if (idx < 0)
+        {
+            value = null;
+            return;
+        }
+        
+        // Skip whitespace and find the value start
+        idx++;
+        while (idx < json.Length && (json[idx] == ' ' || json[idx] == '\t' || json[idx] == '\n' || json[idx] == '\r'))
+            idx++;
+        
+        if (idx >= json.Length)
+        {
+            value = null;
+            return;
+        }
+        
+        if (json[idx] == '"')
+        {
+            // String value
+            var start = idx + 1;
+            var end = start;
+            while (end < json.Length && json[end] != '"')
+            {
+                if (json[end] == '\\') end++; // skip escaped chars
+                end++;
+            }
+            value = json.Substring(start, end - start);
+        }
+        else
+        {
+            // Numeric or boolean value
+            var start = idx;
+            var end = idx;
+            while (end < json.Length && json[end] != ',' && json[end] != '}')
+                end++;
+            value = json.Substring(start, end - start).Trim();
+        }
+    }
+
+    /// <summary>
+    /// Parse the API response JSON (Nominatim format) using string extraction (AOT-safe).
+    /// </summary>
+    GeocodingResult? ParseApiResult(string json, string name)
+    {
+        try
+        {
+            // The API returns a JSON array: [{"lon":"...","lat":"...","display_name":"...",...}]
+            // We need to extract the first object's values
+            if (!json.Contains("{"))
+                return null;
+
+            var result = new GeocodingResult { Name = name, IsCached = false };
+
+            // Extract "lon" value
+            ExtractJsonString(json, "lon", out var lonStr);
+            // Extract "lat" value
+            ExtractJsonString(json, "lat", out var latStr);
+
+            if (!double.TryParse(lonStr, out var lon) || !double.TryParse(latStr, out var lat))
+                return null; // Invalid coordinates means no useful result
+
+            result.Longitude = lon;
+            result.Latitude = lat;
+
+            // Extract display_name
+            ExtractJsonString(json, "display_name", out var displayName);
+            result.DisplayName = displayName ?? name;
+
+            // Extract optional fields
+            ExtractJsonString(json, "place_id", out var placeId);
+            result.PlaceId = placeId ?? string.Empty;
+
+            ExtractJsonString(json, "osm_type", out var osmType);
+            result.OsmType = osmType ?? string.Empty;
+
+            ExtractJsonString(json, "osm_id", out var osmId);
+            result.OsmId = long.TryParse(osmId, out var oid) ? oid : 0;
+
+            // Note: "class" is a reserved word in JSON from the API, extract it carefully
+            ExtractJsonString(json, "\"class\"", out var cls);
+            result.Class = cls ?? string.Empty;
+
+            ExtractJsonString(json, "type", out var type);
+            result.Type = type ?? string.Empty;
+
+            ExtractJsonString(json, "importance", out var importance);
+            result.Importance = double.TryParse(importance, out var imp) ? imp : 0;
+
+            // Extract boundingbox array if present: ["minlat","maxlat","minlon","maxlon"]
+            ExtractJsonString(json, "boundingbox", out var bboxStr);
+            if (!string.IsNullOrEmpty(bboxStr))
+            {
+                // Parse the array string - it comes as a string like '["39.76","40.11","119.61","119.95"]'
+                // Remove brackets and quotes
+                var inner = bboxStr.Trim('[', ']').Replace("\"", "");
+                var parts = inner.Split(',');
+                if (parts.Length >= 4)
+                {
+                    result.BoundingBoxMinLat = double.TryParse(parts[0].Trim(), out var minLat) ? minLat : null;
+                    result.BoundingBoxMaxLat = double.TryParse(parts[1].Trim(), out var maxLat) ? maxLat : null;
+                    result.BoundingBoxMinLon = double.TryParse(parts[2].Trim(), out var minLon) ? minLon : null;
+                    result.BoundingBoxMaxLon = double.TryParse(parts[3].Trim(), out var maxLon) ? maxLon : null;
+                }
+            }
+
+            return result;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     /// <summary>
@@ -324,7 +458,8 @@ public sealed class GeocodingService : IDisposable
         try
         {
             var filePath = GetCacheFilePath(locationName);
-            var json = JsonSerializer.Serialize(result, _jsonOptions);
+            // Write a simple JSON manually to avoid AOT issues
+            var json = $"{{\"Name\":\"{EscapeJson(result.Name)}\",\"Longitude\":{result.Longitude},\"Latitude\":{result.Latitude},\"DisplayName\":\"{EscapeJson(result.DisplayName)}\",\"IsCached\":{result.IsCached.ToString().ToLower()},\"PlaceId\":\"{EscapeJson(result.PlaceId)}\",\"OsmType\":\"{EscapeJson(result.OsmType)}\",\"OsmId\":{result.OsmId},\"Class\":\"{EscapeJson(result.Class)}\",\"Type\":\"{EscapeJson(result.Type)}\",\"Importance\":{result.Importance}}}";
             File.WriteAllText(filePath, json);
         }
         catch
@@ -332,6 +467,8 @@ public sealed class GeocodingService : IDisposable
             // Ignore cache write errors
         }
     }
+
+    static string EscapeJson(string s) => s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "\\r");
 
     public void Dispose()
     {
