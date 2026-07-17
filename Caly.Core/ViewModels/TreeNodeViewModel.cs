@@ -148,6 +148,7 @@ public partial class TreeNodeViewModel : ObservableObject
                                 try
                                 {
                                     _cachedBitmap = new Bitmap(file);
+                                    OnPropertyChanged(nameof(HasImageBitmap));
                                     return _cachedBitmap;
                                 }
                                 catch (Exception ex)
@@ -189,7 +190,7 @@ public partial class TreeNodeViewModel : ObservableObject
                             {
                                 if (Path.GetFileName(file).Equals(contentName, StringComparison.OrdinalIgnoreCase))
                                 {
-                                    try { _cachedBitmap = new Bitmap(file); return _cachedBitmap; }
+                                    try { _cachedBitmap = new Bitmap(file); OnPropertyChanged(nameof(HasImageBitmap)); return _cachedBitmap; }
                                     catch { }
                                 }
                             }
@@ -197,7 +198,7 @@ public partial class TreeNodeViewModel : ObservableObject
                             {
                                 if (file.Contains(imageContent))
                                 {
-                                    try { _cachedBitmap = new Bitmap(file); return _cachedBitmap; }
+                                    try { _cachedBitmap = new Bitmap(file); OnPropertyChanged(nameof(HasImageBitmap)); return _cachedBitmap; }
                                     catch { }
                                 }
                             }
@@ -214,7 +215,7 @@ public partial class TreeNodeViewModel : ObservableObject
                 {
                     if (Path.GetFileName(file).Equals(contentName, StringComparison.OrdinalIgnoreCase))
                     {
-                        try { _cachedBitmap = new Bitmap(file); return _cachedBitmap; }
+                        try { _cachedBitmap = new Bitmap(file); OnPropertyChanged(nameof(HasImageBitmap)); return _cachedBitmap; }
                         catch { }
                     }
                 }

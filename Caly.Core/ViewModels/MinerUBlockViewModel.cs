@@ -231,6 +231,7 @@ public partial class MinerUBlockViewModel : ObservableObject
                         try
                         {
                             _cachedBitmap = new Bitmap(file);
+                            OnPropertyChanged(nameof(HasImageBitmap));
                             return _cachedBitmap;
                         }
                         catch
