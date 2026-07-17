@@ -182,6 +182,9 @@ public sealed class GeoJsonService
         var centerLon = (minLon + maxLon) / 2;
         var centerLat = (minLat + maxLat) / 2;
 
+        // Calculate an appropriate zoom level based on the bounding box size
+        var zoom = CalculateZoomLevel(minLon, maxLon, minLat, maxLat);
+
         // Generate GeoJSON features
         var features = new List<Dictionary<string, object>>();
 
@@ -209,7 +212,15 @@ public sealed class GeoJsonService
             features.Add(feature);
         }
 
-        // Create GeoLibre-compatible JSON structure
+        // Create GeoLibre-compatible JSON structure per official spec:
+        // https://geolibre.app/project-format/
+        // The geojson data goes in the layer's "geojson" field (not inside source.data)
+        var geojsonData = new Dictionary<string, object>
+        {
+            { "type", "FeatureCollection" },
+            { "features", features }
+        };
+
         var geoLibreJson = new Dictionary<string, object>
         {
             { "version", "0.1.0" },
@@ -217,7 +228,7 @@ public sealed class GeoJsonService
             { "mapView", new Dictionary<string, object>
                 {
                     { "center", new[] { centerLon, centerLat } },
-                    { "zoom", 10.0 },
+                    { "zoom", zoom },
                     { "bearing", 0.0 },
                     { "pitch", 0.0 },
                     { "bbox", new[] { minLon, minLat, maxLon, maxLat } }
@@ -235,13 +246,7 @@ public sealed class GeoJsonService
                         { "type", "geojson" },
                         { "source", new Dictionary<string, object>
                             {
-                                { "type", "geojson" },
-                                { "data", new Dictionary<string, object>
-                                    {
-                                        { "type", "FeatureCollection" },
-                                        { "features", features }
-                                    }
-                                }
+                                { "type", "geojson" }
                             }
                         },
                         { "visible", true },
@@ -253,10 +258,13 @@ public sealed class GeoJsonService
                                 { "fillColor", "#3b82f6" },
                                 { "strokeColor", "#1e40af" },
                                 { "strokeWidth", 2 },
-                                { "fillOpacity", 0.8 },
-                                { "circleRadius", 8 }
+                                { "strokeWidthUnit", "pixels" },
+                                { "fillOpacity", 0.6 },
+                                { "circleRadius", 6 }
                             }
-                        }
+                        },
+                        { "metadata", new Dictionary<string, object>() },
+                        { "geojson", geojsonData }
                     }
                 }
             }
@@ -368,6 +376,32 @@ public sealed class GeoJsonService
     }
 
     static string EscapeJson(string s) => s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "\\r").Replace("\t", "\\t");
+
+    /// <summary>
+    /// Calculate an appropriate zoom level based on the bounding box of the points.
+    /// Uses a simple heuristic based on the maximum dimension in degrees.
+    /// Zoom 0 = full world, zoom ~18 = city level, zoom ~20 = building level.
+    /// </summary>
+    static double CalculateZoomLevel(double minLon, double maxLon, double minLat, double maxLat)
+    {
+        var lonSpan = maxLon - minLon;
+        var latSpan = maxLat - minLat;
+        var maxSpan = Math.Max(lonSpan, latSpan);
+
+        // Edge case: all points are the same
+        if (maxSpan < 0.0001)
+            return 18.0; // Default to city-level zoom
+
+        // The world is 360 degrees wide. At zoom level 0, the full world is visible.
+        // Each zoom level doubles the magnification.
+        // Formula: zoom = log2(360 / maxSpan) gives us the zoom where the bounding box
+        // fills the viewport horizontally/vertically.
+        // We subtract a small amount (0.5) to provide some padding around the points.
+        var zoom = Math.Log(360.0 / maxSpan) / Math.Log(2.0) - 0.5;
+
+        // Clamp to valid range (MapLibre typically supports 0-20)
+        return Math.Max(1.0, Math.Min(20.0, zoom));
+    }
 
     /// <summary>
     /// Get the GeoLibre URL to load the generated JSON file.
