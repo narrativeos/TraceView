@@ -155,6 +155,12 @@ public class SemanticEntity
 
     [JsonPropertyName("governing_verb")]
     public string? GoverningVerb { get; set; }
+
+    /// <summary>
+    /// Chinese display name for the syntactic role (for LOCATION entities).
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string SyntacticRoleDisplay => LocationSyntacticRole.ToDisplay(SyntacticRole);
 }
 
 /// <summary>

@@ -1279,10 +1279,44 @@
                                                                                       </DataTemplate>
                                                                                   </ItemsControl.ItemTemplate>
                                                                               </ItemsControl>
-                                                                          </StackPanel>
+                                                                           </StackPanel>
 
-                                                                          <!-- Relations section -->
-                                                                          <StackPanel IsVisible="{Binding Relations.Count}"
+                                                                           <!-- Location Syntactic Roles section -->
+                                                                           <StackPanel IsVisible="{Binding LocationEntities.Count}"
+                                                                                       Spacing="2">
+                                                                               <TextBlock Text="地点句法"
+                                                                                          FontSize="9"
+                                                                                          FontWeight="SemiBold"
+                                                                                          Foreground="#4CAF50"/>
+                                                                               <ItemsControl ItemsSource="{Binding LocationEntities}">
+                                                                                   <ItemsControl.ItemTemplate>
+                                                                                       <DataTemplate x:DataType="models:SemanticEntity">
+                                                                                           <Border Padding="4,2"
+                                                                                                   Margin="0,1"
+                                                                                                   Background="#4CAF5018"
+                                                                                                   CornerRadius="2">
+                                                                                               <StackPanel Orientation="Horizontal" Spacing="4">
+                                                                                                   <TextBlock Text="{Binding Text}"
+                                                                                                              FontSize="9"
+                                                                                                              FontWeight="SemiBold"
+                                                                                                              Foreground="#C8E6C9"/>
+                                                                                                   <TextBlock Text="{Binding SyntacticRoleDisplay}"
+                                                                                                              FontSize="8"
+                                                                                                              Foreground="#81C784"
+                                                                                                              Opacity="0.8"/>
+                                                                                                   <TextBlock Text="{Binding GoverningVerb}"
+                                                                                                              FontSize="8"
+                                                                                                              Foreground="#A5D6A7"
+                                                                                                              IsVisible="{Binding GoverningVerb}"/>
+                                                                                               </StackPanel>
+                                                                                           </Border>
+                                                                                       </DataTemplate>
+                                                                                   </ItemsControl.ItemTemplate>
+                                                                               </ItemsControl>
+                                                                           </StackPanel>
+
+                                                                           <!-- Relations section -->
+                                                                           <StackPanel IsVisible="{Binding Relations.Count}"
                                                                                       Spacing="2">
                                                                               <TextBlock Text="关系"
                                                                                          FontSize="9"
