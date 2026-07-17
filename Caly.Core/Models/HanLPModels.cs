@@ -347,44 +347,10 @@ public class HanLPSentence
     public double Confidence { get; set; }
 }
 
-// =============================================================================
-// Dependency Parsing Response Models (from /analyze/dep endpoint)
-// =============================================================================
-
-/// <summary>
-/// Response from the /analyze/dep endpoint.
-/// Contains token list + dependency edges for syntactic role analysis.
-/// </summary>
-public class HanLPDepResponse
-{
-    [JsonPropertyName("tokens")]
-    public List<HanLPDepToken> Tokens { get; set; } = new();
-
-    [JsonPropertyName("deps")]
-    public List<HanLPDepEdge> Deps { get; set; } = new();
-
-    [JsonPropertyName("text")]
-    public string Text { get; set; } = "";
-}
-
-/// <summary>
-/// A single token in the dependency parsing result.
-/// </summary>
-public class HanLPDepToken
-{
-    [JsonPropertyName("id")]
-    public int Id { get; set; }
-
-    [JsonPropertyName("text")]
-    public string Text { get; set; } = "";
-
-    [JsonPropertyName("pos")]
-    public string Pos { get; set; } = "";
-}
-
 /// <summary>
 /// A single dependency edge in the parsing result.
 /// Child token depends on Head token with the given relation.
+/// Used in the /analyze response's "deps" array.
 /// </summary>
 public class HanLPDepEdge
 {

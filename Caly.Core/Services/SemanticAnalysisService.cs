@@ -329,6 +329,8 @@ public sealed class SemanticAnalysisService : IDisposable
     /// Annotates each LOCATION entity with its syntactic role based on
     /// the dependency parsing data from /analyze response (merged tokens + deps).
     /// Uses HanLPToken (from content.tokens) and HanLPDepEdge (from content.deps).
+    /// Matches entities to tokens by span overlap instead of exact text match,
+    /// because entities like "北京立方庭" may span multiple tokens ("北京" + "立方庭").
     /// </summary>
     private static void AnnotateLocationSyntacticRolesFromContent(
         List<HanLPToken> tokens,
@@ -347,14 +349,57 @@ public sealed class SemanticAnalysisService : IDisposable
 
             foreach (var entity in locationEntities)
             {
-                // Find the token matching this entity's text
-                var matchingToken = tokens.FirstOrDefault(t => t.Text == entity.Text);
-                if (matchingToken == null)
-                    continue;
+                // Get entity span boundaries
+                int entityStart = entity.Span.Length >= 1 ? entity.Span[0] : 0;
+                int entityEnd = entity.Span.Length >= 2 ? entity.Span[1] : entityStart;
+
+                // Find all tokens whose span falls within the entity's span
+                var entityTokens = tokens.Where(t =>
+                {
+                    if (t.Span.Count < 2) return false;
+                    int tokenStart = t.Span[0];
+                    int tokenEnd = t.Span[1];
+                    // Token is contained within or overlaps the entity span
+                    return tokenStart >= entityStart && tokenEnd <= entityEnd;
+                }).ToList();
+
+                if (entityTokens.Count == 0)
+                {
+                    // Fallback: try exact text match
+                    var matchingToken = tokens.FirstOrDefault(t => t.Text == entity.Text);
+                    if (matchingToken == null)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[SemanticAnalysisService] No token matches entity '{entity.Text}' (span [{entityStart},{entityEnd}]), role=Unknown");
+                        entity.SyntacticRole = LocationSyntacticRole.Unknown;
+                        continue;
+                    }
+                    entityTokens = new List<HanLPToken> { matchingToken };
+                }
+
+                // For multi-token entities, find the "root" token:
+                // The token that is the highest in the dependency tree (closest to root).
+                // Or simply use the first token as the representative.
+                // Strategy: Use the first token, then walk up to find the governing relation.
+                var representativeToken = entityTokens[0];
 
                 // Get the dependency edge for this token
-                if (!edgeByChild.TryGetValue(matchingToken.Id, out var edge))
-                    continue;
+                if (!edgeByChild.TryGetValue(representativeToken.Id, out var edge))
+                {
+                    // If the first token has no edge (e.g., it's a modifier of another token in the entity),
+                    // try to find a token whose head is outside the entity
+                    var externalEdge = FindExternalDependencyEdge(entityTokens, edgeByChild);
+                    if (externalEdge != null)
+                    {
+                        edge = externalEdge;
+                        representativeToken = tokenById.TryGetValue(edge.Child, out var rt) ? rt : representativeToken;
+                    }
+                    else
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[SemanticAnalysisService] No external dep edge for entity '{entity.Text}', role=Unknown");
+                        entity.SyntacticRole = LocationSyntacticRole.Unknown;
+                        continue;
+                    }
+                }
 
                 // Determine the head token
                 HanLPToken? headToken = null;
@@ -387,12 +432,39 @@ public sealed class SemanticAnalysisService : IDisposable
                         entity.GoverningVerb = verbToken.Text;
                     }
                 }
+
+                System.Diagnostics.Debug.WriteLine($"[SemanticAnalysisService] Entity '{entity.Text}' (span [{entityStart},{entityEnd}], {entityTokens.Count} tokens) -> role={role}, rel={edge.Rel}, head={headToken?.Text}");
             }
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[SemanticAnalysisService] Syntactic role annotation failed: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// For a multi-token entity, find the dependency edge where the child is inside
+    /// the entity but the head is outside. This gives us the relation of the entity
+    /// as a whole to the rest of the sentence.
+    /// </summary>
+    static HanLPDepEdge? FindExternalDependencyEdge(
+        List<HanLPToken> entityTokens,
+        Dictionary<int, HanLPDepEdge> edgeByChild)
+    {
+        var entityTokenIds = new HashSet<int>(entityTokens.Select(t => t.Id));
+
+        foreach (var token in entityTokens)
+        {
+            if (edgeByChild.TryGetValue(token.Id, out var edge))
+            {
+                // If the head is outside the entity, this is the external relation
+                if (edge.Head < 0 || !entityTokenIds.Contains(edge.Head))
+                {
+                    return edge;
+                }
+            }
+        }
+        return null;
     }
 
     /// <summary>
