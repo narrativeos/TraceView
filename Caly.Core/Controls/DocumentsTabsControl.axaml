@@ -1471,7 +1471,7 @@
                                                                                  Text="{Binding SyntacticRoleDisplay}"
                                                                                  FontSize="9"
                                                                                  FontWeight="SemiBold"
-                                                                                 Foreground="#6A1B9A"
+                                                                                 Foreground="{Binding SyntacticRoleColor}"
                                                                                  Margin="0,2,0,2"/>
 
                                                                      <!-- Display name (standard name) -->

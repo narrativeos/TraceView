@@ -353,87 +353,83 @@ public sealed class SemanticAnalysisService : IDisposable
                 int entityStart = entity.Span.Length >= 1 ? entity.Span[0] : 0;
                 int entityEnd = entity.Span.Length >= 2 ? entity.Span[1] : entityStart;
 
-                // Find all tokens whose span falls within the entity's span
+                // Find all tokens whose span overlaps with the entity's span (relaxed matching)
                 var entityTokens = tokens.Where(t =>
                 {
                     if (t.Span.Count < 2) return false;
                     int tokenStart = t.Span[0];
                     int tokenEnd = t.Span[1];
-                    // Token is contained within or overlaps the entity span
-                    return tokenStart >= entityStart && tokenEnd <= entityEnd;
+                    // Token overlaps with entity span (either partially or fully contained)
+                    return tokenStart < entityEnd && tokenEnd > entityStart;
                 }).ToList();
 
                 if (entityTokens.Count == 0)
                 {
-                    // Fallback: try exact text match
+                    // Fallback 1: try text containment (entity text contains token text or vice versa)
+                    entityTokens = tokens.Where(t =>
+                        t.Text.Length > 0 && (entity.Text.Contains(t.Text) || t.Text.Contains(entity.Text))
+                    ).ToList();
+                }
+
+                if (entityTokens.Count == 0)
+                {
+                    // Fallback 2: exact text match
                     var matchingToken = tokens.FirstOrDefault(t => t.Text == entity.Text);
                     if (matchingToken == null)
                     {
                         System.Diagnostics.Debug.WriteLine($"[SemanticAnalysisService] No token matches entity '{entity.Text}' (span [{entityStart},{entityEnd}]), role=Unknown");
                         entity.SyntacticRole = LocationSyntacticRole.Unknown;
+                        entity.GoverningVerb = null;
                         continue;
                     }
                     entityTokens = new List<HanLPToken> { matchingToken };
                 }
 
-                // For multi-token entities, find the "root" token:
-                // The token that is the highest in the dependency tree (closest to root).
-                // Or simply use the first token as the representative.
-                // Strategy: Use the first token, then walk up to find the governing relation.
-                var representativeToken = entityTokens[0];
-
-                // Get the dependency edge for this token
-                if (!edgeByChild.TryGetValue(representativeToken.Id, out var edge))
+                // Find the external dependency edge for this entity
+                var externalEdge = FindExternalDependencyEdge(entityTokens, edgeByChild);
+                
+                if (externalEdge == null)
                 {
-                    // If the first token has no edge (e.g., it's a modifier of another token in the entity),
-                    // try to find a token whose head is outside the entity
-                    var externalEdge = FindExternalDependencyEdge(entityTokens, edgeByChild);
-                    if (externalEdge != null)
-                    {
-                        edge = externalEdge;
-                        representativeToken = tokenById.TryGetValue(edge.Child, out var rt) ? rt : representativeToken;
-                    }
-                    else
-                    {
-                        System.Diagnostics.Debug.WriteLine($"[SemanticAnalysisService] No external dep edge for entity '{entity.Text}', role=Unknown");
-                        entity.SyntacticRole = LocationSyntacticRole.Unknown;
-                        continue;
-                    }
+                    System.Diagnostics.Debug.WriteLine($"[SemanticAnalysisService] No external dep edge for entity '{entity.Text}', role=Unknown");
+                    entity.SyntacticRole = LocationSyntacticRole.Unknown;
+                    entity.GoverningVerb = null;
+                    continue;
                 }
+
+                var representativeToken = tokenById.TryGetValue(externalEdge.Child, out var rt) ? rt : entityTokens[0];
 
                 // Determine the head token
                 HanLPToken? headToken = null;
-                if (edge.Head >= 0 && tokenById.TryGetValue(edge.Head, out var ht))
+                if (externalEdge.Head >= 0 && tokenById.TryGetValue(externalEdge.Head, out var ht))
                 {
                     headToken = ht;
                 }
 
                 // Get the head's edge (to check if the head itself is governed by a prep)
                 string? headRel = null;
-                if (edge.Head >= 0 && edgeByChild.TryGetValue(edge.Head, out var headEdge))
+                if (externalEdge.Head >= 0 && edgeByChild.TryGetValue(externalEdge.Head, out var headEdge))
                 {
                     headRel = headEdge.Rel;
                 }
 
+                // Handle conj (conjunction) - try to inherit role from conjoined elements
+                if (externalEdge.Rel == "conj")
+                {
+                    var conjRole = ResolveConjRole(entityTokens, edgeByChild, tokenById);
+                    entity.SyntacticRole = conjRole;
+                    entity.GoverningVerb = ExtractGoverningVerb(headToken, headRel, tokenById, edgeByChild);
+                    System.Diagnostics.Debug.WriteLine($"[SemanticAnalysisService] Entity '{entity.Text}' (conj, inherited) -> role={conjRole}");
+                    continue;
+                }
+
                 // Determine syntactic role based on dependency relation
-                var role = DetermineSyntacticRole(edge.Rel, headRel, headToken?.Pos);
+                var role = DetermineSyntacticRole(externalEdge.Rel, headRel, headToken?.Pos, headToken?.Text);
                 entity.SyntacticRole = role;
 
-                // Set the governing verb (the head token that is a verb)
-                if (headToken != null && (headToken.Pos.StartsWith("V") || headToken.Pos == "VV" || headToken.Pos == "VA"))
-                {
-                    entity.GoverningVerb = headToken.Text;
-                }
-                else if (headToken != null && headRel == "prep" && edgeByChild.TryGetValue(edge.Head, out var prepEdge))
-                {
-                    // If the head is governed by prep, find the actual verb
-                    if (prepEdge.Head >= 0 && tokenById.TryGetValue(prepEdge.Head, out var verbToken))
-                    {
-                        entity.GoverningVerb = verbToken.Text;
-                    }
-                }
+                // Set the governing verb
+                entity.GoverningVerb = ExtractGoverningVerb(headToken, headRel, tokenById, edgeByChild);
 
-                System.Diagnostics.Debug.WriteLine($"[SemanticAnalysisService] Entity '{entity.Text}' (span [{entityStart},{entityEnd}], {entityTokens.Count} tokens) -> role={role}, rel={edge.Rel}, head={headToken?.Text}");
+                System.Diagnostics.Debug.WriteLine($"[SemanticAnalysisService] Entity '{entity.Text}' (span [{entityStart},{entityEnd}], {entityTokens.Count} tokens) -> role={role}, rel={externalEdge.Rel}, head={headToken?.Text}, verb={entity.GoverningVerb}");
             }
         }
         catch (Exception ex)
@@ -443,9 +439,105 @@ public sealed class SemanticAnalysisService : IDisposable
     }
 
     /// <summary>
+    /// For a conj (conjunction) relation, try to find the role of the conjunct partner.
+    /// Walks up to the head of the conj, then finds other conj children of that head,
+    /// and resolves their external role.
+    /// </summary>
+    static string ResolveConjRole(
+        List<HanLPToken> entityTokens,
+        Dictionary<int, HanLPDepEdge> edgeByChild,
+        Dictionary<int, HanLPToken> tokenById)
+    {
+        var entityTokenIds = new HashSet<int>(entityTokens.Select(t => t.Id));
+        
+        // Find the external edge of any token in the entity
+        foreach (var token in entityTokens)
+        {
+            if (!edgeByChild.TryGetValue(token.Id, out var conjEdge))
+                continue;
+            if (conjEdge.Rel != "conj")
+                continue;
+            
+            // The head of conj is the other conjunct (or the first one)
+            // Walk up from the head to find its external relation
+            int headId = conjEdge.Head;
+            if (headId < 0 || entityTokenIds.Contains(headId))
+                continue;
+            
+            // Now find the external edge of the head token
+            if (edgeByChild.TryGetValue(headId, out var headExternalEdge))
+            {
+                // If the head's external edge is also conj, keep walking up
+                if (headExternalEdge.Rel == "conj")
+                {
+                    // Walk further up
+                    int grandHeadId = headExternalEdge.Head;
+                    if (grandHeadId >= 0 && edgeByChild.TryGetValue(grandHeadId, out var grandEdge))
+                    {
+                        return DetermineSyntacticRole(grandEdge.Rel, null, null, null);
+                    }
+                }
+                return DetermineSyntacticRole(headExternalEdge.Rel, null, null, null);
+            }
+        }
+        
+        // Default for conj: Attributive (common pattern: "A和B的C" where A and B are both attributive)
+        return LocationSyntacticRole.Attributive;
+    }
+
+    /// <summary>
+    /// Extracts the governing verb from the head token, walking up through prepositions.
+    /// </summary>
+    static string? ExtractGoverningVerb(
+        HanLPToken? headToken,
+        string? headRel,
+        Dictionary<int, HanLPToken> tokenById,
+        Dictionary<int, HanLPDepEdge> edgeByChild)
+    {
+        if (headToken == null)
+            return null;
+
+        // Direct verb head
+        if (IsVerb(headToken.Pos))
+            return headToken.Text;
+
+        // Head is a preposition, find the actual verb
+        if (headRel == "prep" && headToken.Id >= 0 && edgeByChild.TryGetValue(headToken.Id, out var prepEdge))
+        {
+            if (prepEdge.Head >= 0 && tokenById.TryGetValue(prepEdge.Head, out var verbToken))
+            {
+                if (IsVerb(verbToken.Pos))
+                    return verbToken.Text;
+            }
+        }
+
+        // Head is a noun, walk up to find the verb
+        if (headToken.Pos.StartsWith("N") && headToken.Id >= 0 && edgeByChild.TryGetValue(headToken.Id, out var nounEdge))
+        {
+            if (nounEdge.Head >= 0 && tokenById.TryGetValue(nounEdge.Head, out var upperToken))
+            {
+                if (IsVerb(upperToken.Pos))
+                    return upperToken.Text;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Checks if a POS tag indicates a verb.
+    /// </summary>
+    static bool IsVerb(string? pos)
+    {
+        if (pos == null) return false;
+        return pos.StartsWith("V") || pos == "VV" || pos == "VA" || pos == "VC" || pos == "VE";
+    }
+
+    /// <summary>
     /// For a multi-token entity, find the dependency edge where the child is inside
-    /// the entity but the head is outside. This gives us the relation of the entity
-    /// as a whole to the rest of the sentence.
+    /// the entity but the head is outside. Prioritizes non-nn relations (nn is internal
+    /// modification). This gives us the relation of the entity as a whole to the rest
+    /// of the sentence.
     /// </summary>
     static HanLPDepEdge? FindExternalDependencyEdge(
         List<HanLPToken> entityTokens,
@@ -453,17 +545,33 @@ public sealed class SemanticAnalysisService : IDisposable
     {
         var entityTokenIds = new HashSet<int>(entityTokens.Select(t => t.Id));
 
+        // First pass: find non-nn external edges (more meaningful relations)
         foreach (var token in entityTokens)
         {
             if (edgeByChild.TryGetValue(token.Id, out var edge))
             {
-                // If the head is outside the entity, this is the external relation
                 if (edge.Head < 0 || !entityTokenIds.Contains(edge.Head))
                 {
-                    return edge;
+                    if (edge.Rel != "nn" && edge.Rel != "assm")
+                    {
+                        return edge;
+                    }
                 }
             }
         }
+
+        // Second pass: accept any external edge (including nn/assm)
+        foreach (var token in entityTokens)
+        {
+            if (edgeByChild.TryGetValue(token.Id, out var edge2))
+            {
+                if (edge2.Head < 0 || !entityTokenIds.Contains(edge2.Head))
+                {
+                    return edge2;
+                }
+            }
+        }
+
         return null;
     }
 
@@ -471,34 +579,69 @@ public sealed class SemanticAnalysisService : IDisposable
     /// Determines the syntactic role of a location token based on its dependency relation.
     ///
     /// HanLP dependency relation mapping:
-    /// - nsubj: The location is the subject (e.g., "长安陷落了")
-    /// - assmod: The location is an attributive modifier (e.g., "江南的丝绸")
-    /// - dobj: The location is a direct object (e.g., "攻克城池", "到了北京")
-    /// - pobj + head's rel is prep: The location is an adverbial (e.g., "在长安城中", "向江南")
+    /// - nsubj, top: The location is the subject (e.g., "长安陷落了", "长安是...")
+    /// - assmod, nn, amod, attr: The location is an attributive modifier (e.g., "江南的丝绸", "京沪高铁")
+    /// - dobj: The location is a direct object (e.g., "攻克城池") or predicative (e.g., "到了北京")
+    /// - lobj, loc: The location is an adverbial of place (e.g., "在长安城中", "位于海淀")
+    /// - pobj + head's rel is prep: The location is an adverbial (e.g., "向江南")
+    /// - advmod: The location modifies a verb as an adverbial
     /// </summary>
-    private static string DetermineSyntacticRole(string rel, string? headRel, string? headPos)
+    private static string DetermineSyntacticRole(string rel, string? headRel, string? headPos, string? headText)
     {
         return rel switch
         {
+            // Subject roles
             "nsubj" => LocationSyntacticRole.Subject,
-            "assmod" => LocationSyntacticRole.Attributive,
-            "dobj" => DetermineObjectOrPredicative(headPos),
-            "pobj" when headRel == "prep" => LocationSyntacticRole.Adverbial,
+            "top" => LocationSyntacticRole.Subject,  // topic as subject
+            
+            // Attributive roles
+            "assmod" => LocationSyntacticRole.Attributive,  // attributive modifier
+            "nn" => LocationSyntacticRole.Attributive,      // noun modifying noun (e.g., "京沪" in "京沪高铁")
+            "amod" => LocationSyntacticRole.Attributive,    // adjective-like modifier
+            "attr" => LocationSyntacticRole.Attributive,    // attribute
+            
+            // Object / Predicative roles
+            "dobj" => DetermineObjectOrPredicative(headText),
+            
+            // Adverbial roles
+            "lobj" => LocationSyntacticRole.Adverbial,      // location object (e.g., "高铁上看风景" -> 高铁 is lobj)
+            "loc" => LocationSyntacticRole.Adverbial,       // location modifier (e.g., "位于X")
+            "pobj" when headRel == "prep" => LocationSyntacticRole.Adverbial,  // prepositional object
+            "advmod" => LocationSyntacticRole.Adverbial,    // adverbial modifier
+            
             _ => LocationSyntacticRole.Unknown
         };
     }
 
     /// <summary>
     /// Distinguishes between Object and Predicative roles for "dobj" relation.
-    /// If the head verb indicates arrival/becoming, it's a Predicative (destination).
+    /// If the head verb indicates arrival/becoming/location, it's a Predicative (destination/state).
     /// Otherwise it's a regular Object (target of action).
     /// </summary>
-    private static string DetermineObjectOrPredicative(string? headPos)
+    private static string DetermineObjectOrPredicative(string? headText)
     {
-        // Verbs that indicate arrival/destination -> Predicative
-        // We check the head token's POS; if it's a verb, we need the actual text to determine.
-        // For now, default to Object. The specific verb-based distinction is done
-        // in the annotation method where we have access to the token text.
+        if (string.IsNullOrEmpty(headText))
+            return LocationSyntacticRole.Object;
+
+        // Verbs that indicate arrival/destination/state -> Predicative
+        var predicativeVerbs = new HashSet<string>
+        {
+            "到", "到达", "抵达", "至", "在", "位于", "处于", "落在",
+            "去", "回", "来", "进", "出", "上", "下", "过",
+            "成为", "变成", "化为", "转为",
+            "住", "居", "定居", "落户", "扎根",
+            "建", "建立", "建造", "设置", "设立",
+            "停", "停留", "驻扎", "盘踞"
+        };
+
+        if (predicativeVerbs.Contains(headText))
+            return LocationSyntacticRole.Predicative;
+
+        // Partial match: head text contains arrival-related characters
+        var arrivalChars = new[] { "到", "达", "抵", "至", "在", "位", "落", "驻" };
+        if (arrivalChars.Any(c => headText.Contains(c)))
+            return LocationSyntacticRole.Predicative;
+
         return LocationSyntacticRole.Object;
     }
 }

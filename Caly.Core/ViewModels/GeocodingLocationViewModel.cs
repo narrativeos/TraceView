@@ -90,9 +90,24 @@ public partial class GeocodingLocationViewModel : ObservableObject
     private string _syntacticRole = "";
 
     /// <summary>
-    /// Chinese display name for the syntactic role.
+    /// Chinese display name for the syntactic role. Unknown/empty displays as "-".
     /// </summary>
-    public string SyntacticRoleDisplay => LocationSyntacticRole.ToDisplay(SyntacticRole);
+    public string SyntacticRoleDisplay => (SyntacticRole == "" || SyntacticRole == "Unknown")
+        ? "-"
+        : LocationSyntacticRole.ToDisplay(SyntacticRole);
+
+    /// <summary>
+    /// Color for the syntactic role text, per-role coloring for readability on dark background.
+    /// </summary>
+    public IBrush SyntacticRoleColor => SyntacticRole switch
+    {
+        "Subject" => new SolidColorBrush(Color.Parse("#CE93D8")),    // 主语 - 亮紫色
+        "Attributive" => new SolidColorBrush(Color.Parse("#81C784")), // 定语 - 亮绿色
+        "Adverbial" => new SolidColorBrush(Color.Parse("#4FC3F7")),   // 状语 - 亮蓝色
+        "Object" => new SolidColorBrush(Color.Parse("#FFB74D")),      // 宾语 - 亮橙色
+        "Predicative" => new SolidColorBrush(Color.Parse("#F06292")), // 表语 - 亮粉色
+        _ => new SolidColorBrush(Color.Parse("#666666"))              // 未知 - 灰色
+    };
 
     /// <summary>
     /// Narrative description of the spatial function.
