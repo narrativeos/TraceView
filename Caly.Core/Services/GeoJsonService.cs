@@ -139,12 +139,11 @@ public sealed class GeoJsonService
     }
 
     /// <summary>
-    /// Generate a GeoLibre-compatible JSON file with embedded GeoJSON data.
-    /// This format can be loaded directly by GeoLibre via ?url= parameter.
+    /// Generate a GeoLibre-compatible JSON string with embedded GeoJSON data.
+    /// Returns the JSON string content (does not write to file).
     /// </summary>
-    public async Task<string?> GenerateGeoLibreJsonAsync(
+    public async Task<string?> GenerateGeoLibreJsonStringAsync(
         SemanticResultFile? semanticResults,
-        string outputDir,
         CancellationToken cancellationToken = default)
     {
         if (semanticResults is null || semanticResults.Blocks.Count == 0)
@@ -166,7 +165,7 @@ public sealed class GeoJsonService
         if (locationNames.Count == 0)
             return null;
 
-        // Geocode all locations (GenerateGeoLibreJsonAsync doesn't report progress)
+        // Geocode all locations
         var geocodingResults = await _geocodingService.GeocodeManyAsync(locationNames, null, cancellationToken);
 
         if (geocodingResults.Count == 0)
@@ -175,7 +174,7 @@ public sealed class GeoJsonService
         // Calculate bounding box for map view center
         var longitudes = geocodingResults.Values.Select(r => r.Longitude).ToList();
         var latitudes = geocodingResults.Values.Select(r => r.Latitude).ToList();
-        
+
         var minLon = longitudes.Min();
         var maxLon = longitudes.Max();
         var minLat = latitudes.Min();
@@ -263,10 +262,25 @@ public sealed class GeoJsonService
             }
         };
 
-        // Save to file (use manual JSON building to avoid AOT serialization issues)
+        return BuildJson(geoLibreJson);
+    }
+
+    /// <summary>
+    /// Generate a GeoLibre-compatible JSON file with embedded GeoJSON data.
+    /// This format can be loaded directly by GeoLibre via ?url= parameter.
+    /// </summary>
+    public async Task<string?> GenerateGeoLibreJsonAsync(
+        SemanticResultFile? semanticResults,
+        string outputDir,
+        CancellationToken cancellationToken = default)
+    {
+        var json = await GenerateGeoLibreJsonStringAsync(semanticResults, cancellationToken);
+        if (json is null)
+            return null;
+
+        // Save to file
         Directory.CreateDirectory(outputDir);
         var filePath = Path.Combine(outputDir, "locations.geolibre.json");
-        var json = BuildJson(geoLibreJson);
         await File.WriteAllTextAsync(filePath, json, cancellationToken);
 
         return filePath;

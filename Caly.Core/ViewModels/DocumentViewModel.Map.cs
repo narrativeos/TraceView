@@ -414,48 +414,102 @@ public sealed partial class DocumentViewModel
             return;
         }
 
-        _geoLibreCts = new CancellationTokenSource();
-        MapStatus = MapProcessStatus.Processing;
-        MapStatusText = "Exporting GeoLibre JSON...";
-        ShowMapColumn = true;
-
-        try
+        // Check if cached GeoLibre file exists in the semantic output directory
+        var outputDir = GetSemanticOutputDir();
+        var cachedGeoLibrePath = Path.Combine(outputDir, "locations.geolibre.json");
+        
+        string? jsonContent = null;
+        
+        if (File.Exists(cachedGeoLibrePath))
         {
-            var outputDir = GetSemanticOutputDir();
-            var geoJsonService = new GeoJsonService();
+            // Use cached file directly - no need to regenerate
+            MapStatus = MapProcessStatus.Completed;
+            MapStatusText = "使用缓存文件...";
+            jsonContent = await File.ReadAllTextAsync(cachedGeoLibrePath);
+        }
+        else
+        {
+            // Need to generate
+            _geoLibreCts = new CancellationTokenSource();
+            MapStatus = MapProcessStatus.Processing;
+            MapStatusText = "Generating GeoLibre JSON...";
+            ShowMapColumn = true;
 
-            var filePath = await geoJsonService.GenerateGeoLibreJsonAsync(
-                SemanticResults,
-                outputDir,
-                _geoLibreCts.Token);
-
-            if (filePath is not null)
+            try
             {
-                GeoLibreFilePath = filePath;
-                MapStatus = MapProcessStatus.Completed;
-                MapStatusText = "GeoLibre JSON exported successfully";
-                ShowMapColumn = true;
+                var geoJsonService = new GeoJsonService();
+
+                // Generate GeoLibre JSON string (without writing to file)
+                jsonContent = await geoJsonService.GenerateGeoLibreJsonStringAsync(
+                    SemanticResults,
+                    _geoLibreCts.Token);
+
+                if (jsonContent is not null)
+                {
+                    // Also save to cache for next time
+                    Directory.CreateDirectory(outputDir);
+                    await File.WriteAllTextAsync(cachedGeoLibrePath, jsonContent, _geoLibreCts.Token);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                MapStatus = MapProcessStatus.Idle;
+                MapStatusText = "Export cancelled";
+                _geoLibreCts?.Dispose();
+                _geoLibreCts = null;
+                return;
+            }
+            catch (Exception ex)
+            {
+                MapStatus = MapProcessStatus.Failed;
+                MapStatusText = $"Export error: {ex.Message}";
+                _geoLibreCts?.Dispose();
+                _geoLibreCts = null;
+                return;
+            }
+            finally
+            {
+                _geoLibreCts?.Dispose();
+                _geoLibreCts = null;
+            }
+        }
+
+        if (jsonContent is null)
+        {
+            MapStatus = MapProcessStatus.Failed;
+            MapStatusText = "No location entities found in semantic data.";
+            return;
+        }
+
+        MapStatusText = "请选择保存位置...";
+
+        // Show "Save As" dialog
+        var fileName = FileName?.Replace(".pdf", "") ?? "document";
+        var bytes = System.Text.Encoding.UTF8.GetBytes(jsonContent);
+        
+        var savedFile = await _filesService.SaveFileAsync(bytes, $"{fileName}.geolibre.json");
+
+        if (savedFile is not null)
+        {
+            // Get the file path from the storage file
+            var savedPath = savedFile.Path.LocalPath;
+            // Do NOT update GeoLibreFilePath - keep it pointing to the cache path
+            MapStatus = MapProcessStatus.Completed;
+            if (File.Exists(cachedGeoLibrePath))
+            {
+                MapStatusText = $"GeoLibre JSON 已保存到: {System.IO.Path.GetFileName(savedPath)} (使用缓存)";
             }
             else
             {
-                MapStatus = MapProcessStatus.Failed;
-                MapStatusText = "No location entities found in semantic data.";
+                MapStatusText = $"GeoLibre JSON 已保存到: {System.IO.Path.GetFileName(savedPath)}";
             }
+            ShowMapColumn = true;
         }
-        catch (OperationCanceledException)
+        else
         {
+            // User cancelled the save dialog
             MapStatus = MapProcessStatus.Idle;
             MapStatusText = "Export cancelled";
-        }
-        catch (Exception ex)
-        {
-            MapStatus = MapProcessStatus.Failed;
-            MapStatusText = $"Export error: {ex.Message}";
-        }
-        finally
-        {
-            _geoLibreCts?.Dispose();
-            _geoLibreCts = null;
         }
     }
 

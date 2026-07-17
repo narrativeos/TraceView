@@ -278,30 +278,6 @@
 
 						<controls:VerticalSeparator/>
 
-						<!-- GeoJSON Generate (visible when semantic results exist) -->
-						<Button DockPanel.Dock="Right"
-                                Margin="0,0,5,0"
-								HorizontalAlignment="Center"
-								VerticalAlignment="Stretch"
-								Background="Transparent"
-								Command="{Binding GenerateMapGeoJsonCommand}"
-                                IsVisible="{Binding HasSemanticResults}">
-							<Grid>
-								<PathIcon Width="17"
-										  Height="17"
-										  Data="{StaticResource map_regular}"
-										  IsVisible="{Binding IsMapCompleted, Converter={StaticResource InverseBoolConverter}}"/>
-								<PathIcon Width="17"
-										  Height="17"
-										  Data="{StaticResource checkmark_circle_regular}"
-										  Foreground="#4CAF50"
-										  IsVisible="{Binding IsMapCompleted}"/>
-								<ToolTip.Tip>
-									<TextBlock Text="{Binding MapButtonTooltip}"/>
-								</ToolTip.Tip>
-							</Grid>
-						</Button>
-
 						<!-- GeoLibre JSON Export (visible when semantic results exist) -->
 						<Button DockPanel.Dock="Right"
                                 Margin="0,0,5,0"
@@ -322,6 +298,30 @@
 										  IsVisible="{Binding HasGeoLibreFile}"/>
 								<ToolTip.Tip>
 									<TextBlock Text="{Binding ExportGeoLibreButtonTooltip}"/>
+								</ToolTip.Tip>
+							</Grid>
+						</Button>
+
+						<!-- GeoJSON Generate (visible when semantic results exist) -->
+						<Button DockPanel.Dock="Right"
+                                Margin="0,0,5,0"
+								HorizontalAlignment="Center"
+								VerticalAlignment="Stretch"
+								Background="Transparent"
+								Command="{Binding GenerateMapGeoJsonCommand}"
+                                IsVisible="{Binding HasSemanticResults}">
+							<Grid>
+								<PathIcon Width="17"
+										  Height="17"
+										  Data="{StaticResource map_regular}"
+										  IsVisible="{Binding IsMapCompleted, Converter={StaticResource InverseBoolConverter}}"/>
+								<PathIcon Width="17"
+										  Height="17"
+										  Data="{StaticResource checkmark_circle_regular}"
+										  Foreground="#4CAF50"
+										  IsVisible="{Binding IsMapCompleted}"/>
+								<ToolTip.Tip>
+									<TextBlock Text="{Binding MapButtonTooltip}"/>
 								</ToolTip.Tip>
 							</Grid>
 						</Button>

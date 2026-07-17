@@ -40,15 +40,15 @@
         <StackPanel DockPanel.Dock="Bottom"
                     Spacing="4"
                     Margin="0,8,0,0">
+            <Button Name="PART_ExportGeoLibreBtn"
+                    Content="导出 GeoLibre JSON"
+                    Click="OnExportGeoLibre"
+                    HorizontalAlignment="Stretch"/>
+            
             <Button Name="PART_OpenInGeoLibreBtn"
                     Content="Open in GeoLibre"
                     Click="OnOpenInGeoLibre"
                     IsEnabled="False"
-                    HorizontalAlignment="Stretch"/>
-            
-            <Button Name="PART_ExportGeoLibreBtn"
-                    Content="导出 GeoLibre JSON"
-                    Click="OnExportGeoLibre"
                     HorizontalAlignment="Stretch"/>
             
             <Button Name="PART_RefreshBtn"
