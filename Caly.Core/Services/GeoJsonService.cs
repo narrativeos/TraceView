@@ -336,6 +336,17 @@ public sealed class GeoJsonService
             }
             sb.Append("]");
         }
+        else if (value is System.Collections.IList list)
+        {
+            sb.Append("[");
+            for (int idx = 0; idx < list.Count; idx++)
+            {
+                if (idx > 0)
+                    sb.Append(", ");
+                BuildJsonRecursive(sb, list[idx], indent);
+            }
+            sb.Append("]");
+        }
         else
         {
             sb.Append('"').Append(EscapeJson(value.ToString() ?? "")).Append('"');
