@@ -74,5 +74,9 @@ public partial class SemanticBlockViewModel : ObservableObject
     public System.Collections.Generic.List<Models.SemanticEntity> OrganizationEntities => _result.OrganizationEntities;
     public System.Collections.Generic.List<Models.SemanticEntity> OtherEntities => _result.OtherEntities;
 
+    public System.Collections.Generic.List<Models.SemanticDepToken> DepTokens => _result.DepTokens;
+    public System.Collections.Generic.List<Models.SemanticDepEdge> DepEdges => _result.DepEdges;
+    public bool HasDepTree => _result.HasDepTree;
+
     #endregion
 }

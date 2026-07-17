@@ -247,6 +247,12 @@ public class SemanticBlockResult
     public bool HasExpandableDetails => Tokens.Count > 0 || Relations.Count > 0;
 
     /// <summary>
+    /// Whether this block has dependency parsing data to display.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool HasDepTree => DepTokens.Count > 0 && DepEdges.Count > 0;
+
+    /// <summary>
     /// Whether this block has a title or type to display in the header.
     /// </summary>
     [System.Text.Json.Serialization.JsonIgnore]
