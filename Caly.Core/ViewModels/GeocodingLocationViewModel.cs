@@ -19,6 +19,7 @@
 // SOFTWARE.
 
 using Avalonia.Media;
+using Caly.Core.Models;
 using Caly.Core.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 
@@ -84,6 +85,19 @@ public partial class GeocodingLocationViewModel : ObservableObject
 
     [ObservableProperty]
     private string _error = "";
+
+    [ObservableProperty]
+    private string _syntacticRole = "";
+
+    /// <summary>
+    /// Chinese display name for the syntactic role.
+    /// </summary>
+    public string SyntacticRoleDisplay => LocationSyntacticRole.ToDisplay(SyntacticRole);
+
+    /// <summary>
+    /// Narrative description of the spatial function.
+    /// </summary>
+    public string SyntacticRoleDescription => LocationSyntacticRole.ToNarrativeDescription(SyntacticRole);
 
     /// <summary>
     /// Color for the status text based on current status.

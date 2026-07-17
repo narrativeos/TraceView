@@ -55,21 +55,23 @@ public sealed class GeoJsonService
         if (semanticResults is null || semanticResults.Blocks.Count == 0)
             return null;
 
-        // Collect all unique location entities
-        var locationNames = new List<string>();
+        // Collect all unique location entities (preserve entity info for syntactic role)
+        var locationByName = new Dictionary<string, SemanticEntity>();
         foreach (var block in semanticResults.Blocks)
         {
             foreach (var entity in block.LocationEntities)
             {
-                if (!locationNames.Contains(entity.Text))
+                if (!locationByName.ContainsKey(entity.Text))
                 {
-                    locationNames.Add(entity.Text);
+                    locationByName[entity.Text] = entity;
                 }
             }
         }
 
-        if (locationNames.Count == 0)
+        if (locationByName.Count == 0)
             return null;
+
+        var locationNames = locationByName.Keys.ToList();
 
         // Geocode all locations with per-location callbacks
         var geocodingResults = await _geocodingService.GeocodeManyAsync(
@@ -81,12 +83,18 @@ public sealed class GeoJsonService
         // Generate GeoJSON FeatureCollection
         var features = new List<Dictionary<string, object>>();
 
-        foreach (var result in geocodingResults.Values)
+        foreach (var kvp in geocodingResults)
         {
+            var result = kvp.Value;
+            var entity = locationByName.TryGetValue(result.Name, out var e) ? e : null;
+
             var properties = new Dictionary<string, object>
             {
                 { "name", result.Name },
                 { "display_name", result.DisplayName },
+                { "syntactic_role", entity?.SyntacticRole ?? "" },
+                { "syntactic_role_display", entity != null ? LocationSyntacticRole.ToDisplay(entity.SyntacticRole) : "" },
+                { "governing_verb", entity?.GoverningVerb ?? "" },
                 { "is_cached", result.IsCached },
                 { "place_id", result.PlaceId },
                 { "osm_type", result.OsmType },
@@ -149,21 +157,23 @@ public sealed class GeoJsonService
         if (semanticResults is null || semanticResults.Blocks.Count == 0)
             return null;
 
-        // Collect all unique location entities
-        var locationNames = new List<string>();
+        // Collect all unique location entities (preserve entity info for syntactic role)
+        var locationByName = new Dictionary<string, SemanticEntity>();
         foreach (var block in semanticResults.Blocks)
         {
             foreach (var entity in block.LocationEntities)
             {
-                if (!locationNames.Contains(entity.Text))
+                if (!locationByName.ContainsKey(entity.Text))
                 {
-                    locationNames.Add(entity.Text);
+                    locationByName[entity.Text] = entity;
                 }
             }
         }
 
-        if (locationNames.Count == 0)
+        if (locationByName.Count == 0)
             return null;
+
+        var locationNames = locationByName.Keys.ToList();
 
         // Geocode all locations
         var geocodingResults = await _geocodingService.GeocodeManyAsync(locationNames, null, cancellationToken);
@@ -188,12 +198,18 @@ public sealed class GeoJsonService
         // Generate GeoJSON features
         var features = new List<Dictionary<string, object>>();
 
-        foreach (var result in geocodingResults.Values)
+        foreach (var kvp in geocodingResults)
         {
+            var result = kvp.Value;
+            var entity = locationByName.TryGetValue(result.Name, out var e) ? e : null;
+
             var properties = new Dictionary<string, object>
             {
                 { "name", result.Name },
-                { "display_name", result.DisplayName }
+                { "display_name", result.DisplayName },
+                { "syntactic_role", entity?.SyntacticRole ?? "" },
+                { "syntactic_role_display", entity != null ? LocationSyntacticRole.ToDisplay(entity.SyntacticRole) : "" },
+                { "governing_verb", entity?.GoverningVerb ?? "" }
             };
 
             var geometry = new Dictionary<string, object>

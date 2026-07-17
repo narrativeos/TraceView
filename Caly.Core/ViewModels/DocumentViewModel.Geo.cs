@@ -226,21 +226,26 @@ public sealed partial class DocumentViewModel
             var outputDir = GetSemanticOutputDir();
             var geoJsonService = new GeoJsonService();
 
-            // Collect all unique location names
-            var locationNames = new HashSet<string>();
+            // Collect all unique location entities (preserve entity info for syntactic role)
+            var locationByName = new Dictionary<string, SemanticEntity>();
             foreach (var block in SemanticResults.Blocks)
             {
                 foreach (var entity in block.LocationEntities)
                 {
-                    locationNames.Add(entity.Text);
+                    if (!locationByName.ContainsKey(entity.Text))
+                    {
+                        locationByName[entity.Text] = entity;
+                    }
                 }
             }
 
             // Create location ViewModels in UI thread
             var locationVms = new ObservableCollection<GeocodingLocationViewModel>();
-            foreach (var name in locationNames)
+            foreach (var kvp in locationByName)
             {
-                locationVms.Add(new GeocodingLocationViewModel(name));
+                var vm = new GeocodingLocationViewModel(kvp.Key);
+                vm.SyntacticRole = kvp.Value.SyntacticRole;
+                locationVms.Add(vm);
             }
 
             // Build a name -> ViewModel lookup for callbacks
@@ -313,7 +318,7 @@ public sealed partial class DocumentViewModel
             else
             {
                 GeoStatus = GeoProcessStatus.Failed;
-                var totalLocs = locationNames.Count;
+                var totalLocs = locationByName.Count;
                 if (totalLocs > 0)
                 {
                     GeoStatusText = $"Found {totalLocs} location(s) but geocoding failed for all. Check network or try again.";
@@ -634,11 +639,12 @@ public sealed partial class DocumentViewModel
                                 
                                 // Extract name and display_name from "properties" object
                                 var propertiesStart = feature.IndexOf("\"properties\"");
-                                string? name = null;
-                                string? displayName = null;
-                                string? type = null;
-                                
-                                if (propertiesStart >= 0)
+                                    string? name = null;
+                                    string? displayName = null;
+                                    string? type = null;
+                                    string? syntacticRole = null;
+                                    
+                                    if (propertiesStart >= 0)
                                 {
                                     var propObjStart = feature.IndexOf('{', propertiesStart);
                                     if (propObjStart >= 0)
@@ -656,6 +662,7 @@ public sealed partial class DocumentViewModel
                                         name = ExtractJsonStringValue(propertiesObj, "name");
                                         displayName = ExtractJsonStringValue(propertiesObj, "display_name");
                                         type = ExtractJsonStringValue(propertiesObj, "type") ?? ExtractJsonStringValue(propertiesObj, "class");
+                                        syntacticRole = ExtractJsonStringValue(propertiesObj, "syntactic_role");
                                     }
                                 }
                                 
@@ -707,6 +714,7 @@ public sealed partial class DocumentViewModel
                                     var vm = new GeocodingLocationViewModel(name);
                                     vm.DisplayName = displayName ?? name;
                                     vm.PlaceType = type ?? "";
+                                    vm.SyntacticRole = syntacticRole ?? "";
                                     
                                     if (lat.HasValue && lon.HasValue)
                                     {
