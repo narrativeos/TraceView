@@ -121,6 +121,13 @@ public class HanLPContent
     
     [JsonPropertyName("structural")]
     public Dictionary<string, object>? Structural { get; set; }
+    
+    /// <summary>
+    /// Dependency parsing edges from /analyze endpoint (merged in backend).
+    /// Token IDs reference the tokens array in this same content object.
+    /// </summary>
+    [JsonPropertyName("deps")]
+    public List<HanLPDepEdge>? Deps { get; set; }
 }
 
 /// <summary>

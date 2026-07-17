@@ -211,14 +211,14 @@ public sealed partial class DocumentViewModel
     private async Task ProcessWithSemanticAsync()
     {
         System.Diagnostics.Debug.WriteLine("[Semantic] ProcessWithSemanticAsync called");
-        System.Diagnostics.Debug.WriteLine($"[Semantic] PopoTreeRoot is null: {PopoTreeRoot is null}");
+        System.Diagnostics.Debug.WriteLine($"[Semantic] HasMinerUBlocks: {HasMinerUBlocks}");
         System.Diagnostics.Debug.WriteLine($"[Semantic] IsSemanticProcessing: {IsSemanticProcessing}");
         
-        if (PopoTreeRoot is null)
+        if (!HasMinerUBlocks)
         {
             SemanticStatus = SemanticProcessStatus.Failed;
-            SemanticStatusText = "No Popo data available. Process with Popo first.";
-            System.Diagnostics.Debug.WriteLine("[Semantic] Failed: No Popo data");
+            SemanticStatusText = "No MinerU data available. Parse with MinerU first.";
+            System.Diagnostics.Debug.WriteLine("[Semantic] Failed: No MinerU data");
             return;
         }
 
@@ -261,17 +261,16 @@ public sealed partial class DocumentViewModel
         {
             using var service = new SemanticAnalysisService();
 
-            // Collect all text nodes from the Popo tree
-            var nodes = new List<AnalysisTreeNode>();
-            CollectTextNodesFromTree(PopoTreeRoot.Children, nodes);
+            // Collect all text para_blocks from MinerU blocks
+            var nodes = CollectTextNodesFromMinerUBlocks();
 
-            System.Diagnostics.Debug.WriteLine($"[Semantic] Collected {nodes.Count} text nodes from tree");
+            System.Diagnostics.Debug.WriteLine($"[Semantic] Collected {nodes.Count} text nodes from MinerU para_blocks");
 
             if (nodes.Count == 0)
             {
                 SemanticStatus = SemanticProcessStatus.Failed;
-                SemanticStatusText = "No text nodes found to analyze.";
-                System.Diagnostics.Debug.WriteLine("[Semantic] Failed: No text nodes found");
+                SemanticStatusText = "No text blocks found to analyze.";
+                System.Diagnostics.Debug.WriteLine("[Semantic] Failed: No text blocks found");
                 IsSemanticProcessing = false;
                 _semanticCts?.Dispose();
                 _semanticCts = null;
@@ -299,8 +298,6 @@ public sealed partial class DocumentViewModel
             SemanticStatusText = $"Analysis completed ({SemanticNodeCount} nodes, {SemanticEntityCount} entities, {SemanticRelationCount} relations)";
             System.Diagnostics.Debug.WriteLine($"[Semantic] Completed: {SemanticNodeCount} nodes, {SemanticEntityCount} entities, {SemanticRelationCount} relations");
 
-            // Update tree nodes with semantic data
-            UpdateTreeNodesWithSemantic(result);
             UpdateSemanticVisibility();
         }
         catch (OperationCanceledException)
@@ -355,11 +352,7 @@ public sealed partial class DocumentViewModel
                 SemanticStatusText = $"Loaded from cache ({SemanticNodeCount} nodes, {SemanticEntityCount} entities)";
                 ShowSemanticColumn = true;
                 UpdateSemanticVisibility();
-                if (PopoTreeRoot is not null)
-                {
-                    UpdateTreeNodesWithSemantic(result);
-                }
-                System.Diagnostics.Debug.WriteLine($"[Semantic] Auto-loaded cached results: {SemanticNodeCount} nodes, {SemanticEntityCount} entities, PopoTreeRoot={PopoTreeRoot != null}");
+                System.Diagnostics.Debug.WriteLine($"[Semantic] Auto-loaded cached results: {SemanticNodeCount} nodes, {SemanticEntityCount} entities");
             }
             else
             {
@@ -463,65 +456,57 @@ public sealed partial class DocumentViewModel
     }
 
     /// <summary>
-    /// Collects all text nodes from the tree for analysis.
+    /// Collects all text para_blocks from MinerUBlocks for NLP analysis.
+    /// Filters for para_blocks (adopted blocks) with text content, excluding images and tables.
     /// </summary>
-    private void CollectTextNodesFromTree(ObservableCollection<TreeNodeViewModel> children, List<AnalysisTreeNode> result)
+    private List<AnalysisTreeNode> CollectTextNodesFromMinerUBlocks()
     {
-        System.Diagnostics.Debug.WriteLine($"[Semantic] CollectTextNodesFromTree: {children.Count} children");
-        foreach (var child in children)
+        var result = new List<AnalysisTreeNode>();
+        System.Diagnostics.Debug.WriteLine($"[Semantic] CollectTextNodesFromMinerUBlocks: {MinerUBlocks.Count} blocks");
+        
+        foreach (var block in MinerUBlocks)
         {
-            // Only analyze text-like nodes with content
-            if (!string.IsNullOrWhiteSpace(child.Content) && child.Content.Length > 1 && !child.IsImage)
+            // Only analyze para_blocks (adopted) with text content
+            if (!block.IsParaBlock)
             {
-                System.Diagnostics.Debug.WriteLine($"[Semantic]   Collected node: Type={child.Type}, Content length={child.Content.Length}, IsImage={child.IsImage}");
-                result.Add(child.GetSourceNode());
+                System.Diagnostics.Debug.WriteLine($"[Semantic]   Skipped (not para): BlockId={block.BlockId}, Source={block.BlockSource}");
+                continue;
             }
-            else
+            
+            if (block.IsImage)
             {
-                System.Diagnostics.Debug.WriteLine($"[Semantic]   Skipped node: Type={child.Type}, Content='{child.Content?.Substring(0, Math.Min(30, child.Content?.Length ?? 0))}...', IsImage={child.IsImage}, IsNullOrWhiteSpace={string.IsNullOrWhiteSpace(child.Content)}, Length={(child.Content?.Length ?? 0)}");
+                System.Diagnostics.Debug.WriteLine($"[Semantic]   Skipped (image): BlockId={block.BlockId}");
+                continue;
             }
-            if (child.Children.Count > 0)
+            
+            if (string.IsNullOrWhiteSpace(block.Content) || block.Content.Length <= 1)
             {
-                CollectTextNodesFromTree(child.Children, result);
+                System.Diagnostics.Debug.WriteLine($"[Semantic]   Skipped (empty): BlockId={block.BlockId}, Content='{block.Content?.Substring(0, Math.Min(30, block.Content?.Length ?? 0))}...'");
+                continue;
             }
+            
+            // Skip tables - only analyze text/paragraph/title blocks
+            if (block.Type == "table")
+            {
+                System.Diagnostics.Debug.WriteLine($"[Semantic]   Skipped (table): BlockId={block.BlockId}");
+                continue;
+            }
+            
+            System.Diagnostics.Debug.WriteLine($"[Semantic]   Collected: BlockId={block.BlockId}, Type={block.Type}, Content length={block.Content.Length}");
+            
+            var node = new AnalysisTreeNode
+            {
+                Type = block.Type,
+                Title = block.Level > 0 ? block.Content : string.Empty,
+                Content = block.Content,
+                Level = block.Level,
+                SourceBlockIds = new List<string>(block.SourceBlockIds)
+            };
+            
+            result.Add(node);
         }
-    }
-
-    /// <summary>
-    /// Updates tree nodes with semantic analysis data for UI display.
-    /// </summary>
-    private void UpdateTreeNodesWithSemantic(SemanticResultFile results)
-    {
-        // Build lookup by source_block_ids
-        var lookup = new Dictionary<string, SemanticBlockResult>();
-        foreach (var block in results.Blocks)
-        {
-            foreach (var id in block.SourceBlockIds)
-            {
-                lookup[id] = block;
-            }
-        }
-
-        // Update each tree node
-        UpdateTreeNodeSemantic(PopoTreeRoot, lookup);
-    }
-
-    private void UpdateTreeNodeSemantic(TreeNodeViewModel node, Dictionary<string, SemanticBlockResult> lookup)
-    {
-        // Try to find semantic result for this node
-        foreach (var id in node.SourceBlockIds)
-        {
-            if (lookup.TryGetValue(id, out var result))
-            {
-                node.SetSemanticResult(result);
-                break;
-            }
-        }
-
-        foreach (var child in node.Children)
-        {
-            UpdateTreeNodeSemantic(child, lookup);
-        }
+        
+        return result;
     }
 
     #endregion

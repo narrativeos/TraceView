@@ -69,6 +69,8 @@ public sealed class SemanticAnalysisService : IDisposable
 
     /// <summary>
     /// Analyzes a single text block using the HanLP API.
+    /// Calls /analyze once (deps are now merged into the response),
+    /// saves dependency data to the result, and annotates LOCATION entities with syntactic roles.
     /// </summary>
     public async Task<SemanticBlockResult> AnalyzeAsync(
         AnalysisTreeNode node,
@@ -76,9 +78,10 @@ public sealed class SemanticAnalysisService : IDisposable
     {
         System.Diagnostics.Debug.WriteLine($"[SemanticAnalysisService] Analyzing node with {node.Content.Length} chars");
         
+        var cleanText = CleanOcrMarkers(node.Content);
         var request = new HanLPAnalyzeRequest
         {
-            Text = CleanOcrMarkers(node.Content),
+            Text = cleanText,
             Source = "hanlp_v2",
             Language = "auto"
         };
@@ -88,8 +91,8 @@ public sealed class SemanticAnalysisService : IDisposable
 
         System.Diagnostics.Debug.WriteLine($"[SemanticAnalysisService] POSTing to {_baseUrl}/analyze");
         var response = await _httpClient.PostAsync("analyze", content, cancellationToken);
-        
-        System.Diagnostics.Debug.WriteLine($"[SemanticAnalysisService] Response status: {response.StatusCode}");
+
+        System.Diagnostics.Debug.WriteLine($"[SemanticAnalysisService] /analyze Response status: {response.StatusCode}");
         var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
@@ -97,13 +100,40 @@ public sealed class SemanticAnalysisService : IDisposable
         }
         response.EnsureSuccessStatusCode();
         System.Diagnostics.Debug.WriteLine($"[SemanticAnalysisService] Response length: {responseJson.Length} chars");
-        
+
         var analyzeResponse = JsonSerializer.Deserialize(responseJson, SourceGenerationContext.Default.HanLPAnalyzeResponse);
 
         var result = MapToSemanticResult(node, analyzeResponse);
 
-        // Annotate LOCATION entities with syntactic roles from dependency parsing
-        await AnnotateLocationSyntacticRolesAsync(node.Content, result.LocationEntities, cancellationToken);
+        // Extract dependency parsing data from the /analyze response (merged in backend)
+        var content_obj = analyzeResponse?.Content;
+        if (content_obj?.Deps is not null && content_obj?.Tokens is not null)
+        {
+            // Save dep tokens (from content.tokens, which has id, text, pos)
+            result.DepTokens = content_obj.Tokens.Select(t => new SemanticDepToken
+            {
+                Id = t.Id,
+                Text = t.Text,
+                Pos = t.Pos
+            }).ToList();
+
+            // Save dep edges
+            result.DepEdges = content_obj.Deps.Select(d => new SemanticDepEdge
+            {
+                Child = d.Child,
+                Head = d.Head,
+                Rel = d.Rel
+            }).ToList();
+
+            System.Diagnostics.Debug.WriteLine($"[SemanticAnalysisService] Saved {result.DepTokens.Count} dep tokens, {result.DepEdges.Count} dep edges from /analyze response");
+
+            // Annotate LOCATION entities with syntactic roles
+            AnnotateLocationSyntacticRolesFromContent(content_obj.Tokens, content_obj.Deps, result.LocationEntities);
+        }
+        else if (content_obj?.Deps is null)
+        {
+            System.Diagnostics.Debug.WriteLine("[SemanticAnalysisService] No deps in /analyze response");
+        }
 
         return result;
     }
@@ -296,58 +326,29 @@ public sealed class SemanticAnalysisService : IDisposable
     }
 
     /// <summary>
-    /// Calls the /analyze/dep endpoint to get dependency parsing results,
-    /// then annotates each LOCATION entity with its syntactic role based on
-    /// the dependency relation to its head token.
+    /// Annotates each LOCATION entity with its syntactic role based on
+    /// the dependency parsing data from /analyze response (merged tokens + deps).
+    /// Uses HanLPToken (from content.tokens) and HanLPDepEdge (from content.deps).
     /// </summary>
-    private async Task AnnotateLocationSyntacticRolesAsync(
-        string text,
-        List<SemanticEntity> locationEntities,
-        CancellationToken cancellationToken)
+    private static void AnnotateLocationSyntacticRolesFromContent(
+        List<HanLPToken> tokens,
+        List<HanLPDepEdge> deps,
+        List<SemanticEntity> locationEntities)
     {
-        if (locationEntities.Count == 0)
+        if (locationEntities.Count == 0 || tokens.Count == 0 || deps.Count == 0)
             return;
 
         try
         {
-            // Call /analyze/dep to get dependency parsing
-            var depRequest = new HanLPAnalyzeRequest
-            {
-                Text = CleanOcrMarkers(text),
-                Source = "hanlp_v2",
-                Language = "auto"
-            };
-
-            var depJson = JsonSerializer.Serialize(depRequest, SourceGenerationContext.Default.HanLPAnalyzeRequest);
-            var depContent = new StringContent(depJson, Encoding.UTF8, "application/json");
-
-            System.Diagnostics.Debug.WriteLine($"[SemanticAnalysisService] POSTing to {_baseUrl}/analyze/dep for syntactic role annotation");
-            var depResponse = await _httpClient.PostAsync("analyze/dep", depContent, cancellationToken);
-
-            if (!depResponse.IsSuccessStatusCode)
-            {
-                System.Diagnostics.Debug.WriteLine($"[SemanticAnalysisService] /analyze/dep failed: {depResponse.StatusCode}");
-                return;
-            }
-
-            var depResponseJson = await depResponse.Content.ReadAsStringAsync(cancellationToken);
-
-            // Parse using reflection-based deserialization (AOT-safe for dynamic response)
-            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-            var depResult = JsonSerializer.Deserialize<HanLPDepResponse>(depResponseJson, options);
-
-            if (depResult?.Tokens is null || depResult?.Deps is null)
-                return;
-
             // Build lookup: tokenId -> DepEdge
-            var edgeByChild = depResult.Deps.ToDictionary(d => d.Child, d => d);
-            // Build lookup: tokenId -> token text
-            var tokenById = depResult.Tokens.ToDictionary(t => t.Id, t => t);
+            var edgeByChild = deps.ToDictionary(d => d.Child, d => d);
+            // Build lookup: tokenId -> token
+            var tokenById = tokens.ToDictionary(t => t.Id, t => t);
 
             foreach (var entity in locationEntities)
             {
                 // Find the token matching this entity's text
-                var matchingToken = depResult.Tokens.FirstOrDefault(t => t.Text == entity.Text);
+                var matchingToken = tokens.FirstOrDefault(t => t.Text == entity.Text);
                 if (matchingToken == null)
                     continue;
 
@@ -356,7 +357,7 @@ public sealed class SemanticAnalysisService : IDisposable
                     continue;
 
                 // Determine the head token
-                HanLPDepToken? headToken = null;
+                HanLPToken? headToken = null;
                 if (edge.Head >= 0 && tokenById.TryGetValue(edge.Head, out var ht))
                 {
                     headToken = ht;

@@ -70,6 +70,37 @@ public static class LocationSyntacticRole
 //// We do NOT redefine it here to avoid ambiguity errors.
 
 /// <summary>
+/// Represents a dependency parsing token for syntactic role analysis.
+/// </summary>
+public class SemanticDepToken
+{
+    [JsonPropertyName("id")]
+    public int Id { get; set; }
+
+    [JsonPropertyName("text")]
+    public string Text { get; set; } = string.Empty;
+
+    [JsonPropertyName("pos")]
+    public string Pos { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Represents a dependency edge for syntactic role analysis.
+/// Child token depends on Head token with the given relation.
+/// </summary>
+public class SemanticDepEdge
+{
+    [JsonPropertyName("child")]
+    public int Child { get; set; }
+
+    [JsonPropertyName("head")]
+    public int Head { get; set; }
+
+    [JsonPropertyName("rel")]
+    public string Rel { get; set; } = string.Empty;
+}
+
+/// <summary>
 /// Represents a tokenized word from NLP analysis.
 /// </summary>
 public class SemanticToken
@@ -184,6 +215,20 @@ public class SemanticBlockResult
 
     [JsonPropertyName("relations")]
     public List<SemanticRelation> Relations { get; set; } = new();
+
+    /// <summary>
+    /// Dependency parsing tokens from /analyze/dep endpoint.
+    /// Saved for later syntactic role annotation of LOCATION entities.
+    /// </summary>
+    [JsonPropertyName("dep_tokens")]
+    public List<SemanticDepToken> DepTokens { get; set; } = new();
+
+    /// <summary>
+    /// Dependency parsing edges from /analyze/dep endpoint.
+    /// Saved for later syntactic role annotation of LOCATION entities.
+    /// </summary>
+    [JsonPropertyName("dep_edges")]
+    public List<SemanticDepEdge> DepEdges { get; set; } = new();
 
     [JsonPropertyName("error")]
     public string? Error { get; set; }
