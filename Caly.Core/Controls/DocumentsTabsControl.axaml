@@ -612,15 +612,15 @@
                                                         HorizontalAlignment="Center"
                                                         Opacity="0.7"/>
 
-                                             <!-- Detailed Progress Message from Popo API -->
-                                             <TextBlock Text="{Binding PopoProgressMessage}"
-                                                        FontSize="10"
-                                                        HorizontalAlignment="Center"
-                                                        TextAlignment="Center"
-                                                        Opacity="0.5"
-                                                        TextWrapping="Wrap"
-                                                        MaxWidth="250"
-                                                        IsVisible="{Binding PopoProgressMessage}"/>
+                                              <!-- Detailed Progress Message from Popo API -->
+                                              <TextBlock Text="{Binding PopoProgressMessage}"
+                                                         FontSize="10"
+                                                         HorizontalAlignment="Center"
+                                                         TextAlignment="Center"
+                                                         Opacity="0.5"
+                                                         TextWrapping="Wrap"
+                                                         MaxWidth="250"
+                                                         IsVisible="{Binding PopoProgressMessage, Converter={StaticResource IsNotNullConverter}}"/>
 
                                              <!-- Cancel Button -->
                                              <Button Content="Cancel"

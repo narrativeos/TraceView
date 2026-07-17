@@ -53,6 +53,12 @@ public sealed class PopoService : IDisposable
     public static readonly TimeSpan DefaultPollInterval = TimeSpan.FromSeconds(2);
 
     /// <summary>
+    /// Default timeout for Popo task processing. MPS processing can take 60-90 minutes
+    /// for a full document, so we allow 2 hours (120 minutes) to accommodate large documents.
+    /// </summary>
+    public static readonly TimeSpan DefaultTimeout = TimeSpan.FromMinutes(120);
+
+    /// <summary>
     /// Creates a new PopoService instance.
     /// </summary>
     /// <param name="baseUrl">Popo API base URL (default: http://localhost:8440).</param>
@@ -64,7 +70,7 @@ public sealed class PopoService : IDisposable
 
         _httpClient = new HttpClient
         {
-            Timeout = TimeSpan.FromMinutes(30)
+            Timeout = TimeSpan.FromMinutes(150)
         };
 
         Directory.CreateDirectory(_cacheDirectory);
@@ -182,7 +188,7 @@ public sealed class PopoService : IDisposable
     /// <param name="taskId">Task ID to poll.</param>
     /// <param name="onProgress">Simple progress callback (status, percent).</param>
     /// <param name="detailedCallback">Optional callback with progress message details.</param>
-    /// <param name="timeout">Maximum time to wait. Default 30 minutes.</param>
+    /// <param name="timeout">Maximum polling timeout. Default 120 minutes (2 hours).</param>
     /// <param name="ct">Cancellation token.</param>
     public async Task PollUntilCompleteAsync(
         string taskId,
@@ -191,7 +197,7 @@ public sealed class PopoService : IDisposable
         TimeSpan? timeout = null,
         CancellationToken ct = default)
     {
-        var effectiveTimeout = timeout ?? TimeSpan.FromMinutes(30);
+        var effectiveTimeout = timeout ?? DefaultTimeout;
         var deadline = DateTime.UtcNow.Add(effectiveTimeout);
         int lastProgress = -1;
         int pollCount = 0;
@@ -300,7 +306,7 @@ public sealed class PopoService : IDisposable
     /// <param name="model">Model name (e.g., "mineru"). Required by Popo API.</param>
     /// <param name="onProgress">Progress callback (status, percent 0-100).</param>
     /// <param name="detailedCallback">Optional callback with progress message details.</param>
-    /// <param name="timeout">Maximum polling timeout. Default 30 minutes.</param>
+    /// <param name="timeout">Maximum polling timeout. Default 120 minutes (2 hours).</param>
     /// <param name="ct">Cancellation token.</param>
     public async Task<PopoProcessResult> ProcessAsync(
         string zipPath,
