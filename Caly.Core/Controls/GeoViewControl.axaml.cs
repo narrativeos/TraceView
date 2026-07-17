@@ -32,9 +32,9 @@ using CommunityToolkit.Mvvm.Input;
 namespace Caly.Core.Controls;
 
 /// <summary>
-/// Map view control for displaying location entities on GeoLibre map.
+/// Geo view control for displaying location entities on GeoLibre map.
 /// </summary>
-public partial class MapViewControl : UserControl
+public partial class GeoViewControl : UserControl
 {
     private TextBlock? _statusText;
     private TextBlock? _geoJsonPathText;
@@ -51,8 +51,8 @@ public partial class MapViewControl : UserControl
         set => SetAndRaise(GeoJsonFilePathProperty, ref _geoJsonFilePath, value);
     }
 
-    public static readonly DirectProperty<MapViewControl, string?> GeoJsonFilePathProperty =
-        AvaloniaProperty.RegisterDirect<MapViewControl, string?>(
+    public static readonly DirectProperty<GeoViewControl, string?> GeoJsonFilePathProperty =
+        AvaloniaProperty.RegisterDirect<GeoViewControl, string?>(
             nameof(GeoJsonFilePath),
             o => o._geoJsonFilePath,
             (o, v) => o.GeoJsonFilePath = v);
@@ -63,13 +63,13 @@ public partial class MapViewControl : UserControl
         set => SetAndRaise(GeoLibreBaseUrlProperty, ref _geoLibreBaseUrl, value);
     }
 
-    public static readonly DirectProperty<MapViewControl, string?> GeoLibreBaseUrlProperty =
-        AvaloniaProperty.RegisterDirect<MapViewControl, string?>(
+    public static readonly DirectProperty<GeoViewControl, string?> GeoLibreBaseUrlProperty =
+        AvaloniaProperty.RegisterDirect<GeoViewControl, string?>(
             nameof(GeoLibreBaseUrl),
             o => o._geoLibreBaseUrl,
             (o, v) => o.GeoLibreBaseUrl = v);
 
-    public MapViewControl()
+    public GeoViewControl()
     {
         _geoJsonFilePath = "";
         _geoLibreBaseUrl = "https://web.geolibre.app";
@@ -84,8 +84,8 @@ public partial class MapViewControl : UserControl
         set => SetAndRaise(RefreshCommandProperty, ref _refreshCommand, value);
     }
 
-    public static readonly DirectProperty<MapViewControl, IRelayCommand?> RefreshCommandProperty =
-        AvaloniaProperty.RegisterDirect<MapViewControl, IRelayCommand?>(
+    public static readonly DirectProperty<GeoViewControl, IRelayCommand?> RefreshCommandProperty =
+        AvaloniaProperty.RegisterDirect<GeoViewControl, IRelayCommand?>(
             nameof(RefreshCommand),
             o => o._refreshCommand,
             (o, v) => o.RefreshCommand = v);
@@ -96,8 +96,8 @@ public partial class MapViewControl : UserControl
         set => SetAndRaise(ExportGeoLibreCommandProperty, ref _exportGeoLibreCommand, value);
     }
 
-    public static readonly DirectProperty<MapViewControl, IRelayCommand?> ExportGeoLibreCommandProperty =
-        AvaloniaProperty.RegisterDirect<MapViewControl, IRelayCommand?>(
+    public static readonly DirectProperty<GeoViewControl, IRelayCommand?> ExportGeoLibreCommandProperty =
+        AvaloniaProperty.RegisterDirect<GeoViewControl, IRelayCommand?>(
             nameof(ExportGeoLibreCommand),
             o => o._exportGeoLibreCommand,
             (o, v) => o.ExportGeoLibreCommand = v);

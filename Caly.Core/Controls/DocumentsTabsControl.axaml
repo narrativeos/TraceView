@@ -253,11 +253,11 @@
                                        HorizontalAlignment="Center"
                                        VerticalAlignment="Stretch"
                                        Background="Transparent"
-                                       IsChecked="{Binding ShowMapColumn}">
+                                       IsChecked="{Binding ShowGeoColumn}">
                                 <PathIcon Width="17"
                                           Height="17"
                                           Data="{StaticResource map_regular}">
-                                    <ToolTip.Tip>Toggle Map View</ToolTip.Tip>
+                                    <ToolTip.Tip>Toggle Geo View</ToolTip.Tip>
                                 </PathIcon>
                             </ToggleButton>
 
@@ -308,20 +308,20 @@
 								HorizontalAlignment="Center"
 								VerticalAlignment="Stretch"
 								Background="Transparent"
-								Command="{Binding GenerateMapGeoJsonCommand}"
+								Command="{Binding GenerateGeoJsonCommand}"
                                 IsVisible="{Binding HasSemanticResults}">
 							<Grid>
 								<PathIcon Width="17"
 										  Height="17"
 										  Data="{StaticResource map_regular}"
-										  IsVisible="{Binding IsMapCompleted, Converter={StaticResource InverseBoolConverter}}"/>
+										  IsVisible="{Binding IsGeoCompleted, Converter={StaticResource InverseBoolConverter}}"/>
 								<PathIcon Width="17"
 										  Height="17"
 										  Data="{StaticResource checkmark_circle_regular}"
 										  Foreground="#4CAF50"
-										  IsVisible="{Binding IsMapCompleted}"/>
+										  IsVisible="{Binding IsGeoCompleted}"/>
 								<ToolTip.Tip>
-									<TextBlock Text="{Binding MapButtonTooltip}"/>
+									<TextBlock Text="{Binding GeoButtonTooltip}"/>
 								</ToolTip.Tip>
 							</Grid>
 						</Button>
@@ -432,7 +432,7 @@
                                  <ColumnDefinition Width="{Binding ShowMinerUColumn, Converter={StaticResource BoolToGridLengthConverter}}"/>
                                  <ColumnDefinition Width="{Binding ShowAnalysisColumn, Converter={StaticResource BoolToGridLengthConverter}}"/>
                                  <ColumnDefinition Width="{Binding ShowSemanticColumn, Converter={StaticResource BoolToGridLengthConverter}}"/>
-                                 <ColumnDefinition Width="{Binding ShowMapColumn, Converter={StaticResource BoolToGridLengthConverter}}"/>
+                                 <ColumnDefinition Width="{Binding ShowGeoColumn, Converter={StaticResource BoolToGridLengthConverter}}"/>
                              </Grid.ColumnDefinitions>
 
                             <!-- Column 1: PDF Document -->
@@ -1330,30 +1330,30 @@
                                  </DockPanel>
                              </Border>
 
-                             <!-- GridSplitter between Semantic and Map -->
+                             <!-- GridSplitter between Semantic and Geo -->
                              <GridSplitter Grid.Column="3"
                                            HorizontalAlignment="Right"
                                            Width="4"
                                            Background="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
-                                           IsVisible="{Binding ShowMapColumn}"/>
+                                           IsVisible="{Binding ShowGeoColumn}"/>
 
-                              <!-- Column 5: Map View -->
+                              <!-- Column 5: Geo View -->
                               <Border Grid.Column="4"
                                       Padding="8"
                                       Background="{DynamicResource SystemChromeLowColor}"
                                       BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
                                       BorderThickness="1"
-                                      IsVisible="{Binding ShowMapColumn}">
+                                      IsVisible="{Binding ShowGeoColumn}">
                                   <DockPanel>
                                       <!-- Header -->
                                       <StackPanel DockPanel.Dock="Top"
                                                   Orientation="Horizontal"
                                                   Spacing="4"
                                                   Margin="0,0,0,6">
-                                          <TextBlock Text="Map"
+                                          <TextBlock Text="Geo"
                                                      FontWeight="Bold"
                                                      FontSize="12"/>
-                                          <TextBlock Text="{Binding MapStatusText}"
+                                          <TextBlock Text="{Binding GeoStatusText}"
                                                      FontSize="10"
                                                      Opacity="0.5"/>
                                       </StackPanel>
@@ -1451,7 +1451,7 @@
                                        </ScrollViewer>
 
                                       <!-- Error State: shown when geocoding failed (all failed) -->
-                                      <Border IsVisible="{Binding MapStatus, Converter={StaticResource EqualsConverter}, ConverterParameter={x:Static vm:MapProcessStatus.Failed}}"
+                                      <Border IsVisible="{Binding GeoStatus, Converter={StaticResource EqualsConverter}, ConverterParameter={x:Static vm:GeoProcessStatus.Failed}}"
                                               VerticalAlignment="Center"
                                               HorizontalAlignment="Stretch"
                                               Padding="12"
@@ -1460,13 +1460,13 @@
                                               CornerRadius="4">
                                           <StackPanel Spacing="8"
                                                       HorizontalAlignment="Center">
-                                              <TextBlock Text="{Binding MapStatusText}"
+                                              <TextBlock Text="{Binding GeoStatusText}"
                                                          FontSize="12"
                                                          Foreground="#FF4444"
                                                          TextAlignment="Center"
                                                          TextWrapping="Wrap"/>
                                               <Button Content="Retry"
-                                                      Command="{Binding GenerateMapGeoJsonCommand}"
+                                                      Command="{Binding GenerateGeoJsonCommand}"
                                                       HorizontalAlignment="Center"
                                                       Padding="20,4"/>
                                           </StackPanel>
@@ -1474,19 +1474,19 @@
 
                                       <!-- Cancel Button during processing (at bottom) -->
                                       <Button DockPanel.Dock="Bottom"
-                                              IsVisible="{Binding IsMapProcessing}"
+                                              IsVisible="{Binding IsGeoProcessing}"
                                               Content="Cancel"
-                                              Command="{Binding CancelMapProcessCommand}"
+                                              Command="{Binding CancelGeoProcessCommand}"
                                               HorizontalAlignment="Center"
                                               Margin="0,8,0,8"
                                               Padding="20,4"/>
 
-                                       <!-- Map Control: shown when completed -->
-                                       <controls:MapViewControl
-                                           IsVisible="{Binding MapStatus, Converter={StaticResource EqualsConverter}, ConverterParameter={x:Static vm:MapProcessStatus.Completed}}"
+                                       <!-- Geo Control: shown when completed -->
+                                       <controls:GeoViewControl
+                                           IsVisible="{Binding GeoStatus, Converter={StaticResource EqualsConverter}, ConverterParameter={x:Static vm:GeoProcessStatus.Completed}}"
                                            GeoJsonFilePath="{Binding GeoJsonFilePath}"
                                            GeoLibreBaseUrl="https://web.geolibre.app"
-                                           RefreshCommand="{Binding GenerateMapGeoJsonCommand}"
+                                           RefreshCommand="{Binding GenerateGeoJsonCommand}"
                                            ExportGeoLibreCommand="{Binding ExportGeoLibreJsonCommand}"/>
                                    </DockPanel>
                               </Border>

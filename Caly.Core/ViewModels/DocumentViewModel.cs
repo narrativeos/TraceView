@@ -378,7 +378,7 @@ public sealed partial class DocumentViewModel : ViewModelBase
                 TryLoadMinerUData();      // Load MinerU from mineru/
                 TryLoadPopoData();        // Load Popo from popo/
                 TryLoadSemanticData();    // Load Semantic from semantic/
-                TryLoadMapData();         // Load Map from semantic/locations.geojson
+                TryLoadGeoData();         // Load Geo from semantic/locations.geojson
             });
         }
 

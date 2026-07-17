@@ -400,7 +400,7 @@ public sealed partial class DocumentsTabsControl : UserControl
         if (e.PropertyName is "MinerUStatus" or "HasMinerUBlocks" or "ShowMinerUColumn" or
                                                     "ShowAnalysisColumn" or "HasPopoBlocks" or "PopoTreeRoot" or
                                                     "ShowSemanticColumn" or "HasSemanticResults" or "SemanticResults" or
-                                                    "ShowMapColumn" or "MapStatus" or
+                                                     "ShowGeoColumn" or "GeoStatus" or
                                                     "VisiblePages" or "ZoomLevel")
         {
             UpdateConnectionLines();

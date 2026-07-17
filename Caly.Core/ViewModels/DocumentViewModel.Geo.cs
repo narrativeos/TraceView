@@ -36,13 +36,13 @@ namespace Caly.Core.ViewModels;
 
 public sealed partial class DocumentViewModel
 {
-    #region Map Properties
+    #region Geo Properties
 
     /// <summary>
-    /// Whether the Map column is visible (user toggle).
+    /// Whether the Geo column is visible (user toggle).
     /// </summary>
     [ObservableProperty]
-    private bool _showMapColumn = false;
+    private bool _showGeoColumn = false;
 
     /// <summary>
     /// Path to the generated GeoJSON file for this document.
@@ -67,16 +67,16 @@ public sealed partial class DocumentViewModel
     public bool HasGeoLibreFile => !string.IsNullOrEmpty(GeoLibreFilePath) && File.Exists(GeoLibreFilePath);
 
     /// <summary>
-    /// Map processing status.
+    /// Geo processing status.
     /// </summary>
     [ObservableProperty]
-    private MapProcessStatus _mapStatus = MapProcessStatus.Idle;
+    private GeoProcessStatus _geoStatus = GeoProcessStatus.Idle;
 
     [ObservableProperty]
-    private string _mapStatusText = "Ready";
+    private string _geoStatusText = "Ready";
 
     [ObservableProperty]
-    private bool _isMapProcessing;
+    private bool _isGeoProcessing;
 
     /// <summary>
     /// Collection of locations being geocoded (for table display).
@@ -142,28 +142,28 @@ public sealed partial class DocumentViewModel
     }
 
     /// <summary>
-    /// Whether map GeoJSON generation has been completed successfully.
+    /// Whether geo processing has been completed successfully.
     /// </summary>
-    public bool IsMapCompleted => MapStatus == MapProcessStatus.Completed;
+    public bool IsGeoCompleted => GeoStatus == GeoProcessStatus.Completed;
 
     /// <summary>
-    /// Whether map GeoJSON generation has failed.
+    /// Whether geo processing has failed.
     /// </summary>
-    public bool IsMapFailed => MapStatus == MapProcessStatus.Failed;
+    public bool IsGeoFailed => GeoStatus == GeoProcessStatus.Failed;
 
     /// <summary>
-    /// Human-readable status for the Map button tooltip.
+    /// Human-readable status for the Geo button tooltip.
     /// </summary>
-    public string MapButtonTooltip
+    public string GeoButtonTooltip
     {
         get
         {
-            return MapStatus switch
+            return GeoStatus switch
             {
-                MapProcessStatus.Completed => "地图已生成 · 点击重新生成",
-                MapProcessStatus.Failed => "地图生成失败 · 点击重试",
-                MapProcessStatus.Processing => $"地图生成中...",
-                _ => "生成地理地图"
+                GeoProcessStatus.Completed => "地理数据已生成 · 点击重新生成",
+                GeoProcessStatus.Failed => "地理数据生成失败 · 点击重试",
+                GeoProcessStatus.Processing => $"地理数据生成中...",
+                _ => "生成地理数据"
             };
         }
     }
@@ -183,43 +183,43 @@ public sealed partial class DocumentViewModel
         }
     }
 
-    private CancellationTokenSource? _mapCts;
+    private CancellationTokenSource? _geoCts;
     private CancellationTokenSource? _geoLibreCts;
 
     #endregion
 
-    #region Map Commands
+    #region Geo Commands
 
     [RelayCommand]
-    private void ToggleMapColumn()
+    private void ToggleGeoColumn()
     {
-        ShowMapColumn = !ShowMapColumn;
+        ShowGeoColumn = !ShowGeoColumn;
     }
 
     [RelayCommand]
-    private async Task GenerateMapGeoJsonAsync()
+    private async Task GenerateGeoJsonAsync()
     {
         if (SemanticResults is null || !HasSemanticResults)
         {
-            MapStatus = MapProcessStatus.Failed;
-            MapStatusText = "No semantic data available. Run NLP analysis first.";
+            GeoStatus = GeoProcessStatus.Failed;
+            GeoStatusText = "No semantic data available. Run NLP analysis first.";
             return;
         }
 
         // If already processing, cancel
-        if (IsMapProcessing)
+        if (IsGeoProcessing)
         {
-            _mapCts?.Cancel();
-            MapStatusText = "Cancelling...";
+            _geoCts?.Cancel();
+            GeoStatusText = "Cancelling...";
             return;
         }
 
-        _mapCts = new CancellationTokenSource();
-        IsMapProcessing = true;
-        MapStatus = MapProcessStatus.Processing;
-        MapStatusText = "Generating GeoJSON...";
-        // Ensure Map column is visible
-        ShowMapColumn = true;
+        _geoCts = new CancellationTokenSource();
+        IsGeoProcessing = true;
+        GeoStatus = GeoProcessStatus.Processing;
+        GeoStatusText = "Generating GeoJSON...";
+        // Ensure Geo column is visible
+        ShowGeoColumn = true;
 
         try
         {
@@ -262,7 +262,7 @@ public sealed partial class DocumentViewModel
                     {
                         vm.MarkProcessing();
                     }
-                    MapStatusText = $"Geocoding: {name} ({vmLookup.Values.Count(v => v.Status != GeocodingStatus.Pending)}/{vmLookup.Count})";
+                    GeoStatusText = $"Geocoding: {name} ({vmLookup.Values.Count(v => v.Status != GeocodingStatus.Pending)}/{vmLookup.Count})";
                 });
             };
 
@@ -276,7 +276,7 @@ public sealed partial class DocumentViewModel
                         vm.MarkSuccess(result);
                     }
                     var done = vmLookup.Values.Count(v => v.Status == GeocodingStatus.Success || v.Status == GeocodingStatus.Failed);
-                    MapStatusText = $"Geocoding: {result.Name} ({done}/{vmLookup.Count})";
+                    GeoStatusText = $"Geocoding: {result.Name} ({done}/{vmLookup.Count})";
                 });
             };
 
@@ -290,7 +290,7 @@ public sealed partial class DocumentViewModel
                         vm.MarkFailed(error);
                     }
                     var done = vmLookup.Values.Count(v => v.Status == GeocodingStatus.Success || v.Status == GeocodingStatus.Failed);
-                    MapStatusText = $"Geocoding: {name} ({done}/{vmLookup.Count})";
+                    GeoStatusText = $"Geocoding: {name} ({done}/{vmLookup.Count})";
                 });
             };
 
@@ -301,51 +301,51 @@ public sealed partial class DocumentViewModel
                 onProcessing,
                 onSuccess,
                 onFailed,
-                _mapCts.Token);
+                _geoCts.Token);
 
             if (filePath is not null)
             {
                 GeoJsonFilePath = filePath;
-                MapStatus = MapProcessStatus.Completed;
-                MapStatusText = GeocodingProgressText;
-                ShowMapColumn = true;
+                GeoStatus = GeoProcessStatus.Completed;
+                GeoStatusText = GeocodingProgressText;
+                ShowGeoColumn = true;
             }
             else
             {
-                MapStatus = MapProcessStatus.Failed;
+                GeoStatus = GeoProcessStatus.Failed;
                 var totalLocs = locationNames.Count;
                 if (totalLocs > 0)
                 {
-                    MapStatusText = $"Found {totalLocs} location(s) but geocoding failed for all. Check network or try again.";
+                    GeoStatusText = $"Found {totalLocs} location(s) but geocoding failed for all. Check network or try again.";
                 }
                 else
                 {
-                    MapStatusText = "No location entities found in semantic data.";
+                    GeoStatusText = "No location entities found in semantic data.";
                 }
             }
         }
         catch (OperationCanceledException)
         {
-            MapStatus = MapProcessStatus.Idle;
-            MapStatusText = "Generation cancelled";
+            GeoStatus = GeoProcessStatus.Idle;
+            GeoStatusText = "Generation cancelled";
         }
         catch (Exception ex)
         {
-            MapStatus = MapProcessStatus.Failed;
-            MapStatusText = $"Error: {ex.Message}";
+            GeoStatus = GeoProcessStatus.Failed;
+            GeoStatusText = $"Error: {ex.Message}";
         }
         finally
         {
-            IsMapProcessing = false;
-            _mapCts?.Dispose();
-            _mapCts = null;
+            IsGeoProcessing = false;
+            _geoCts?.Dispose();
+            _geoCts = null;
         }
     }
 
     [RelayCommand]
-    private void CancelMapProcess()
+    private void CancelGeoProcess()
     {
-        _mapCts?.Cancel();
+        _geoCts?.Cancel();
     }
 
     [RelayCommand]
@@ -392,7 +392,7 @@ public sealed partial class DocumentViewModel
         }
         catch (Exception ex)
         {
-            MapStatusText = $"Failed to open: {ex.Message}";
+            GeoStatusText = $"Failed to open: {ex.Message}";
         }
     }
 
@@ -401,8 +401,8 @@ public sealed partial class DocumentViewModel
     {
         if (SemanticResults is null || !HasSemanticResults)
         {
-            MapStatus = MapProcessStatus.Failed;
-            MapStatusText = "No semantic data available. Run NLP analysis first.";
+            GeoStatus = GeoProcessStatus.Failed;
+            GeoStatusText = "No semantic data available. Run NLP analysis first.";
             return;
         }
 
@@ -410,7 +410,7 @@ public sealed partial class DocumentViewModel
         if (_geoLibreCts is not null)
         {
             _geoLibreCts?.Cancel();
-            MapStatusText = "Cancelling...";
+            GeoStatusText = "Cancelling...";
             return;
         }
 
@@ -423,17 +423,17 @@ public sealed partial class DocumentViewModel
         if (File.Exists(cachedGeoLibrePath))
         {
             // Use cached file directly - no need to regenerate
-            MapStatus = MapProcessStatus.Completed;
-            MapStatusText = "使用缓存文件...";
+            GeoStatus = GeoProcessStatus.Completed;
+            GeoStatusText = "使用缓存文件...";
             jsonContent = await File.ReadAllTextAsync(cachedGeoLibrePath);
         }
         else
         {
             // Need to generate
             _geoLibreCts = new CancellationTokenSource();
-            MapStatus = MapProcessStatus.Processing;
-            MapStatusText = "Generating GeoLibre JSON...";
-            ShowMapColumn = true;
+            GeoStatus = GeoProcessStatus.Processing;
+            GeoStatusText = "Generating GeoLibre JSON...";
+            ShowGeoColumn = true;
 
             try
             {
@@ -453,16 +453,16 @@ public sealed partial class DocumentViewModel
             }
             catch (OperationCanceledException)
             {
-                MapStatus = MapProcessStatus.Idle;
-                MapStatusText = "Export cancelled";
+                GeoStatus = GeoProcessStatus.Idle;
+                GeoStatusText = "Export cancelled";
                 _geoLibreCts?.Dispose();
                 _geoLibreCts = null;
                 return;
             }
             catch (Exception ex)
             {
-                MapStatus = MapProcessStatus.Failed;
-                MapStatusText = $"Export error: {ex.Message}";
+                GeoStatus = GeoProcessStatus.Failed;
+                GeoStatusText = $"Export error: {ex.Message}";
                 _geoLibreCts?.Dispose();
                 _geoLibreCts = null;
                 return;
@@ -476,12 +476,12 @@ public sealed partial class DocumentViewModel
 
         if (jsonContent is null)
         {
-            MapStatus = MapProcessStatus.Failed;
-            MapStatusText = "No location entities found in semantic data.";
+            GeoStatus = GeoProcessStatus.Failed;
+            GeoStatusText = "No location entities found in semantic data.";
             return;
         }
 
-        MapStatusText = "请选择保存位置...";
+        GeoStatusText = "请选择保存位置...";
 
         // Show "Save As" dialog
         var fileName = FileName?.Replace(".pdf", "") ?? "document";
@@ -494,22 +494,22 @@ public sealed partial class DocumentViewModel
             // Get the file path from the storage file
             var savedPath = savedFile.Path.LocalPath;
             // Do NOT update GeoLibreFilePath - keep it pointing to the cache path
-            MapStatus = MapProcessStatus.Completed;
+            GeoStatus = GeoProcessStatus.Completed;
             if (File.Exists(cachedGeoLibrePath))
             {
-                MapStatusText = $"GeoLibre JSON 已保存到: {System.IO.Path.GetFileName(savedPath)} (使用缓存)";
+                GeoStatusText = $"GeoLibre JSON 已保存到: {System.IO.Path.GetFileName(savedPath)} (使用缓存)";
             }
             else
             {
-                MapStatusText = $"GeoLibre JSON 已保存到: {System.IO.Path.GetFileName(savedPath)}";
+                GeoStatusText = $"GeoLibre JSON 已保存到: {System.IO.Path.GetFileName(savedPath)}";
             }
-            ShowMapColumn = true;
+            ShowGeoColumn = true;
         }
         else
         {
             // User cancelled the save dialog
-            MapStatus = MapProcessStatus.Idle;
-            MapStatusText = "Export cancelled";
+            GeoStatus = GeoProcessStatus.Idle;
+            GeoStatusText = "Export cancelled";
         }
     }
 
@@ -568,19 +568,19 @@ public sealed partial class DocumentViewModel
         }
         catch (Exception ex)
         {
-            MapStatusText = $"Failed to open: {ex.Message}";
+            GeoStatusText = $"Failed to open: {ex.Message}";
         }
     }
 
     #endregion
 
-    #region Map Data Loading
+    #region Geo Data Loading
 
     /// <summary>
     /// Tries to load existing GeoJSON file path when document is opened.
     /// Parses the GeoJSON file to populate the geocoding locations table.
     /// </summary>
-    internal void TryLoadMapData()
+    internal void TryLoadGeoData()
     {
         try
         {
@@ -590,8 +590,8 @@ public sealed partial class DocumentViewModel
             if (File.Exists(geoJsonPath))
             {
                 GeoJsonFilePath = geoJsonPath;
-                MapStatus = MapProcessStatus.Completed;
-                ShowMapColumn = true;
+                GeoStatus = GeoProcessStatus.Completed;
+                ShowGeoColumn = true;
                 
                 // Parse the GeoJSON file to populate the locations table
                 var content = File.ReadAllText(geoJsonPath);
@@ -723,11 +723,11 @@ public sealed partial class DocumentViewModel
                 }
                 
                 GeocodingLocations = locations;
-                MapStatusText = locations.Count > 0 
+                GeoStatusText = locations.Count > 0 
                     ? $"Loaded {locations.Count} locations from cache" 
                     : "GeoJSON loaded (no locations)";
                 
-                System.Diagnostics.Debug.WriteLine($"[Map] TryLoadMapData: loaded {locations.Count} locations from {geoJsonPath}");
+                System.Diagnostics.Debug.WriteLine($"[Geo] TryLoadGeoData: loaded {locations.Count} locations from {geoJsonPath}");
             }
 
             // Also check for existing GeoLibre JSON file
@@ -735,12 +735,12 @@ public sealed partial class DocumentViewModel
             if (File.Exists(geoLibrePath))
             {
                 GeoLibreFilePath = geoLibrePath;
-                System.Diagnostics.Debug.WriteLine($"[Map] TryLoadMapData: found GeoLibre file {geoLibrePath}");
+                System.Diagnostics.Debug.WriteLine($"[Geo] TryLoadGeoData: found GeoLibre file {geoLibrePath}");
             }
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[Map] TryLoadMapData ERROR: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"[Geo] TryLoadGeoData ERROR: {ex.Message}");
         }
     }
     
@@ -791,9 +791,9 @@ public sealed partial class DocumentViewModel
 }
 
 /// <summary>
-/// Map generation processing status.
+/// Geo processing status.
 /// </summary>
-public enum MapProcessStatus
+public enum GeoProcessStatus
 {
     Idle,
     Processing,
