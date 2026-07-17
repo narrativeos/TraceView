@@ -429,18 +429,17 @@ public sealed partial class DocumentViewModel
                                 
                                 string feature = content.Substring(featureStart, pos - featureStart);
                                 
-                                // Extract properties from the "properties" object inside the feature
-                                // GeoJSON structure: { "type":"Feature", "properties":{ "name":"...", "display_name":"...", ... }, "geometry":{...} }
+                                // Extract name and display_name from "properties" object
                                 var propertiesStart = feature.IndexOf("\"properties\"");
-                                string? name, displayName, latStr, lonStr, type;
+                                string? name = null;
+                                string? displayName = null;
+                                string? type = null;
                                 
                                 if (propertiesStart >= 0)
                                 {
-                                    // Find the opening brace of properties object
                                     var propObjStart = feature.IndexOf('{', propertiesStart);
                                     if (propObjStart >= 0)
                                     {
-                                        // Find matching closing brace
                                         int propDepth = 0;
                                         int propObjEnd = propObjStart;
                                         while (propObjEnd < feature.Length)
@@ -453,23 +452,51 @@ public sealed partial class DocumentViewModel
                                         string propertiesObj = feature.Substring(propObjStart, propObjEnd - propObjStart);
                                         name = ExtractJsonStringValue(propertiesObj, "name");
                                         displayName = ExtractJsonStringValue(propertiesObj, "display_name");
-                                        latStr = ExtractJsonStringValue(propertiesObj, "lat");
-                                        lonStr = ExtractJsonStringValue(propertiesObj, "lon");
                                         type = ExtractJsonStringValue(propertiesObj, "type") ?? ExtractJsonStringValue(propertiesObj, "class");
                                     }
-                                    else
-                                    {
-                                        name = null; displayName = null; latStr = null; lonStr = null; type = null;
-                                    }
                                 }
-                                else
+                                
+                                // Extract coordinates from "geometry": { "type": "Point", "coordinates": [lon, lat] }
+                                // GeoJSON coordinates are [longitude, latitude]
+                                double? lat = null;
+                                double? lon = null;
+                                var geometryIdx = feature.IndexOf("\"geometry\"");
+                                if (geometryIdx >= 0)
                                 {
-                                    // Fallback: try direct extraction (for non-standard GeoJSON)
-                                    name = ExtractJsonStringValue(feature, "name");
-                                    displayName = ExtractJsonStringValue(feature, "display_name");
-                                    latStr = ExtractJsonStringValue(feature, "lat");
-                                    lonStr = ExtractJsonStringValue(feature, "lon");
-                                    type = ExtractJsonStringValue(feature, "type") ?? ExtractJsonStringValue(feature, "class");
+                                    var geomObjStart = feature.IndexOf('{', geometryIdx);
+                                    if (geomObjStart >= 0)
+                                    {
+                                        int geomDepth = 0;
+                                        int geomObjEnd = geomObjStart;
+                                        while (geomObjEnd < feature.Length)
+                                        {
+                                            if (feature[geomObjEnd] == '{') geomDepth++;
+                                            if (feature[geomObjEnd] == '}') geomDepth--;
+                                            geomObjEnd++;
+                                            if (geomDepth == 0) break;
+                                        }
+                                        string geometryObj = feature.Substring(geomObjStart, geomObjEnd - geomObjStart);
+                                        // Extract "coordinates": [lon, lat]
+                                        var coordsIdx = geometryObj.IndexOf("\"coordinates\"");
+                                        if (coordsIdx >= 0)
+                                        {
+                                            var arrayIdx = geometryObj.IndexOf('[', coordsIdx);
+                                            if (arrayIdx >= 0)
+                                            {
+                                                var closeBracket = geometryObj.IndexOf(']', arrayIdx);
+                                                if (closeBracket > arrayIdx)
+                                                {
+                                                    string coordsStr = geometryObj.Substring(arrayIdx + 1, closeBracket - arrayIdx - 1);
+                                                    var parts = coordsStr.Split(',').Select(s => s.Trim()).ToArray();
+                                                    if (parts.Length >= 2 && double.TryParse(parts[0], out var lonVal) && double.TryParse(parts[1], out var latVal))
+                                                    {
+                                                        lon = lonVal;  // GeoJSON: [longitude, latitude]
+                                                        lat = latVal;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                                 
                                 if (!string.IsNullOrEmpty(name))
@@ -478,11 +505,11 @@ public sealed partial class DocumentViewModel
                                     vm.DisplayName = displayName ?? name;
                                     vm.PlaceType = type ?? "";
                                     
-                                    if (double.TryParse(latStr, out var lat) && double.TryParse(lonStr, out var lon))
+                                    if (lat.HasValue && lon.HasValue)
                                     {
                                         vm.Status = GeocodingStatus.Success;
-                                        vm.Latitude = lat;
-                                        vm.Longitude = lon;
+                                        vm.Latitude = lat.Value;
+                                        vm.Longitude = lon.Value;
                                     }
                                     
                                     locations.Add(vm);
