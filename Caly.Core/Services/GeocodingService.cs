@@ -20,7 +20,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Threading;
@@ -54,140 +53,34 @@ public class GeocodingResult
 public sealed class GeocodingService : IDisposable
 {
     private readonly HttpClient _httpClient;
-    private readonly string _cacheDirectory;
-    private readonly Dictionary<string, GeocodingResult> _memoryCache = new();
-
-    // Built-in coordinate map for common Chinese cities (offline fallback)
-    private static readonly Dictionary<string, (double Longitude, double Latitude)> CommonCities = new()
-    {
-        { "北京", (116.4074, 39.9042) },
-        { "上海", (121.4737, 31.2304) },
-        { "广州", (113.2644, 23.1291) },
-        { "深圳", (114.0579, 22.5431) },
-        { "成都", (104.0657, 30.5728) },
-        { "杭州", (120.1551, 30.2741) },
-        { "南京", (118.7969, 32.0603) },
-        { "武汉", (114.3054, 30.5931) },
-        { "西安", (108.9401, 34.3416) },
-        { "重庆", (106.5504, 29.5630) },
-        { "天津", (117.2009, 39.0922) },
-        { "苏州", (120.6194, 31.2989) },
-        { "郑州", (113.6253, 34.7466) },
-        { "长沙", (112.9388, 28.2282) },
-        { "青岛", (120.3826, 36.0671) },
-        { "大连", (121.6144, 38.9140) },
-        { "厦门", (118.0894, 24.4798) },
-        { "沈阳", (123.4315, 41.8054) },
-        { "哈尔滨", (126.6429, 45.7570) },
-        { "济南", (117.0208, 36.6683) },
-        { "合肥", (117.2272, 31.8206) },
-        { "南昌", (115.8579, 28.6829) },
-        { "昆明", (102.8329, 24.8801) },
-        { "福州", (119.2965, 26.0745) },
-        { "贵阳", (106.6302, 26.6470) },
-        { "长春", (125.3235, 43.8171) },
-        { "石家庄", (114.5149, 38.0428) },
-        { "太原", (112.5488, 37.8706) },
-        { "南宁", (108.3665, 22.8170) },
-        { "兰州", (103.8340, 36.0611) },
-        { "乌鲁木齐", (87.6168, 43.7928) },
-        { "拉萨", (91.1409, 29.6456) },
-        { "海口", (110.3497, 20.0458) },
-        { "三亚", (109.5117, 18.2528) },
-        { "无锡", (120.3093, 31.4913) },
-        { "宁波", (121.5483, 29.8683) },
-        { "温州", (120.6993, 28.0006) },
-        { "常州", (119.9700, 31.8122) },
-        { "徐州", (117.1836, 34.2005) },
-        { "烟台", (121.4479, 37.4628) },
-        { "潍坊", (119.1090, 36.7207) },
-        { "淄博", (118.0545, 36.7960) },
-        { "临沂", (118.3524, 35.1041) },
-        { "保定", (115.4672, 38.8739) },
-        { "唐山", (118.0719, 39.6243) },
-        { "秦皇岛", (119.5930, 39.9373) },
-        { "邯郸", (114.5210, 36.6111) },
-    };
 
     public GeocodingService()
     {
         _httpClient = new HttpClient();
         _httpClient.Timeout = TimeSpan.FromSeconds(10);
-        _cacheDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".TraceView", "geocoding_cache");
-        Directory.CreateDirectory(_cacheDirectory);
     }
 
     /// <summary>
-    /// Geocode a single location name to coordinates.
+    /// Geocode a single location name to coordinates by calling the geo search API.
+    /// Always fetches fresh data from the API - no caching.
     /// </summary>
     public async Task<GeocodingResult?> GeocodeAsync(string locationName, CancellationToken cancellationToken = default)
     {
-        // Check memory cache first
-        if (_memoryCache.TryGetValue(locationName, out var cached))
-        {
-            cached.IsCached = true;
-            return cached;
-        }
-
-        // Check file cache
-        var cachedFile = GetCacheFilePath(locationName);
-        if (File.Exists(cachedFile))
-        {
-            try
-            {
-                var json = await File.ReadAllTextAsync(cachedFile, cancellationToken);
-                // Use simple string parsing for cached results to avoid AOT issues
-                var result = ParseCachedJson(json, locationName);
-                if (result is not null)
-                {
-                    result.IsCached = true;
-                    _memoryCache[locationName] = result;
-                    return result;
-                }
-            }
-            catch
-            {
-                // Ignore cache read errors
-            }
-        }
-
-        // Try offline common cities first
-        if (CommonCities.TryGetValue(locationName, out var coords))
-        {
-            var result = new GeocodingResult
-            {
-                Name = locationName,
-                Longitude = coords.Longitude,
-                Latitude = coords.Latitude,
-                DisplayName = locationName,
-                IsCached = true
-            };
-            _memoryCache[locationName] = result;
-            SaveToCache(locationName, result);
-            return result;
-        }
-
-        // Try geo search API
-        // Note: The backend server requires lowercase URL encoding, so we convert to lowercase
-        // We use string-based JSON parsing to avoid AOT serialization issues
+        // Call geo search API directly - no caching
         try
         {
             var encoded = System.Net.WebUtility.UrlEncode(locationName).ToLowerInvariant();
             var url = $"http://192.168.1.100:8088/search?q={encoded}&format=json&limit=1&accept-language=zh";
-            
-            using var response = await _httpClient.GetAsync(url, cancellationToken);
+
+            var response = await _httpClient.GetAsync(url, cancellationToken);
             if (response.IsSuccessStatusCode)
             {
                 var json = await response.Content.ReadAsStringAsync(cancellationToken);
-                
+
                 // Parse API response using string extraction (AOT-safe, no reflection)
                 var result = ParseApiResult(json, locationName);
                 if (result is not null)
                 {
-                    _memoryCache[locationName] = result;
-                    SaveToCache(locationName, result);
                     return result;
                 }
             }
@@ -198,49 +91,8 @@ public sealed class GeocodingService : IDisposable
             System.Diagnostics.Debug.WriteLine($"Geocoding failed for '{locationName}': {ex.Message}");
         }
 
-        // Return a placeholder result if geocoding fails
-        // User can manually set coordinates
+        // Return null if geocoding fails - no fallback
         return null;
-    }
-
-    /// <summary>
-    /// Parse a cached GeocodingResult JSON without reflection (AOT-safe).
-    /// </summary>
-    GeocodingResult? ParseCachedJson(string json, string name)
-    {
-        // Simple manual parsing to avoid AOT issues with JsonElement
-        // This parses the JSON we wrote ourselves in SaveToCache
-        try
-        {
-            var result = new GeocodingResult { Name = name };
-            
-            // Use string-based extraction for key values
-            ExtractJsonString(json, "Longitude", out var lonStr);
-            ExtractJsonString(json, "Latitude", out var latStr);
-            ExtractJsonString(json, "DisplayName", out var displayName);
-            ExtractJsonString(json, "PlaceId", out var placeId);
-            ExtractJsonString(json, "OsmType", out var osmType);
-            ExtractJsonString(json, "OsmId", out var osmId);
-            ExtractJsonString(json, "Class", out var cls);
-            ExtractJsonString(json, "Type", out var type);
-            ExtractJsonString(json, "Importance", out var importance);
-            
-            result.Longitude = double.TryParse(lonStr, out var lon) ? lon : 0;
-            result.Latitude = double.TryParse(latStr, out var lat) ? lat : 0;
-            result.DisplayName = displayName ?? name;
-            result.PlaceId = placeId ?? string.Empty;
-            result.OsmType = osmType ?? string.Empty;
-            result.OsmId = long.TryParse(osmId, out var oid) ? oid : 0;
-            result.Class = cls ?? string.Empty;
-            result.Type = type ?? string.Empty;
-            result.Importance = double.TryParse(importance, out var imp) ? imp : 0;
-            
-            return result;
-        }
-        catch
-        {
-            return null;
-        }
     }
 
     /// <summary>
@@ -255,7 +107,7 @@ public sealed class GeocodingService : IDisposable
             value = null;
             return;
         }
-        
+
         // Find the colon after the key
         idx = json.IndexOf(':', idx + keyPattern.Length);
         if (idx < 0)
@@ -263,18 +115,18 @@ public sealed class GeocodingService : IDisposable
             value = null;
             return;
         }
-        
+
         // Skip whitespace and find the value start
         idx++;
         while (idx < json.Length && (json[idx] == ' ' || json[idx] == '\t' || json[idx] == '\n' || json[idx] == '\r'))
             idx++;
-        
+
         if (idx >= json.Length)
         {
             value = null;
             return;
         }
-        
+
         if (json[idx] == '"')
         {
             // String value
@@ -429,46 +281,6 @@ public sealed class GeocodingService : IDisposable
             onFailed: null,
             cancellationToken);
     }
-
-    /// <summary>
-    /// Manually set coordinates for a location (for manual correction).
-    /// </summary>
-    public void SetManualCoordinates(string locationName, double longitude, double latitude)
-    {
-        var result = new GeocodingResult
-        {
-            Name = locationName,
-            Longitude = longitude,
-            Latitude = latitude,
-            DisplayName = locationName,
-            IsCached = true
-        };
-        _memoryCache[locationName] = result;
-        SaveToCache(locationName, result);
-    }
-
-    private string GetCacheFilePath(string locationName)
-    {
-        var safeName = string.Join("_", locationName.Split(Path.GetInvalidFileNameChars()));
-        return Path.Combine(_cacheDirectory, safeName + ".json");
-    }
-
-    private void SaveToCache(string locationName, GeocodingResult result)
-    {
-        try
-        {
-            var filePath = GetCacheFilePath(locationName);
-            // Write a simple JSON manually to avoid AOT issues
-            var json = $"{{\"Name\":\"{EscapeJson(result.Name)}\",\"Longitude\":{result.Longitude},\"Latitude\":{result.Latitude},\"DisplayName\":\"{EscapeJson(result.DisplayName)}\",\"IsCached\":{result.IsCached.ToString().ToLower()},\"PlaceId\":\"{EscapeJson(result.PlaceId)}\",\"OsmType\":\"{EscapeJson(result.OsmType)}\",\"OsmId\":{result.OsmId},\"Class\":\"{EscapeJson(result.Class)}\",\"Type\":\"{EscapeJson(result.Type)}\",\"Importance\":{result.Importance}}}";
-            File.WriteAllText(filePath, json);
-        }
-        catch
-        {
-            // Ignore cache write errors
-        }
-    }
-
-    static string EscapeJson(string s) => s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "\\r");
 
     public void Dispose()
     {

@@ -419,64 +419,42 @@ public sealed partial class DocumentViewModel
             return;
         }
 
-        // Check if cached GeoLibre file exists in the semantic output directory
-        var outputDir = GetSemanticOutputDir();
-        var cachedGeoLibrePath = Path.Combine(outputDir, "locations.geolibre.json");
-        
+        _geoLibreCts = new CancellationTokenSource();
+        GeoStatus = GeoProcessStatus.Processing;
+        GeoStatusText = "Generating GeoLibre JSON...";
+        ShowGeoColumn = true;
+
         string? jsonContent = null;
-        
-        if (File.Exists(cachedGeoLibrePath))
+
+        try
         {
-            // Use cached file directly - no need to regenerate
-            GeoStatus = GeoProcessStatus.Completed;
-            GeoStatusText = "使用缓存文件...";
-            jsonContent = await File.ReadAllTextAsync(cachedGeoLibrePath);
+            var geoJsonService = new GeoJsonService();
+
+            // Generate GeoLibre JSON string (without writing to file)
+            jsonContent = await geoJsonService.GenerateGeoLibreJsonStringAsync(
+                SemanticResults,
+                _geoLibreCts.Token);
         }
-        else
+        catch (OperationCanceledException)
         {
-            // Need to generate
-            _geoLibreCts = new CancellationTokenSource();
-            GeoStatus = GeoProcessStatus.Processing;
-            GeoStatusText = "Generating GeoLibre JSON...";
-            ShowGeoColumn = true;
-
-            try
-            {
-                var geoJsonService = new GeoJsonService();
-
-                // Generate GeoLibre JSON string (without writing to file)
-                jsonContent = await geoJsonService.GenerateGeoLibreJsonStringAsync(
-                    SemanticResults,
-                    _geoLibreCts.Token);
-
-                if (jsonContent is not null)
-                {
-                    // Also save to cache for next time
-                    Directory.CreateDirectory(outputDir);
-                    await File.WriteAllTextAsync(cachedGeoLibrePath, jsonContent, _geoLibreCts.Token);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                GeoStatus = GeoProcessStatus.Idle;
-                GeoStatusText = "Export cancelled";
-                _geoLibreCts?.Dispose();
-                _geoLibreCts = null;
-                return;
-            }
-            catch (Exception ex)
-            {
-                GeoStatus = GeoProcessStatus.Failed;
-                GeoStatusText = $"Export error: {ex.Message}";
-                _geoLibreCts?.Dispose();
-                _geoLibreCts = null;
-                return;
-            }
-            finally
-            {
-                _geoLibreCts?.Dispose();
-                _geoLibreCts = null;
-            }
+            GeoStatus = GeoProcessStatus.Idle;
+            GeoStatusText = "Export cancelled";
+            _geoLibreCts?.Dispose();
+            _geoLibreCts = null;
+            return;
+        }
+        catch (Exception ex)
+        {
+            GeoStatus = GeoProcessStatus.Failed;
+            GeoStatusText = $"Export error: {ex.Message}";
+            _geoLibreCts?.Dispose();
+            _geoLibreCts = null;
+            return;
+        }
+        finally
+        {
+            _geoLibreCts?.Dispose();
+            _geoLibreCts = null;
         }
 
         if (jsonContent is null)
@@ -498,16 +476,8 @@ public sealed partial class DocumentViewModel
         {
             // Get the file path from the storage file
             var savedPath = savedFile.Path.LocalPath;
-            // Do NOT update GeoLibreFilePath - keep it pointing to the cache path
             GeoStatus = GeoProcessStatus.Completed;
-            if (File.Exists(cachedGeoLibrePath))
-            {
-                GeoStatusText = $"GeoLibre JSON 已保存到: {System.IO.Path.GetFileName(savedPath)} (使用缓存)";
-            }
-            else
-            {
-                GeoStatusText = $"GeoLibre JSON 已保存到: {System.IO.Path.GetFileName(savedPath)}";
-            }
+            GeoStatusText = $"GeoLibre JSON 已保存到: {System.IO.Path.GetFileName(savedPath)}";
             ShowGeoColumn = true;
         }
         else
