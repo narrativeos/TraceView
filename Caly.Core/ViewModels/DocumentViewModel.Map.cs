@@ -375,6 +375,7 @@ public sealed partial class DocumentViewModel
 
     /// <summary>
     /// Tries to load existing GeoJSON file path when document is opened.
+    /// Parses the GeoJSON file to populate the geocoding locations table.
     /// </summary>
     internal void TryLoadMapData()
     {
@@ -387,13 +388,165 @@ public sealed partial class DocumentViewModel
             {
                 GeoJsonFilePath = geoJsonPath;
                 MapStatus = MapProcessStatus.Completed;
-                MapStatusText = $"Loaded from cache: {Path.GetFileName(geoJsonPath)}";
+                ShowMapColumn = true;
+                
+                // Parse the GeoJSON file to populate the locations table
+                var content = File.ReadAllText(geoJsonPath);
+                var locations = new ObservableCollection<GeocodingLocationViewModel>();
+                
+                // Parse features from GeoJSON (simple string-based parsing to avoid AOT issues)
+                // Format: "features": [ { "type":"Feature", "properties":{...}, "geometry":{...} } ]
+                var featuresStart = content.IndexOf("\"features\"");
+                if (featuresStart >= 0)
+                {
+                    // Find the array after "features":
+                    var arrayStart = content.IndexOf('[', featuresStart);
+                    if (arrayStart >= 0)
+                    {
+                        // Extract each feature object by counting braces
+                        int pos = arrayStart + 1;
+                        while (pos < content.Length)
+                        {
+                            // Skip whitespace and commas
+                            while (pos < content.Length && (char.IsWhiteSpace(content[pos]) || content[pos] == ',' || content[pos] == '\n' || content[pos] == '\r' || content[pos] == ' '))
+                                pos++;
+                            
+                            if (content[pos] == ']')
+                                break;
+                            
+                            if (content[pos] == '{')
+                            {
+                                // Find matching closing brace
+                                int depth = 0;
+                                int featureStart = pos;
+                                while (pos < content.Length)
+                                {
+                                    if (content[pos] == '{') depth++;
+                                    if (content[pos] == '}') depth--;
+                                    pos++;
+                                    if (depth == 0) break;
+                                }
+                                
+                                string feature = content.Substring(featureStart, pos - featureStart);
+                                
+                                // Extract properties from the "properties" object inside the feature
+                                // GeoJSON structure: { "type":"Feature", "properties":{ "name":"...", "display_name":"...", ... }, "geometry":{...} }
+                                var propertiesStart = feature.IndexOf("\"properties\"");
+                                string? name, displayName, latStr, lonStr, type;
+                                
+                                if (propertiesStart >= 0)
+                                {
+                                    // Find the opening brace of properties object
+                                    var propObjStart = feature.IndexOf('{', propertiesStart);
+                                    if (propObjStart >= 0)
+                                    {
+                                        // Find matching closing brace
+                                        int propDepth = 0;
+                                        int propObjEnd = propObjStart;
+                                        while (propObjEnd < feature.Length)
+                                        {
+                                            if (feature[propObjEnd] == '{') propDepth++;
+                                            if (feature[propObjEnd] == '}') propDepth--;
+                                            propObjEnd++;
+                                            if (propDepth == 0) break;
+                                        }
+                                        string propertiesObj = feature.Substring(propObjStart, propObjEnd - propObjStart);
+                                        name = ExtractJsonStringValue(propertiesObj, "name");
+                                        displayName = ExtractJsonStringValue(propertiesObj, "display_name");
+                                        latStr = ExtractJsonStringValue(propertiesObj, "lat");
+                                        lonStr = ExtractJsonStringValue(propertiesObj, "lon");
+                                        type = ExtractJsonStringValue(propertiesObj, "type") ?? ExtractJsonStringValue(propertiesObj, "class");
+                                    }
+                                    else
+                                    {
+                                        name = null; displayName = null; latStr = null; lonStr = null; type = null;
+                                    }
+                                }
+                                else
+                                {
+                                    // Fallback: try direct extraction (for non-standard GeoJSON)
+                                    name = ExtractJsonStringValue(feature, "name");
+                                    displayName = ExtractJsonStringValue(feature, "display_name");
+                                    latStr = ExtractJsonStringValue(feature, "lat");
+                                    lonStr = ExtractJsonStringValue(feature, "lon");
+                                    type = ExtractJsonStringValue(feature, "type") ?? ExtractJsonStringValue(feature, "class");
+                                }
+                                
+                                if (!string.IsNullOrEmpty(name))
+                                {
+                                    var vm = new GeocodingLocationViewModel(name);
+                                    vm.DisplayName = displayName ?? name;
+                                    vm.PlaceType = type ?? "";
+                                    
+                                    if (double.TryParse(latStr, out var lat) && double.TryParse(lonStr, out var lon))
+                                    {
+                                        vm.Status = GeocodingStatus.Success;
+                                        vm.Latitude = lat;
+                                        vm.Longitude = lon;
+                                    }
+                                    
+                                    locations.Add(vm);
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                GeocodingLocations = locations;
+                MapStatusText = locations.Count > 0 
+                    ? $"Loaded {locations.Count} locations from cache" 
+                    : "GeoJSON loaded (no locations)";
+                
+                System.Diagnostics.Debug.WriteLine($"[Map] TryLoadMapData: loaded {locations.Count} locations from {geoJsonPath}");
             }
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[Map] TryLoadMapData ERROR: {ex.Message}");
         }
+    }
+    
+    /// <summary>
+    /// Extract a string value for a given key from a JSON string (simple parsing).
+    /// </summary>
+    static string? ExtractJsonStringValue(string json, string key)
+    {
+        var searchKey = "\"" + key + "\"";
+        int idx = json.IndexOf(searchKey);
+        if (idx < 0) return null;
+        
+        // Find the colon after the key
+        idx = json.IndexOf(':', idx + searchKey.Length);
+        if (idx < 0) return null;
+        
+        // Skip whitespace
+        idx++;
+        while (idx < json.Length && char.IsWhiteSpace(json[idx])) idx++;
+        
+        if (idx >= json.Length) return null;
+        
+        // Check for null
+        if (json.Substring(idx, 4) == "null") return null;
+        
+        // Expect a quoted string
+        if (json[idx] != '"') return null;
+        
+        // Find the closing quote (handle escaped quotes)
+        int start = idx + 1;
+        int end = start;
+        while (end < json.Length)
+        {
+            if (json[end] == '\\' && end + 1 < json.Length)
+            {
+                end += 2; // skip escaped character
+                continue;
+            }
+            if (json[end] == '"')
+                break;
+            end++;
+        }
+        
+        return end > start ? json.Substring(start, end - start).Replace("\\\"", "\"") : null;
     }
 
     #endregion
