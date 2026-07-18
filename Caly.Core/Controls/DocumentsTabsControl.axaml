@@ -278,14 +278,14 @@
 
 						<controls:VerticalSeparator/>
 
-						<!-- GeoLibre JSON Export (visible when semantic results exist) -->
+						<!-- GeoLibre JSON Export (visible when semantic data exists) -->
 						<Button DockPanel.Dock="Right"
                                 Margin="0,0,5,0"
 								HorizontalAlignment="Center"
 								VerticalAlignment="Stretch"
 								Background="Transparent"
 								Command="{Binding ExportGeoLibreJsonCommand}"
-                                IsVisible="{Binding HasSemanticResults}">
+                                IsVisible="{Binding HasSemanticData}">
 							<Grid>
 								<PathIcon Width="17"
 										  Height="17"
@@ -294,7 +294,7 @@
 								<PathIcon Width="17"
 										  Height="17"
 										  Data="{StaticResource checkmark_circle_regular}"
-										  Foreground="#2196F3"
+										  Foreground="{DynamicResource SystemAccentColor}"
 										  IsVisible="{Binding HasGeoLibreFile}"/>
 								<ToolTip.Tip>
 									<TextBlock Text="{Binding ExportGeoLibreButtonTooltip}"/>
@@ -302,14 +302,14 @@
 							</Grid>
 						</Button>
 
-						<!-- GeoJSON Generate (visible when semantic results exist) -->
+						<!-- GeoJSON Generate (visible when semantic data exists) -->
 						<Button DockPanel.Dock="Right"
                                 Margin="0,0,5,0"
 								HorizontalAlignment="Center"
 								VerticalAlignment="Stretch"
 								Background="Transparent"
 								Command="{Binding GenerateGeoJsonCommand}"
-                                IsVisible="{Binding HasSemanticResults}">
+                                IsVisible="{Binding HasSemanticData}">
 							<Grid>
 								<PathIcon Width="17"
 										  Height="17"
@@ -318,7 +318,7 @@
 								<PathIcon Width="17"
 										  Height="17"
 										  Data="{StaticResource checkmark_circle_regular}"
-										  Foreground="#4CAF50"
+										  Foreground="{DynamicResource SystemAccentColor}"
 										  IsVisible="{Binding IsGeoCompleted}"/>
 								<ToolTip.Tip>
 									<TextBlock Text="{Binding GeoButtonTooltip}"/>
@@ -326,14 +326,14 @@
 							</Grid>
 						</Button>
 
-						<!-- NLP Analyze (visible when Popo tree exists) -->
+							<!-- NLP Analyze (visible when MinerU data exists) -->
 						<Button DockPanel.Dock="Right"
-                                Margin="0,0,5,0"
+                                 Margin="0,0,5,0"
 								HorizontalAlignment="Center"
 								VerticalAlignment="Stretch"
 								Background="Transparent"
 								Command="{Binding ProcessWithSemanticCommand}"
-                                IsVisible="{Binding HasPopoTree}">
+                                 IsVisible="{Binding HasMinerUData}">
 							<Grid>
 								<PathIcon Width="17"
 										  Height="17"
@@ -342,7 +342,7 @@
 								<PathIcon Width="17"
 										  Height="17"
 										  Data="{StaticResource checkmark_circle_regular}"
-										  Foreground="#9C27B0"
+										  Foreground="{DynamicResource SystemAccentColor}"
 										  IsVisible="{Binding IsSemanticCompleted}"/>
 								<ToolTip.Tip>
 									<TextBlock Text="{Binding SemanticButtonTooltip}"/>
@@ -366,7 +366,7 @@
 								<PathIcon Width="17"
 										  Height="17"
 										  Data="{StaticResource checkmark_circle_regular}"
-										  Foreground="#2196F3"
+										  Foreground="{DynamicResource SystemAccentColor}"
 										  IsVisible="{Binding IsPopoCompleted}"/>
 								<ToolTip.Tip>
 									<TextBlock Text="{Binding PopoButtonTooltip}"/>
@@ -390,7 +390,7 @@
 								<PathIcon Width="17"
 										  Height="17"
 										  Data="{StaticResource checkmark_circle_regular}"
-										  Foreground="#4CAF50"
+										  Foreground="{DynamicResource SystemAccentColor}"
 										  IsVisible="{Binding IsMinerUCompleted}"/>
 								<ToolTip.Tip>
 									<TextBlock Text="{Binding MinerUButtonTooltip}"/>

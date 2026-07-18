@@ -84,6 +84,27 @@ public sealed partial class DocumentViewModel
     public bool IsMinerUCompleted => MinerUStatus == MinerUParseStatus.Completed;
 
     /// <summary>
+    /// Whether MinerU output files exist on disk (mineru/ directory with middle.json).
+    /// Used to determine button visibility based on actual artifacts rather than in-memory state.
+    /// </summary>
+    public bool HasMinerUData
+    {
+        get
+        {
+            if (ProjectPath is null)
+                return false;
+
+            var minerUDir = Path.Combine(ProjectPath, "mineru");
+            if (!Directory.Exists(minerUDir))
+                return false;
+
+            // Check for *_middle.json files
+            var middleJsonFiles = Directory.GetFiles(minerUDir, "*_middle.json", SearchOption.AllDirectories);
+            return middleJsonFiles.Length > 0;
+        }
+    }
+
+    /// <summary>
     /// Whether MinerU parsing has failed.
     /// </summary>
     public bool IsMinerUFailed => MinerUStatus == MinerUParseStatus.Failed;

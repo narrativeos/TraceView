@@ -50,9 +50,26 @@ public sealed partial class DocumentViewModel
     private SemanticResultFile? _semanticResults;
 
     /// <summary>
-    /// Gets whether semantic analysis results are available.
+    /// Gets whether semantic analysis results are available (in-memory).
     /// </summary>
     public bool HasSemanticResults => SemanticResults?.Blocks.Count > 0;
+
+    /// <summary>
+    /// Whether semantic analysis output files exist on disk (semantic/semantic_result.json).
+    /// Used to determine button visibility based on actual artifacts rather than in-memory state.
+    /// </summary>
+    public bool HasSemanticData
+    {
+        get
+        {
+            if (ProjectPath is null)
+                return false;
+
+            var semanticDir = Path.Combine(ProjectPath, "semantic");
+            var filePath = Path.Combine(semanticDir, "semantic_result.json");
+            return File.Exists(filePath);
+        }
+    }
 
     /// <summary>
     /// NLP analysis processing status.
