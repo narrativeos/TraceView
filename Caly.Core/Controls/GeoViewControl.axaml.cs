@@ -25,7 +25,6 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Data;
-using Avalonia.Input;
 using Caly.Core.Models;
 using CommunityToolkit.Mvvm.Input;
 
@@ -73,6 +72,16 @@ public partial class GeoViewControl : UserControl
     {
         _geoJsonFilePath = "";
         _geoLibreBaseUrl = "https://web.geolibre.app";
+    }
+
+    protected override void OnLoaded(RoutedEventArgs e)
+    {
+        base.OnLoaded(e);
+        _statusText = this.Find<TextBlock>("PART_StatusText");
+        _geoJsonPathText = this.Find<TextBlock>("PART_GeoJsonPathText");
+        _openInGeoLibreBtn = this.Find<Button>("PART_OpenInGeoLibreBtn");
+        _exportGeoLibreBtn = this.Find<Button>("PART_ExportGeoLibreBtn");
+        _refreshBtn = this.Find<Button>("PART_RefreshBtn");
     }
 
     private IRelayCommand? _refreshCommand;
