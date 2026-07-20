@@ -146,8 +146,37 @@ public sealed class GeoJsonService
         return filePath;
     }
 
+    // Syntactic role style definitions: role -> (fillColor, strokeColor, displayName)
+    static (string fillColor, string strokeColor, string displayName) GetRoleStyle(string role)
+    {
+        return role switch
+        {
+            LocationSyntacticRole.Adverbial => ("#4CAF50", "#2E7D32", "状语 (Adverbial)"),
+            LocationSyntacticRole.Subject => ("#2196F3", "#1565C0", "主语 (Subject)"),
+            LocationSyntacticRole.Object => ("#F44336", "#C62828", "宾语 (Object)"),
+            LocationSyntacticRole.Attributive => ("#FF9800", "#EF6C00", "定语 (Attributive)"),
+            LocationSyntacticRole.Predicative => ("#9C27B0", "#7B1FA2", "表语 (Predicative)"),
+            _ => ("#9E9E9E", "#616161", "未知 (Unknown)")
+        };
+    }
+
+    static string GetRoleLayerId(string role)
+    {
+        return role switch
+        {
+            LocationSyntacticRole.Adverbial => "layer-adverbial",
+            LocationSyntacticRole.Subject => "layer-subject",
+            LocationSyntacticRole.Object => "layer-object",
+            LocationSyntacticRole.Attributive => "layer-attributive",
+            LocationSyntacticRole.Predicative => "layer-predicative",
+            _ => "layer-unknown"
+        };
+    }
+
     /// <summary>
     /// Generate a GeoLibre-compatible JSON string with embedded GeoJSON data.
+    /// Features are grouped into separate layers by syntactic role for independent filtering/styling.
+    /// Each feature includes location name label and source block content for context.
     /// Returns the JSON string content (does not write to file).
     /// </summary>
     public async Task<string?> GenerateGeoLibreJsonStringAsync(
@@ -157,15 +186,19 @@ public sealed class GeoJsonService
         if (semanticResults is null || semanticResults.Blocks.Count == 0)
             return null;
 
-        // Collect all unique location entities (preserve entity info for syntactic role)
-        var locationByName = new Dictionary<string, SemanticEntity>();
+        // Collect all unique location entities (preserve entity info for syntactic role + block content)
+        // LocationEntityInfo holds entity + source block content for label/context
+        var locationByName = new Dictionary<string, (SemanticEntity Entity, string BlockContent)>();
         foreach (var block in semanticResults.Blocks)
         {
             foreach (var entity in block.LocationEntities)
             {
                 if (!locationByName.ContainsKey(entity.Text))
                 {
-                    locationByName[entity.Text] = entity;
+                    // Truncate block content to 200 chars for label purposes
+                    var content = string.IsNullOrEmpty(block.Content) ? "" :
+                        block.Content.Length > 200 ? block.Content.Substring(0, 200) + "..." : block.Content;
+                    locationByName[entity.Text] = (entity, content);
                 }
             }
         }
@@ -195,47 +228,138 @@ public sealed class GeoJsonService
         // Calculate an appropriate zoom level based on the bounding box size
         var zoom = CalculateZoomLevel(minLon, maxLon, minLat, maxLat);
 
-        // Generate GeoJSON features
-        var features = new List<Dictionary<string, object>>();
-
+        // Group geocoding results by syntactic role
+        var roles = new Dictionary<string, List<GeocodingResult>>();
         foreach (var kvp in geocodingResults)
         {
             var result = kvp.Value;
-            var entity = locationByName.TryGetValue(result.Name, out var e) ? e : null;
+            var (entity, _) = locationByName.TryGetValue(result.Name, out var info) ? info : (null, "");
+            var role = entity?.SyntacticRole ?? LocationSyntacticRole.Unknown;
 
-            var properties = new Dictionary<string, object>
-            {
-                { "name", result.Name },
-                { "display_name", result.DisplayName },
-                { "syntactic_role", entity?.SyntacticRole ?? "" },
-                { "syntactic_role_display", entity != null ? LocationSyntacticRole.ToDisplay(entity.SyntacticRole) : "" },
-                { "governing_verb", entity?.GoverningVerb ?? "" }
-            };
-
-            var geometry = new Dictionary<string, object>
-            {
-                { "type", "Point" },
-                { "coordinates", new[] { result.Longitude, result.Latitude } }
-            };
-
-            var feature = new Dictionary<string, object>
-            {
-                { "type", "Feature" },
-                { "geometry", geometry },
-                { "properties", properties }
-            };
-
-            features.Add(feature);
+            if (!roles.ContainsKey(role))
+                roles[role] = new List<GeocodingResult>();
+            roles[role].Add(result);
         }
 
-        // Create GeoLibre-compatible JSON structure per official spec:
-        // https://geolibre.app/project-format/
-        // The geojson data goes in the layer's "geojson" field (not inside source.data)
-        var geojsonData = new Dictionary<string, object>
+        // Build a separate layer for each syntactic role that has data
+        var layers = new List<Dictionary<string, object>>();
+
+        // Process roles in a consistent order
+        var roleOrder = new[]
         {
-            { "type", "FeatureCollection" },
-            { "features", features }
+            LocationSyntacticRole.Adverbial,
+            LocationSyntacticRole.Subject,
+            LocationSyntacticRole.Object,
+            LocationSyntacticRole.Attributive,
+            LocationSyntacticRole.Predicative,
+            LocationSyntacticRole.Unknown
         };
+
+        foreach (var role in roleOrder)
+        {
+            if (!roles.ContainsKey(role))
+                continue;
+
+            var results = roles[role];
+            var (fillColor, strokeColor, displayName) = GetRoleStyle(role);
+            var layerId = GetRoleLayerId(role);
+
+            // Generate GeoJSON features for this role
+            var features = new List<Dictionary<string, object>>();
+
+            foreach (var result in results)
+            {
+                var (entity, blockContent) = locationByName.TryGetValue(result.Name, out var info) ? info : (null, "");
+
+                var properties = new Dictionary<string, object>
+                {
+                    { "name", result.Name },
+                    { "display_name", result.DisplayName },
+                    { "syntactic_role", entity?.SyntacticRole ?? "" },
+                    { "syntactic_role_display", entity != null ? LocationSyntacticRole.ToDisplay(entity.SyntacticRole) : "" },
+                    { "governing_verb", entity?.GoverningVerb ?? "" },
+                    { "block_content", blockContent }
+                };
+
+                var geometry = new Dictionary<string, object>
+                {
+                    { "type", "Point" },
+                    { "coordinates", new[] { result.Longitude, result.Latitude } }
+                };
+
+                var feature = new Dictionary<string, object>
+                {
+                    { "type", "Feature" },
+                    { "geometry", geometry },
+                    { "properties", properties }
+                };
+
+                features.Add(feature);
+            }
+
+            var geojsonData = new Dictionary<string, object>
+            {
+                { "type", "FeatureCollection" },
+                { "features", features }
+            };
+
+            // Build labels configuration per GeoLibre LabelStyle spec
+            var labels = new Dictionary<string, object>
+            {
+                { "enabled", true },
+                { "field", "name" },
+                { "expression", "" },
+                { "placement", "point" },
+                { "size", 12 },
+                { "color", "#111827" },
+                { "haloColor", "#ffffff" },
+                { "haloWidth", 1.5 },
+                { "minZoom", 0 },
+                { "maxZoom", 24 },
+                { "allowOverlap", false },
+                { "anchor", "top" },
+                { "offsetX", 0 },
+                { "offsetY", 0 },
+                { "rotation", 0 },
+                { "maxWidth", 20 },
+                { "transform", "none" },
+                { "dedupe", "unique" }
+            };
+
+            var layer = new Dictionary<string, object>
+            {
+                { "id", layerId },
+                { "name", displayName },
+                { "type", "geojson" },
+                { "source", new Dictionary<string, object>
+                    {
+                        { "type", "geojson" }
+                    }
+                },
+                { "visible", true },
+                { "opacity", 1.0 },
+                { "style", new Dictionary<string, object>
+                    {
+                        { "minZoom", 0 },
+                        { "maxZoom", 24 },
+                        { "fillColor", fillColor },
+                        { "strokeColor", strokeColor },
+                        { "strokeWidth", 2 },
+                        { "strokeWidthUnit", "pixels" },
+                        { "fillOpacity", 0.7 },
+                        { "circleRadius", 7 },
+                        { "labels", labels }
+                    }
+                },
+                { "metadata", new Dictionary<string, object>() },
+                { "geojson", geojsonData }
+            };
+
+            layers.Add(layer);
+        }
+
+        if (layers.Count == 0)
+            return null;
 
         var geoLibreJson = new Dictionary<string, object>
         {
@@ -253,37 +377,7 @@ public sealed class GeoJsonService
             { "basemapStyleUrl", "https://tiles.openfreemap.org/styles/positron" },
             { "basemapVisible", true },
             { "basemapOpacity", 1.0 },
-            { "layers", new[]
-                {
-                    new Dictionary<string, object>
-                    {
-                        { "id", "locations-layer" },
-                        { "name", "Locations" },
-                        { "type", "geojson" },
-                        { "source", new Dictionary<string, object>
-                            {
-                                { "type", "geojson" }
-                            }
-                        },
-                        { "visible", true },
-                        { "opacity", 1.0 },
-                        { "style", new Dictionary<string, object>
-                            {
-                                { "minZoom", 0 },
-                                { "maxZoom", 24 },
-                                { "fillColor", "#3b82f6" },
-                                { "strokeColor", "#1e40af" },
-                                { "strokeWidth", 2 },
-                                { "strokeWidthUnit", "pixels" },
-                                { "fillOpacity", 0.6 },
-                                { "circleRadius", 6 }
-                            }
-                        },
-                        { "metadata", new Dictionary<string, object>() },
-                        { "geojson", geojsonData }
-                    }
-                }
-            }
+            { "layers", layers }
         };
 
         return BuildJson(geoLibreJson);
