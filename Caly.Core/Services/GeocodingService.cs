@@ -351,13 +351,9 @@ public sealed class GeocodingService : IDisposable
     public delegate void GeocodingFailedCallback(string name, string error, GeocodingFailureType failureType);
 
     /// <summary>
-    /// Geocode multiple location names sequentially with confidence calculation and smart retry.
+    /// Geocode multiple location names sequentially with confidence calculation.
     /// Processes locations one by one to avoid overwhelming the API.
-    /// 
-    /// Retry strategy:
-    /// - Transient (network/timeout): retry up to 1 time
-    /// - Ambiguous (single char, abbreviations): try appending " 中国" and retry once
-    /// - NotFound (not a real place): no retry
+    /// No retry logic - each location is attempted once.
     /// </summary>
     public async Task<Dictionary<string, GeocodingResult>> GeocodeManyWithConfidenceAsync(
         IEnumerable<string> locationNames,
@@ -378,40 +374,8 @@ public sealed class GeocodingService : IDisposable
             // Mark as processing
             onProcessing?.Invoke(locationName);
 
-            // Process single location with retry logic
+            // Process single location (no retry)
             var attempt = await GeocodeWithConfidenceAsync(locationName, exactMatch, cancellationToken).ConfigureAwait(false);
-
-            // Retry logic based on failure type
-            if (!attempt.IsSuccess)
-            {
-                switch (attempt.FailureType)
-                {
-                    case GeocodingFailureType.Transient:
-                        // Retry 1 time for transient failures
-                        cancellationToken.ThrowIfCancellationRequested();
-                        await Task.Delay(TimeSpan.FromMilliseconds(200), cancellationToken).ConfigureAwait(false);
-                        attempt = await GeocodeWithConfidenceAsync(locationName, exactMatch, cancellationToken).ConfigureAwait(false);
-                        break;
-
-                    case GeocodingFailureType.Ambiguous:
-                        // Try appending " 中国" for disambiguation
-                        var disambiguatedName = locationName + " 中国";
-                        cancellationToken.ThrowIfCancellationRequested();
-                        attempt = await GeocodeWithConfidenceAsync(disambiguatedName, exactMatch, cancellationToken).ConfigureAwait(false);
-                        if (attempt.IsSuccess)
-                        {
-                            // Keep the original name but use the disambiguated result
-                            attempt.Result!.Name = locationName;
-                        }
-                        break;
-
-                    case GeocodingFailureType.NotFound:
-                    case GeocodingFailureType.Unknown:
-                    default:
-                        // No retry for permanent failures
-                        break;
-                }
-            }
 
             // Result update
             if (attempt.IsSuccess)
