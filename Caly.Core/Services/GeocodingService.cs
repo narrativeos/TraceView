@@ -22,8 +22,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.International.Converters.PinYinConverter;
 
 namespace Caly.Core.Services;
 
@@ -430,38 +432,74 @@ public sealed class GeocodingService : IDisposable
     }
 
     /// <summary>
+    /// 将中文字符串转换为拼音（无分隔符）。
+    /// </summary>
+    static string ToPinyin(string text)
+    {
+        var sb = new StringBuilder();
+        foreach (var c in text)
+        {
+            if (ChineseChar.IsValidChar(c))
+            {
+                var chineseChar = new ChineseChar(c);
+                var pinyins = chineseChar.Pinyins;
+                if (pinyins.Count > 0)
+                {
+                    sb.Append(pinyins[0].ToLower());
+                }
+                else
+                {
+                    sb.Append(c.ToString().ToLower());
+                }
+            }
+            else
+            {
+                sb.Append(c.ToString().ToLower());
+            }
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>
     /// 判断结果是否为谐音匹配（需要排除）。
     /// 
-    /// 精确匹配模式只排除谐音匹配一种情况：
-    /// - 谐音匹配：match_type="name"（标准名匹配）但文字不包含查询词 → 拒绝
-    /// - 别名匹配：match_type="alias" 或 "ref" → 接受（即使是别名/简称）
-    /// - 文字匹配：name 或 matchedName 包含查询词 → 接受
+    /// 算法：
+    /// 1. 检查结果（name 或 matchedName）是否包含检索词 → 包含则返回 false（不是谐音）
+    /// 2. 如果不包含，检查拼音是否包含 → 拼音包含则返回 true（是谐音）
+    /// 3. 默认返回 false
     /// 
     /// 典型案例：
-    /// - "京沪" → "镜湖区" (matchType='name', 文字不包含 → 谐音 → 拒绝)
-    /// - "沪" → "上海市" (matchType='ref', matchedName='沪' → 简称 → 接受)
-    /// - "皖" → "安徽省" (matchType='ref', matchedName='皖' → 简称 → 接受)
-    /// - "中国" → "鸭绿江" (matchType='', 文字不包含 → 模糊匹配 → 拒绝)
+    /// - "京沪" → "镜湖区" (文字不包含, 拼音 jinghu 包含 jinghu → 谐音 → true)
+    /// - "沪" → "上海市" (文字不包含, 拼音 hu 不包含 shang → 不是谐音 → false)
+    /// - "北京" → "北京市" (文字包含 → 不是谐音 → false)
     /// </summary>
     static bool IsPhoneticMatch(string locationName, GeocodingResult result)
     {
-        // 首先检查 name 是否包含查询词
+        // 1. 检查结果是否包含检索词（文字匹配）
         if (result.Name.Contains(locationName))
             return false; // name 包含查询词，文字匹配
 
-        // 检查 matchedName 是否包含查询词
         if (!string.IsNullOrEmpty(result.MatchedName) && result.MatchedName.Contains(locationName))
             return false; // matchedName 包含查询词，文字匹配
 
-        // 文字不包含查询词，检查 match_type
-        // match_type="ref" 或 "alias" 表示是简称/别名匹配，应该接受
-        if (result.MatchType == "ref" || result.MatchType == "alias")
-            return false; // 简称/别名匹配，接受
+        // 2. 文字不包含，检查拼音是否包含
+        var locationPinyin = ToPinyin(locationName);
+        
+        // 检查 name 的拼音是否包含检索词的拼音
+        var namePinyin = ToPinyin(result.Name);
+        if (namePinyin.Contains(locationPinyin))
+            return true; // 拼音包含，是谐音匹配
 
-        // 其他情况（match_type="name" 但文字不包含，或 match_type="" 模糊匹配）
-        // 是谐音匹配或 API 的模糊匹配，需要排除
-        // 例如：京沪→镜湖区、中国→鸭绿江、度→南海等
-        return true;
+        // 检查 matchedName 的拼音是否包含检索词的拼音
+        if (!string.IsNullOrEmpty(result.MatchedName))
+        {
+            var matchedNamePinyin = ToPinyin(result.MatchedName);
+            if (matchedNamePinyin.Contains(locationPinyin))
+                return true; // 拼音包含，是谐音匹配
+        }
+
+        // 3. 默认返回 false（不是谐音匹配，可能是模糊匹配或其他）
+        return false;
     }
 
     /// <summary>
