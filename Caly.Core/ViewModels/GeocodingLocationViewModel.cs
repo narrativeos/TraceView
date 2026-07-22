@@ -136,6 +136,9 @@ public partial class GeocodingLocationViewModel : ObservableObject
     private string _matchedName = "";
 
     [ObservableProperty]
+    private bool _matchByHomophone;
+
+    [ObservableProperty]
     private GeocodingFailureType _failureType = GeocodingFailureType.Unknown;
 
     // Expand/collapse for multiple results
@@ -149,12 +152,23 @@ public partial class GeocodingLocationViewModel : ObservableObject
     /// <summary>
     /// All geocoding results for this location (sorted by confidence).
     /// </summary>
-    public ObservableCollection<GeocodingResultViewModel> Results { get; } = new();
+    public ObservableCollection<GeocodingResultViewModel> Results { get; }
 
     /// <summary>
     /// Number of results.
     /// </summary>
     public int ResultCount => Results.Count;
+
+    public GeocodingLocationViewModel(string name)
+    {
+        _name = name;
+        Results = new();
+        Results.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(ResultCount));
+            OnPropertyChanged(nameof(HasMultipleResults));
+        };
+    }
 
     /// <summary>
     /// Whether there are multiple results (show expand indicator).
@@ -260,10 +274,6 @@ public partial class GeocodingLocationViewModel : ObservableObject
     /// </summary>
     public string ResultCountText => ResultCount > 1 ? $"{ResultCount} 个结果" : "";
 
-    public GeocodingLocationViewModel(string name)
-    {
-        _name = name;
-    }
 
     /// <summary>
     /// Mark this location as successfully geocoded with multiple results.
@@ -310,6 +320,7 @@ public partial class GeocodingLocationViewModel : ObservableObject
             MatchType = result.MatchType;
             MatchedNameTag = result.MatchedNameTag;
             MatchedName = result.MatchedName;
+            MatchByHomophone = result.MatchByHomophone;
         }
     }
 
