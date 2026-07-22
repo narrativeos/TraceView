@@ -306,7 +306,6 @@ public sealed partial class DocumentViewModel
             };
 
             // Generate GeoJSON file (pass UI order to ensure sequential processing matches UI)
-            var settings = _settingsService.GetSettings();
             var filePath = await geoJsonService.GenerateGeoJsonAsync(
                 SemanticResults,
                 outputDir,
@@ -314,7 +313,6 @@ public sealed partial class DocumentViewModel
                 onSuccess,
                 onFailed,
                 uiLocationOrder,
-                settings.GeoExactMatch,
                 _geoCts.Token);
 
             // Mark any locations still in "Processing" state as failed (timeout or interrupted)
@@ -465,10 +463,8 @@ public sealed partial class DocumentViewModel
             var geoJsonService = new GeoJsonService();
 
             // Generate GeoLibre JSON string (without writing to file)
-            var settings = _settingsService.GetSettings();
             jsonContent = await geoJsonService.GenerateGeoLibreJsonStringAsync(
                 SemanticResults,
-                exactMatch: settings.GeoExactMatch,
                 cancellationToken: _geoLibreCts.Token);
         }
         catch (OperationCanceledException)

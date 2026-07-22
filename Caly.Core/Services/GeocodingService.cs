@@ -394,7 +394,6 @@ public sealed class GeocodingService : IDisposable
         Action<string>? onProcessing = null,
         Action<GeocodingResult>? onSuccess = null,
         GeocodingFailedCallback? onFailed = null,
-        bool exactMatch = true,
         CancellationToken cancellationToken = default)
     {
         var results = new Dictionary<string, GeocodingResult>();
@@ -408,8 +407,8 @@ public sealed class GeocodingService : IDisposable
             // Mark as processing
             onProcessing?.Invoke(locationName);
 
-            // Process single location (no retry)
-            var attempt = await GeocodeWithConfidenceAsync(locationName, exactMatch, cancellationToken).ConfigureAwait(false);
+            // Process single location
+            var attempt = await GeocodeWithConfidenceAsync(locationName, cancellationToken).ConfigureAwait(false);
 
             // Result update
             if (attempt.IsSuccess)
@@ -464,15 +463,6 @@ public sealed class GeocodingService : IDisposable
     }
 
     /// <summary>
-    /// 判断结果是否为谐音匹配（需要排除）。
-    /// 直接使用 API 返回的 match_by_homophone 字段。
-    /// </summary>
-    static bool IsPhoneticMatch(string locationName, GeocodingResult result)
-    {
-        return result.MatchByHomophone;
-    }
-
-    /// <summary>
     /// 判断一个地名是否可能是无效名称（非地名）。
     /// </summary>
     static bool IsLikelyNotLocation(string name)
@@ -496,13 +486,9 @@ public sealed class GeocodingService : IDisposable
     /// 多结果地理编码（用于置信度计算）。
     /// 使用 Nominatim 的 withevidence 参数，直接从 API 获取 match_type/matched_name 等匹配证据。
     /// 返回置信度最高的结果，包含详细错误信息和失败类型。
-    /// 
-    /// 如果 exactMatch 为 true，会验证 matched_name 是否包含查询词，
-    /// 不包含则认为是谐音匹配，拒绝该结果。
     /// </summary>
     public async Task<GeocodingAttemptResult> GeocodeWithConfidenceAsync(
         string locationName,
-        bool exactMatch = true,
         CancellationToken cancellationToken = default)
     {
         try
@@ -540,40 +526,6 @@ public sealed class GeocodingService : IDisposable
                     ErrorMessage = errorMessage,
                     FailureType = failureType
                 };
-            }
-
-            // 精确匹配模式：过滤掉名称不包含查询词的结果（谐音匹配）
-            // 检查 name 或 matched_name，只要其中一个包含查询词即认为匹配
-            // （例如查询"北京"，name="北京市"包含"北京"，matched_name="京"不包含，但仍应匹配）
-            if (exactMatch)
-            {
-                // 调试日志：输出所有解析结果
-                foreach (var r in allResults)
-                {
-                    System.Diagnostics.Debug.WriteLine(
-                        $"[Geo] GeocodeWithConfidence '{locationName}': name='{r.Name}', matchedName='{r.MatchedName}', matchType='{r.MatchType}', confidence={r.Confidence}");
-                }
-
-                // 精确匹配：排除谐音匹配（文字不包含查询词但拼音匹配）
-                allResults = allResults.Where(r =>
-                {
-                    // 排除谐音匹配：文字不包含查询词，但拼音包含
-                    if (IsPhoneticMatch(locationName, r))
-                        return false;
-                    // 接受其他所有结果
-                    return true;
-                }).ToList();
-
-                if (allResults.Count == 0)
-                {
-                    System.Diagnostics.Debug.WriteLine(
-                        $"[Geo] EXACT MATCH FAILED for '{locationName}': all results filtered out (all alt_name matches)");
-                    return new GeocodingAttemptResult
-                    {
-                        ErrorMessage = $"精确匹配失败: '{locationName}' 的所有结果均为谐音/别名匹配",
-                        FailureType = GeocodingFailureType.Ambiguous
-                    };
-                }
             }
 
             // 返回置信度最高的结果

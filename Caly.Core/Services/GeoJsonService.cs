@@ -50,7 +50,6 @@ public sealed class GeoJsonService
     /// <param name="onSuccess">Callback when a location succeeds.</param>
     /// <param name="onFailed">Callback when a location fails (with failure type for smart retry classification).</param>
     /// <param name="locationOrder">Optional: explicit order of location names to process (matches UI display order). If null, uses semantic results order.</param>
-    /// <param name="exactMatch">Whether to require exact name match (reject phonetic matches).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<string?> GenerateGeoJsonAsync(
         SemanticResultFile? semanticResults,
@@ -59,7 +58,6 @@ public sealed class GeoJsonService
         Action<GeocodingResult>? onSuccess = null,
         GeocodingService.GeocodingFailedCallback? onFailed = null,
         List<string>? locationOrder = null,
-        bool exactMatch = true,
         CancellationToken cancellationToken = default)
     {
         if (semanticResults is null || semanticResults.Blocks.Count == 0)
@@ -94,7 +92,7 @@ public sealed class GeoJsonService
                 failedLocations[name] = (error, failureType.ToString());
                 onFailed?.Invoke(name, error, failureType);
             }, 
-            exactMatch, cancellationToken);
+            cancellationToken);
 
         // Generate GeoJSON FeatureCollection with ALL locations (success + failed)
         var features = new List<Dictionary<string, object>>();
@@ -276,7 +274,6 @@ public sealed class GeoJsonService
     /// </summary>
     public async Task<string?> GenerateGeoLibreJsonStringAsync(
         SemanticResultFile? semanticResults,
-        bool exactMatch = true,
         CancellationToken cancellationToken = default)
     {
         if (semanticResults is null || semanticResults.Blocks.Count == 0)
@@ -305,7 +302,7 @@ public sealed class GeoJsonService
 
         // Geocode all locations using the confidence-based parallel method
         var geocodingResults = await _geocodingService.GeocodeManyWithConfidenceAsync(
-            locationNames, exactMatch: exactMatch, cancellationToken: cancellationToken);
+            locationNames, cancellationToken: cancellationToken);
 
         if (geocodingResults.Count == 0)
             return null;
@@ -486,10 +483,9 @@ public sealed class GeoJsonService
     public async Task<string?> GenerateGeoLibreJsonAsync(
         SemanticResultFile? semanticResults,
         string outputDir,
-        bool exactMatch = true,
         CancellationToken cancellationToken = default)
     {
-        var json = await GenerateGeoLibreJsonStringAsync(semanticResults, exactMatch, cancellationToken);
+        var json = await GenerateGeoLibreJsonStringAsync(semanticResults, cancellationToken);
         if (json is null)
             return null;
 

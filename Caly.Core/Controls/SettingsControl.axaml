@@ -126,16 +126,6 @@
                                                    Margin="0,2"
                                                    Text="{Binding Settings.GeoLibreBaseUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
                                       </Grid>
-
-                                      <!-- Geo Exact Match Toggle -->
-                                      <CheckBox Content="Exact Match Mode (reject phonetic matches)"
-                                                Margin="0,4,0,0"
-                                                IsChecked="{Binding Settings.GeoExactMatch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
-
-                                      <TextBlock Margin="0,0,0,0"
-                                                 FontSize="11"
-                                                 Foreground="{DynamicResource SystemControlPageTextChromeDisabledBrush}"
-                                                 Text="When enabled, geocoding results where the matched name does not contain the query term will be rejected (e.g., '京沪' matching '镜湖区')."/>
                                   </StackPanel>
                               </Expander>
 
