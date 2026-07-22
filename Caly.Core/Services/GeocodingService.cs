@@ -22,10 +22,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.International.Converters.PinYinConverter;
 
 namespace Caly.Core.Services;
 
@@ -51,6 +49,7 @@ public class GeocodingResult
     public string MatchType { get; set; } = string.Empty;    // 匹配类型：name(标准名)/ref(简称)/alias(别名)/like(模糊)/...
     public string MatchedNameTag { get; set; } = string.Empty; // 匹配的 OSM 标签类型
     public string MatchedName { get; set; } = string.Empty;  // 实际匹配的名称
+    public bool MatchByHomophone { get; set; }               // 是否通过谐音匹配（API 直接返回）
     public double? BoundingBoxMinLat { get; set; }
     public double? BoundingBoxMaxLat { get; set; }
     public double? BoundingBoxMinLon { get; set; }
@@ -188,6 +187,35 @@ public sealed class GeocodingService : IDisposable
     }
 
     /// <summary>
+    /// Extract a boolean value for a given JSON property name.
+    /// </summary>
+    void ExtractJsonBool(string json, string propertyName, out bool value)
+    {
+        value = false;
+        var keyPattern = $"\"{propertyName}\"";
+        var idx = json.IndexOf(keyPattern, StringComparison.Ordinal);
+        if (idx < 0)
+            return;
+
+        idx = json.IndexOf(':', idx + keyPattern.Length);
+        if (idx < 0)
+            return;
+
+        idx++;
+        while (idx < json.Length && (json[idx] == ' ' || json[idx] == '\t' || json[idx] == '\n' || json[idx] == '\r'))
+            idx++;
+
+        if (idx >= json.Length)
+            return;
+
+        // Check for "true" or "false"
+        if (json[idx] == 't' && idx + 3 < json.Length && json.Substring(idx, 4) == "true")
+            value = true;
+        else if (json[idx] == 'f' && idx + 4 < json.Length && json.Substring(idx, 5) == "false")
+            value = false;
+    }
+
+    /// <summary>
     /// Parse the API response JSON (Nominatim format with withevidence) using string extraction (AOT-safe).
     /// </summary>
     GeocodingResult? ParseApiResult(string json, string name)
@@ -243,6 +271,10 @@ public sealed class GeocodingService : IDisposable
 
             ExtractJsonString(json, "matched_name", out var matchedName);
             result.MatchedName = matchedName ?? string.Empty;
+
+            // 解析 match_by_homophone 字段（布尔值）
+            ExtractJsonBool(json, "match_by_homophone", out var matchByHomophone);
+            result.MatchByHomophone = matchByHomophone;
 
             // 根据 match_type 计算置信度
             result.Confidence = CalculateConfidenceFromMatchType(result.MatchType);
@@ -432,74 +464,12 @@ public sealed class GeocodingService : IDisposable
     }
 
     /// <summary>
-    /// 将中文字符串转换为拼音（无分隔符）。
-    /// </summary>
-    static string ToPinyin(string text)
-    {
-        var sb = new StringBuilder();
-        foreach (var c in text)
-        {
-            if (ChineseChar.IsValidChar(c))
-            {
-                var chineseChar = new ChineseChar(c);
-                var pinyins = chineseChar.Pinyins;
-                if (pinyins.Count > 0)
-                {
-                    sb.Append(pinyins[0].ToLower());
-                }
-                else
-                {
-                    sb.Append(c.ToString().ToLower());
-                }
-            }
-            else
-            {
-                sb.Append(c.ToString().ToLower());
-            }
-        }
-        return sb.ToString();
-    }
-
-    /// <summary>
     /// 判断结果是否为谐音匹配（需要排除）。
-    /// 
-    /// 算法：
-    /// 1. 检查结果（name 或 matchedName）是否包含检索词 → 包含则返回 false（不是谐音）
-    /// 2. 如果不包含，检查拼音是否包含 → 拼音包含则返回 true（是谐音）
-    /// 3. 默认返回 false
-    /// 
-    /// 典型案例：
-    /// - "京沪" → "镜湖区" (文字不包含, 拼音 jinghu 包含 jinghu → 谐音 → true)
-    /// - "沪" → "上海市" (文字不包含, 拼音 hu 不包含 shang → 不是谐音 → false)
-    /// - "北京" → "北京市" (文字包含 → 不是谐音 → false)
+    /// 直接使用 API 返回的 match_by_homophone 字段。
     /// </summary>
     static bool IsPhoneticMatch(string locationName, GeocodingResult result)
     {
-        // 1. 检查结果是否包含检索词（文字匹配）
-        if (result.Name.Contains(locationName))
-            return false; // name 包含查询词，文字匹配
-
-        if (!string.IsNullOrEmpty(result.MatchedName) && result.MatchedName.Contains(locationName))
-            return false; // matchedName 包含查询词，文字匹配
-
-        // 2. 文字不包含，检查拼音是否包含
-        var locationPinyin = ToPinyin(locationName);
-        
-        // 检查 name 的拼音是否包含检索词的拼音
-        var namePinyin = ToPinyin(result.Name);
-        if (namePinyin.Contains(locationPinyin))
-            return true; // 拼音包含，是谐音匹配
-
-        // 检查 matchedName 的拼音是否包含检索词的拼音
-        if (!string.IsNullOrEmpty(result.MatchedName))
-        {
-            var matchedNamePinyin = ToPinyin(result.MatchedName);
-            if (matchedNamePinyin.Contains(locationPinyin))
-                return true; // 拼音包含，是谐音匹配
-        }
-
-        // 3. 默认返回 false（不是谐音匹配，可能是模糊匹配或其他）
-        return false;
+        return result.MatchByHomophone;
     }
 
     /// <summary>
@@ -807,6 +777,10 @@ public sealed class GeocodingService : IDisposable
 
             ExtractJsonString(json, "matched_name", out var matchedName);
             result.MatchedName = matchedName ?? string.Empty;
+
+            // 解析 match_by_homophone 字段（布尔值）
+            ExtractJsonBool(json, "match_by_homophone", out var matchByHomophone2);
+            result.MatchByHomophone = matchByHomophone2;
 
             // 根据 match_type 计算置信度
             result.Confidence = CalculateConfidenceFromMatchType(result.MatchType);
