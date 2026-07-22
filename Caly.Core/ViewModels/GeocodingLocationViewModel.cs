@@ -23,6 +23,7 @@ using Caly.Core.Models;
 using Caly.Core.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 
+
 namespace Caly.Core.ViewModels;
 
 /// <summary>
@@ -41,6 +42,11 @@ public enum GeocodingStatus
 /// </summary>
 public partial class GeocodingLocationViewModel : ObservableObject
 {
+    /// <summary>
+    /// Display/execution order index (0-based).
+    /// </summary>
+    public int Index { get; set; }
+
     [ObservableProperty]
     private string _name;
 
@@ -88,6 +94,46 @@ public partial class GeocodingLocationViewModel : ObservableObject
 
     [ObservableProperty]
     private string _syntacticRole = "";
+
+    [ObservableProperty]
+    private string _matchType = "";
+
+    [ObservableProperty]
+    private string _matchedNameTag = "";
+
+    [ObservableProperty]
+    private string _matchedName = "";
+
+    [ObservableProperty]
+    private GeocodingFailureType _failureType = GeocodingFailureType.Unknown;
+
+    partial void OnFailureTypeChanged(GeocodingFailureType value)
+    {
+        OnPropertyChanged(nameof(FailureTypeLabel));
+        OnPropertyChanged(nameof(FailureTypeColor));
+    }
+
+    /// <summary>
+    /// Human-readable label for the failure type.
+    /// </summary>
+    public string FailureTypeLabel => FailureType switch
+    {
+        GeocodingFailureType.Transient => "网络错误",
+        GeocodingFailureType.Ambiguous => "名称歧义",
+        GeocodingFailureType.NotFound => "未找到",
+        _ => "未知"
+    };
+
+    /// <summary>
+    /// Color for the failure type badge.
+    /// </summary>
+    public IBrush FailureTypeColor => FailureType switch
+    {
+        GeocodingFailureType.Transient => new SolidColorBrush(Color.Parse("#FF9800")),  // Orange for retryable
+        GeocodingFailureType.Ambiguous => new SolidColorBrush(Color.Parse("#2196F3")),   // Blue for disambiguation
+        GeocodingFailureType.NotFound => new SolidColorBrush(Color.Parse("#9E9E9E")),    // Gray for permanent
+        _ => new SolidColorBrush(Color.Parse("#9E9E9E"))
+    };
 
     /// <summary>
     /// Chinese display name for the syntactic role. Unknown/empty displays as "-".
@@ -166,16 +212,20 @@ public partial class GeocodingLocationViewModel : ObservableObject
         DisplayName = result.DisplayName;
         PlaceType = string.IsNullOrEmpty(result.Type) ? result.Class : result.Type;
         Importance = result.Importance;
+        MatchType = result.MatchType;
+        MatchedNameTag = result.MatchedNameTag;
+        MatchedName = result.MatchedName;
         Error = "";
     }
 
     /// <summary>
     /// Mark this location as failed.
     /// </summary>
-    public void MarkFailed(string error)
+    public void MarkFailed(string error, GeocodingFailureType failureType = GeocodingFailureType.Unknown)
     {
         Status = GeocodingStatus.Failed;
         Error = error;
+        FailureType = failureType;
     }
 
     /// <summary>

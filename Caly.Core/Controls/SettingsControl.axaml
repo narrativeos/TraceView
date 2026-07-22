@@ -104,14 +104,42 @@
                                                   Content="Browse..."/>
                                      </Grid>
 
-                                     <TextBlock Margin="0,4,0,0"
-                                                FontSize="11"
-                                                Foreground="{DynamicResource SystemControlPageTextChromeDisabledBrush}"
-                                                Text="All TraceView projects will be stored in this directory."/>
-                                 </StackPanel>
-                             </Expander>
+                                      <TextBlock Margin="0,4,0,0"
+                                                 FontSize="11"
+                                                 Foreground="{DynamicResource SystemControlPageTextChromeDisabledBrush}"
+                                                 Text="All TraceView projects will be stored in this directory."/>
+                                  </StackPanel>
+                              </Expander>
 
-                         </StackPanel>
+                              <!-- Geo Configuration -->
+                              <Expander Header="Geo Configuration" IsExpanded="True">
+                                  <StackPanel Spacing="8" Margin="8,8">
+
+                                      <!-- GeoLibre Base URL -->
+                                      <Grid ColumnDefinitions="Auto,12,*" RowDefinitions="Auto">
+                                          <TextBlock Grid.Column="0"
+                                                     Grid.Row="0"
+                                                     VerticalAlignment="Center"
+                                                     Text="GeoLibre URL"/>
+                                          <TextBox Grid.Column="2"
+                                                   Grid.Row="0"
+                                                   Margin="0,2"
+                                                   Text="{Binding Settings.GeoLibreBaseUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                      </Grid>
+
+                                      <!-- Geo Exact Match Toggle -->
+                                      <CheckBox Content="Exact Match Mode (reject phonetic matches)"
+                                                Margin="0,4,0,0"
+                                                IsChecked="{Binding Settings.GeoExactMatch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+
+                                      <TextBlock Margin="0,0,0,0"
+                                                 FontSize="11"
+                                                 Foreground="{DynamicResource SystemControlPageTextChromeDisabledBrush}"
+                                                 Text="When enabled, geocoding results where the matched name does not contain the query term will be rejected (e.g., '京沪' matching '镜湖区')."/>
+                                  </StackPanel>
+                              </Expander>
+
+                          </StackPanel>
                     </ScrollViewer>
 
                 </Border>

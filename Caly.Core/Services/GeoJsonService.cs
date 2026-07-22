@@ -44,12 +44,22 @@ public sealed class GeoJsonService
     /// <summary>
     /// Generate a GeoJSON file from semantic location entities (with per-location callbacks).
     /// </summary>
+    /// <param name="semanticResults">Semantic analysis results.</param>
+    /// <param name="outputDir">Output directory for the GeoJSON file.</param>
+    /// <param name="onProcessing">Callback when a location starts processing.</param>
+    /// <param name="onSuccess">Callback when a location succeeds.</param>
+    /// <param name="onFailed">Callback when a location fails (with failure type for smart retry classification).</param>
+    /// <param name="locationOrder">Optional: explicit order of location names to process (matches UI display order). If null, uses semantic results order.</param>
+    /// <param name="exactMatch">Whether to require exact name match (reject phonetic matches).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<string?> GenerateGeoJsonAsync(
         SemanticResultFile? semanticResults,
         string outputDir,
         Action<string>? onProcessing = null,
         Action<GeocodingResult>? onSuccess = null,
-        Action<string, string>? onFailed = null,
+        GeocodingService.GeocodingFailedCallback? onFailed = null,
+        List<string>? locationOrder = null,
+        bool exactMatch = true,
         CancellationToken cancellationToken = default)
     {
         if (semanticResults is null || semanticResults.Blocks.Count == 0)
@@ -71,11 +81,12 @@ public sealed class GeoJsonService
         if (locationByName.Count == 0)
             return null;
 
-        var locationNames = locationByName.Keys.ToList();
+        // Use explicit order if provided (to match UI display order), otherwise use dictionary order
+        var locationNames = locationOrder ?? locationByName.Keys.ToList();
 
-        // Geocode all locations with per-location callbacks
-        var geocodingResults = await _geocodingService.GeocodeManyAsync(
-            locationNames, onProcessing, onSuccess, onFailed, cancellationToken);
+        // Geocode all locations with per-location callbacks (using confidence-based geocoding)
+        var geocodingResults = await _geocodingService.GeocodeManyWithConfidenceAsync(
+            locationNames, onProcessing, onSuccess, onFailed, exactMatch, cancellationToken);
 
         if (geocodingResults.Count == 0)
             return null;
@@ -101,10 +112,15 @@ public sealed class GeoJsonService
                 { "osm_id", result.OsmId },
                 { "class", result.Class },
                 { "type", result.Type },
-                { "importance", result.Importance }
+                { "importance", result.Importance },
+                { "confidence", result.Confidence },
+                { "match_type", result.MatchType },
+                { "matched_name_tag", result.MatchedNameTag },
+                { "matched_name", result.MatchedName }
             };
 
-            if (result.BoundingBoxMinLat.HasValue)
+            if (result.BoundingBoxMinLat.HasValue && result.BoundingBoxMaxLat.HasValue && 
+                result.BoundingBoxMinLon.HasValue && result.BoundingBoxMaxLon.HasValue)
             {
                 properties["bbox"] = new object[]
                 {
@@ -181,13 +197,13 @@ public sealed class GeoJsonService
     /// </summary>
     public async Task<string?> GenerateGeoLibreJsonStringAsync(
         SemanticResultFile? semanticResults,
+        bool exactMatch = true,
         CancellationToken cancellationToken = default)
     {
         if (semanticResults is null || semanticResults.Blocks.Count == 0)
             return null;
 
         // Collect all unique location entities (preserve entity info for syntactic role + block content)
-        // LocationEntityInfo holds entity + source block content for label/context
         var locationByName = new Dictionary<string, (SemanticEntity Entity, string BlockContent)>();
         foreach (var block in semanticResults.Blocks)
         {
@@ -208,8 +224,9 @@ public sealed class GeoJsonService
 
         var locationNames = locationByName.Keys.ToList();
 
-        // Geocode all locations
-        var geocodingResults = await _geocodingService.GeocodeManyAsync(locationNames, null, cancellationToken);
+        // Geocode all locations using the confidence-based parallel method
+        var geocodingResults = await _geocodingService.GeocodeManyWithConfidenceAsync(
+            locationNames, exactMatch: exactMatch, cancellationToken: cancellationToken);
 
         if (geocodingResults.Count == 0)
             return null;
@@ -390,9 +407,10 @@ public sealed class GeoJsonService
     public async Task<string?> GenerateGeoLibreJsonAsync(
         SemanticResultFile? semanticResults,
         string outputDir,
+        bool exactMatch = true,
         CancellationToken cancellationToken = default)
     {
-        var json = await GenerateGeoLibreJsonStringAsync(semanticResults, cancellationToken);
+        var json = await GenerateGeoLibreJsonStringAsync(semanticResults, exactMatch, cancellationToken);
         if (json is null)
             return null;
 

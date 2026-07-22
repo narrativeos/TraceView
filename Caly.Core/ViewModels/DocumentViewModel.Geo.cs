@@ -121,7 +121,7 @@ public sealed partial class DocumentViewModel
     /// </summary>
     public int GeocodingTotalCount
     {
-        get => _geocodingLocations.Count;
+        get => GeocodingLocations.Count;
     }
 
     /// <summary>
@@ -221,6 +221,9 @@ public sealed partial class DocumentViewModel
         // Ensure Geo column is visible
         ShowGeoColumn = true;
 
+        // Declare vmLookup outside try block so it's accessible in catch blocks
+        var vmLookup = new Dictionary<string, GeocodingLocationViewModel>();
+
         try
         {
             var outputDir = GetSemanticOutputDir();
@@ -241,15 +244,16 @@ public sealed partial class DocumentViewModel
 
             // Step 2: Create location ViewModels with syntactic role info from semantic analysis
             var locationVms = new ObservableCollection<GeocodingLocationViewModel>();
+            int index = 0;
             foreach (var kvp in locationByName)
             {
                 var vm = new GeocodingLocationViewModel(kvp.Key);
+                vm.Index = index++;
                 vm.SyntacticRole = kvp.Value.SyntacticRole;
                 locationVms.Add(vm);
             }
 
             // Build a name -> ViewModel lookup for callbacks
-            var vmLookup = new Dictionary<string, GeocodingLocationViewModel>();
             foreach (var vm in locationVms)
             {
                 vmLookup[vm.Name] = vm;
@@ -259,23 +263,25 @@ public sealed partial class DocumentViewModel
             GeocodingLocations = locationVms;
             GeoStatusText = $"已提取 {locationByName.Count} 个地点，开始获取坐标...";
 
-            // Callback for when a location starts processing
+            // Capture the UI display order so geocoding processes in the same order
+            var uiLocationOrder = locationVms.Select(vm => vm.Name).ToList();
+
+            // Callbacks are now called from background threads (parallel processing),
+            // so they must be dispatched to the UI thread for thread-safe ViewModel updates.
             Action<string> onProcessing = (name) =>
             {
-                Dispatcher.UIThread.Post(() =>
+                Dispatcher.UIThread.InvokeAsync(() =>
                 {
                     if (vmLookup.TryGetValue(name, out var vm))
                     {
                         vm.MarkProcessing();
                     }
-                    GeoStatusText = $"Geocoding: {name} ({vmLookup.Values.Count(v => v.Status != GeocodingStatus.Pending)}/{vmLookup.Count})";
                 });
             };
 
-            // Callback for when a location succeeds
             Action<GeocodingResult> onSuccess = (result) =>
             {
-                Dispatcher.UIThread.Post(() =>
+                Dispatcher.UIThread.InvokeAsync(() =>
                 {
                     if (vmLookup.TryGetValue(result.Name, out var vm))
                     {
@@ -286,28 +292,39 @@ public sealed partial class DocumentViewModel
                 });
             };
 
-            // Callback for when a location fails
-            Action<string, string> onFailed = (name, error) =>
+            GeocodingService.GeocodingFailedCallback onFailed = (name, error, failureType) =>
             {
-                Dispatcher.UIThread.Post(() =>
+                Dispatcher.UIThread.InvokeAsync(() =>
                 {
                     if (vmLookup.TryGetValue(name, out var vm))
                     {
-                        vm.MarkFailed(error);
+                        vm.MarkFailed(error, failureType);
                     }
                     var done = vmLookup.Values.Count(v => v.Status == GeocodingStatus.Success || v.Status == GeocodingStatus.Failed);
                     GeoStatusText = $"Geocoding: {name} ({done}/{vmLookup.Count})";
                 });
             };
 
-            // Generate GeoJSON file
+            // Generate GeoJSON file (pass UI order to ensure sequential processing matches UI)
+            var settings = _settingsService.GetSettings();
             var filePath = await geoJsonService.GenerateGeoJsonAsync(
                 SemanticResults,
                 outputDir,
                 onProcessing,
                 onSuccess,
                 onFailed,
+                uiLocationOrder,
+                settings.GeoExactMatch,
                 _geoCts.Token);
+
+            // Mark any locations still in "Processing" state as failed (timeout or interrupted)
+            foreach (var vm in vmLookup.Values)
+            {
+                if (vm.Status == GeocodingStatus.Processing)
+                {
+                    vm.MarkFailed("Timeout or processing interrupted", GeocodingFailureType.Transient);
+                }
+            }
 
             if (filePath is not null)
             {
@@ -332,11 +349,27 @@ public sealed partial class DocumentViewModel
         }
         catch (OperationCanceledException)
         {
+            // Mark any locations still in "Processing" state as failed
+            foreach (var vm in vmLookup.Values)
+            {
+                if (vm.Status == GeocodingStatus.Processing)
+                {
+                    vm.MarkFailed("Cancelled", GeocodingFailureType.Transient);
+                }
+            }
             GeoStatus = GeoProcessStatus.Idle;
             GeoStatusText = "Generation cancelled";
         }
         catch (Exception ex)
         {
+            // Mark any locations still in "Processing" state as failed
+            foreach (var vm in vmLookup.Values)
+            {
+                if (vm.Status == GeocodingStatus.Processing)
+                {
+                    vm.MarkFailed($"Error: {ex.Message}", GeocodingFailureType.Transient);
+                }
+            }
             GeoStatus = GeoProcessStatus.Failed;
             GeoStatusText = $"Error: {ex.Message}";
         }
@@ -432,9 +465,11 @@ public sealed partial class DocumentViewModel
             var geoJsonService = new GeoJsonService();
 
             // Generate GeoLibre JSON string (without writing to file)
+            var settings = _settingsService.GetSettings();
             jsonContent = await geoJsonService.GenerateGeoLibreJsonStringAsync(
                 SemanticResults,
-                _geoLibreCts.Token);
+                exactMatch: settings.GeoExactMatch,
+                cancellationToken: _geoLibreCts.Token);
         }
         catch (OperationCanceledException)
         {
@@ -575,6 +610,7 @@ public sealed partial class DocumentViewModel
                 
                 // Parse features from GeoJSON (simple string-based parsing to avoid AOT issues)
                 // Format: "features": [ { "type":"Feature", "properties":{...}, "geometry":{...} } ]
+                int loadIndex = 0;
                 var featuresStart = content.IndexOf("\"features\"");
                 if (featuresStart >= 0)
                 {
@@ -683,6 +719,7 @@ public sealed partial class DocumentViewModel
                                 if (!string.IsNullOrEmpty(name))
                                 {
                                     var vm = new GeocodingLocationViewModel(name);
+                                    vm.Index = loadIndex++;
                                     vm.DisplayName = displayName ?? name;
                                     vm.PlaceType = type ?? "";
                                     vm.SyntacticRole = syntacticRole ?? "";

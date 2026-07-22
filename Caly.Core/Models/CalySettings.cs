@@ -91,6 +91,13 @@ public sealed class CalySettings
     /// </summary>
     public string GeoLibreBaseUrl { get; set; } = "https://web.geolibre.app";
 
+    /// <summary>
+    /// Whether to require exact name match for geocoding results.
+    /// When true (default), results where matched_name doesn't contain the query term are rejected.
+    /// When false, phonetic/similar name matches are accepted (e.g., "京沪" -> "镜湖区").
+    /// </summary>
+    public bool GeoExactMatch { get; set; } = true;
+
     // ========== Project Configuration ==========
 
     /// <summary>
