@@ -314,10 +314,12 @@ public sealed class GeoJsonService
 
         // Geocode all locations using the confidence-based parallel method
         var geocodingResults = await _geocodingService.GeocodeManyWithConfidenceAsync(
-            locationNames, cancellationToken: cancellationToken);
-
-        if (geocodingResults.Count == 0)
-            return null;
+            locationNames,
+            onFailed: (name, error, failureType) => {
+                // Failed locations are ignored in GeoLibre output (only successful locations are included)
+                System.Diagnostics.Debug.WriteLine($"[GeoLibre] Geocoding failed for '{name}': {error} ({failureType})");
+            },
+            cancellationToken: cancellationToken);
 
         // Calculate bounding box for map view center (use best result from each location)
         var bestResults = geocodingResults.Values.Select(r => r.FirstOrDefault()).Where(r => r != null).ToList();
@@ -335,13 +337,13 @@ public sealed class GeoJsonService
         var zoom = CalculateZoomLevel(minLon, maxLon, minLat, maxLat);
 
         // Group geocoding results by syntactic role (use best result from each location)
-            var roles = new Dictionary<string, List<GeocodingResult>>();
-            foreach (var kvp in geocodingResults)
-            {
-                var result = kvp.Value.FirstOrDefault();
-                if (result == null) continue;
-                var (entity, _, _) = locationByName.TryGetValue(result.Name, out var info) ? info : (null, "", new List<string>());
-                var role = entity?.SyntacticRole ?? LocationSyntacticRole.Unknown;
+        var roles = new Dictionary<string, List<GeocodingResult>>();
+        foreach (var kvp in geocodingResults)
+        {
+            var result = kvp.Value.FirstOrDefault();
+            if (result == null) continue;
+            var (entity, _, _) = locationByName.TryGetValue(result.Name, out var info) ? info : (null, "", new List<string>());
+            var role = entity?.SyntacticRole ?? LocationSyntacticRole.Unknown;
 
             if (!roles.ContainsKey(role))
                 roles[role] = new List<GeocodingResult>();
@@ -371,7 +373,7 @@ public sealed class GeoJsonService
             var (fillColor, strokeColor, displayName) = GetRoleStyle(role);
             var layerId = GetRoleLayerId(role);
 
-            // Generate GeoJSON features for this role
+            // Generate GeoJSON features for this role (only successful locations)
             var features = new List<Dictionary<string, object>>();
 
             foreach (var result in results)
@@ -382,12 +384,36 @@ public sealed class GeoJsonService
                 {
                     { "name", result.Name },
                     { "display_name", result.DisplayName },
+                    { "status", "success" },
                     { "syntactic_role", entity?.SyntacticRole ?? "" },
                     { "syntactic_role_display", entity != null ? LocationSyntacticRole.ToDisplay(entity.SyntacticRole) : "" },
                     { "governing_verb", entity?.GoverningVerb ?? "" },
                     { "source_block_ids", sourceBlockIds },
-                    { "block_content", blockContent }
+                    { "source_block_content", blockContent },
+                    { "is_cached", result.IsCached },
+                    { "place_id", result.PlaceId },
+                    { "osm_type", result.OsmType },
+                    { "osm_id", result.OsmId },
+                    { "class", result.Class },
+                    { "type", result.Type },
+                    { "importance", result.Importance },
+                    { "confidence", result.Confidence },
+                    { "match_type", result.MatchType },
+                    { "matched_name_tag", result.MatchedNameTag },
+                    { "matched_name", result.MatchedName }
                 };
+
+                if (result.BoundingBoxMinLat.HasValue && result.BoundingBoxMaxLat.HasValue &&
+                    result.BoundingBoxMinLon.HasValue && result.BoundingBoxMaxLon.HasValue)
+                {
+                    properties["bbox"] = new object[]
+                    {
+                        result.BoundingBoxMinLat.Value,
+                        result.BoundingBoxMaxLat.Value,
+                        result.BoundingBoxMinLon.Value,
+                        result.BoundingBoxMaxLon.Value
+                    };
+                }
 
                 var geometry = new Dictionary<string, object>
                 {
@@ -404,6 +430,9 @@ public sealed class GeoJsonService
 
                 features.Add(feature);
             }
+
+            if (features.Count == 0)
+                continue;
 
             var geojsonData = new Dictionary<string, object>
             {
