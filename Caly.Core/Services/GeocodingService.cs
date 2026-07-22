@@ -432,28 +432,34 @@ public sealed class GeocodingService : IDisposable
     /// <summary>
     /// 判断结果是否为谐音匹配（需要排除）。
     /// 
-    /// 谐音匹配核心判断：查询词的文字是否包含在结果的 name 或 matchedName 中。
-    /// - 如果 name 或 matchedName 包含查询词 → 不是谐音（文字匹配）
-    /// - 如果都不包含查询词 → 是谐音或模糊匹配（需要排除）
+    /// 精确匹配模式只排除谐音匹配一种情况：
+    /// - 谐音匹配：match_type="name"（标准名匹配）但文字不包含查询词 → 拒绝
+    /// - 别名匹配：match_type="alias" 或 "ref" → 接受（即使是别名/简称）
+    /// - 文字匹配：name 或 matchedName 包含查询词 → 接受
     /// 
     /// 典型案例：
-    /// - "京沪" → "镜湖区" (matchType='name', 文字不包含 → 谐音)
-    /// - "沪" → "上海市" (matchType='ref', matchedName='沪' 包含 → 不是谐音)
-    /// - "中国" → "鸭绿江" (matchType='', matchedName='' 不包含 → 模糊匹配)
-    /// - "皖" → "安徽省" (matchType='ref', matchedName='皖' 包含 → 不是谐音)
+    /// - "京沪" → "镜湖区" (matchType='name', 文字不包含 → 谐音 → 拒绝)
+    /// - "沪" → "上海市" (matchType='ref', matchedName='沪' → 简称 → 接受)
+    /// - "皖" → "安徽省" (matchType='ref', matchedName='皖' → 简称 → 接受)
+    /// - "中国" → "鸭绿江" (matchType='', 文字不包含 → 模糊匹配 → 拒绝)
     /// </summary>
     static bool IsPhoneticMatch(string locationName, GeocodingResult result)
     {
         // 首先检查 name 是否包含查询词
         if (result.Name.Contains(locationName))
-            return false; // name 包含查询词，不是谐音
+            return false; // name 包含查询词，文字匹配
 
         // 检查 matchedName 是否包含查询词
         if (!string.IsNullOrEmpty(result.MatchedName) && result.MatchedName.Contains(locationName))
-            return false; // matchedName 包含查询词，不是谐音
+            return false; // matchedName 包含查询词，文字匹配
 
-        // 文字不包含查询词，但 API 返回了结果
-        // 这种情况是谐音匹配或 API 的模糊匹配，需要排除
+        // 文字不包含查询词，检查 match_type
+        // match_type="ref" 或 "alias" 表示是简称/别名匹配，应该接受
+        if (result.MatchType == "ref" || result.MatchType == "alias")
+            return false; // 简称/别名匹配，接受
+
+        // 其他情况（match_type="name" 但文字不包含，或 match_type="" 模糊匹配）
+        // 是谐音匹配或 API 的模糊匹配，需要排除
         // 例如：京沪→镜湖区、中国→鸭绿江、度→南海等
         return true;
     }
