@@ -1471,81 +1471,143 @@
                                                 <ItemsControl ItemsSource="{Binding GeocodingLocations}">
                                                     <ItemsControl.ItemTemplate>
                                                          <DataTemplate x:DataType="vm:GeocodingLocationViewModel">
-                                                             <Border Margin="0,1"
-                                                                     Padding="4,2"
-                                                                     Background="#33333308">
-                                                                  <Grid ColumnDefinitions="80,45,*,60,50,50,50,70,70">
-                                                                      <!-- Location name -->
-                                                                      <TextBlock Grid.Column="0"
-                                                                                 Text="{Binding Name}"
-                                                                                 FontSize="10"
-                                                                                 TextTrimming="CharacterEllipsis"/>
+                                                              <StackPanel>
+                                                                  <!-- Main row -->
+                                                                  <Border Margin="0,1"
+                                                                          Padding="4,2"
+                                                                          Background="#33333308">
+                                                                      <Grid ColumnDefinitions="20,80,45,*,60,50,50,50,70,70">
+                                                                          <!-- Expand/Collapse button -->
+                                                                          <Button Grid.Column="0"
+                                                                                  Width="20"
+                                                                                  Height="20"
+                                                                                  Padding="0"
+                                                                                  Background="Transparent"
+                                                                                  BorderThickness="0"
+                                                                                  Click="ToggleExpanded_Click"
+                                                                                  IsVisible="{Binding HasMultipleResults}">
+                                                                              <TextBlock Text="{Binding ExpandIcon}"
+                                                                                         FontSize="8"
+                                                                                         HorizontalAlignment="Center"
+                                                                                         VerticalAlignment="Center"/>
+                                                                          </Button>
+                                                                          <TextBlock Grid.Column="0"
+                                                                                     IsVisible="{Binding !HasMultipleResults}"
+                                                                                     HorizontalAlignment="Center"
+                                                                                     Text=" "/>
 
-                                                                      <!-- Syntactic role -->
-                                                                      <TextBlock Grid.Column="1"
-                                                                                 Text="{Binding SyntacticRoleDisplay}"
-                                                                                 FontSize="9"
-                                                                                 FontWeight="SemiBold"
-                                                                                 Foreground="{Binding SyntacticRoleColor}"
-                                                                                 Margin="0,2,0,2"/>
+                                                                          <!-- Location name -->
+                                                                          <TextBlock Grid.Column="1"
+                                                                                     Text="{Binding Name}"
+                                                                                     FontSize="10"
+                                                                                     TextTrimming="CharacterEllipsis"/>
 
-                                                                     <!-- Display name (standard name) -->
-                                                                     <TextBlock Grid.Column="2"
-                                                                                Text="{Binding DisplayName}"
-                                                                                FontSize="9"
-                                                                                Opacity="0.7"
-                                                                                TextTrimming="CharacterEllipsis"/>
+                                                                          <!-- Syntactic role -->
+                                                                          <TextBlock Grid.Column="2"
+                                                                                     Text="{Binding SyntacticRoleDisplay}"
+                                                                                     FontSize="9"
+                                                                                     FontWeight="SemiBold"
+                                                                                     Foreground="{Binding SyntacticRoleColor}"
+                                                                                     Margin="0,2,0,2"/>
 
-                                                                     <!-- Status -->
-                                                                     <TextBlock Grid.Column="3"
-                                                                                Text="{Binding StatusLabel}"
-                                                                                FontSize="9"
-                                                                                FontWeight="SemiBold"
-                                                                                Foreground="{Binding StatusColor}"/>
+                                                                          <!-- Display name (standard name) -->
+                                                                          <TextBlock Grid.Column="3"
+                                                                                     Text="{Binding DisplayName}"
+                                                                                     FontSize="9"
+                                                                                     Opacity="0.7"
+                                                                                     TextTrimming="CharacterEllipsis"/>
 
-                                                                     <!-- Match Type -->
-                                                                     <TextBlock Grid.Column="4"
-                                                                                Text="{Binding MatchType}"
-                                                                                FontSize="9"
-                                                                                Foreground="#FF9800"/>
+                                                                          <!-- Status -->
+                                                                          <TextBlock Grid.Column="4"
+                                                                                     Text="{Binding StatusLabel}"
+                                                                                     FontSize="9"
+                                                                                     FontWeight="SemiBold"
+                                                                                     Foreground="{Binding StatusColor}"/>
 
-                                                                     <!-- Matched Name -->
-                                                                     <TextBlock Grid.Column="5"
-                                                                                Text="{Binding MatchedName}"
-                                                                                FontSize="9"
-                                                                                Foreground="#4FC3F7"
-                                                                                TextTrimming="CharacterEllipsis"/>
+                                                                          <!-- Match Type -->
+                                                                          <TextBlock Grid.Column="5"
+                                                                                     Text="{Binding MatchType}"
+                                                                                     FontSize="9"
+                                                                                     Foreground="#FF9800"/>
 
-                                                                     <!-- Matched Name Tag -->
-                                                                     <TextBlock Grid.Column="6"
-                                                                                Text="{Binding MatchedNameTag}"
-                                                                                FontSize="9"
-                                                                                Foreground="#9E9E9E"/>
+                                                                          <!-- Matched Name -->
+                                                                          <TextBlock Grid.Column="6"
+                                                                                     Text="{Binding MatchedName}"
+                                                                                     FontSize="9"
+                                                                                     Foreground="#4FC3F7"
+                                                                                     TextTrimming="CharacterEllipsis"/>
 
-                                                                     <!-- Latitude -->
-                                                                     <TextBlock Grid.Column="7"
-                                                                                Text="{Binding Latitude, StringFormat='{}{0:F4}'}"
-                                                                                FontSize="9"
-                                                                                IsVisible="{Binding HasCoordinates}"/>
-                                                                     <TextBlock Grid.Column="7"
-                                                                                Text="-"
-                                                                                FontSize="9"
-                                                                                Opacity="0.4"
-                                                                                IsVisible="{Binding !HasCoordinates}"/>
+                                                                          <!-- Matched Name Tag -->
+                                                                          <TextBlock Grid.Column="7"
+                                                                                     Text="{Binding MatchedNameTag}"
+                                                                                     FontSize="9"
+                                                                                     Foreground="#9E9E9E"/>
 
-                                                                     <!-- Longitude -->
-                                                                     <TextBlock Grid.Column="8"
-                                                                                Text="{Binding Longitude, StringFormat='{}{0:F4}'}"
-                                                                                FontSize="9"
-                                                                                IsVisible="{Binding HasCoordinates}"/>
-                                                                     <TextBlock Grid.Column="8"
-                                                                                Text="-"
-                                                                                FontSize="9"
-                                                                                Opacity="0.4"
-                                                                                IsVisible="{Binding !HasCoordinates}"/>
-                                                                 </Grid>
-                                                             </Border>
-                                                         </DataTemplate>
+                                                                          <!-- Latitude -->
+                                                                          <TextBlock Grid.Column="8"
+                                                                                     Text="{Binding Latitude, StringFormat='{}{0:F4}'}"
+                                                                                     FontSize="9"
+                                                                                     IsVisible="{Binding HasCoordinates}"/>
+                                                                          <TextBlock Grid.Column="8"
+                                                                                     Text="-"
+                                                                                     FontSize="9"
+                                                                                     Opacity="0.4"
+                                                                                     IsVisible="{Binding !HasCoordinates}"/>
+
+                                                                          <!-- Longitude -->
+                                                                          <TextBlock Grid.Column="9"
+                                                                                     Text="{Binding Longitude, StringFormat='{}{0:F4}'}"
+                                                                                     FontSize="9"
+                                                                                     IsVisible="{Binding HasCoordinates}"/>
+                                                                          <TextBlock Grid.Column="9"
+                                                                                     Text="-"
+                                                                                     FontSize="9"
+                                                                                     Opacity="0.4"
+                                                                                     IsVisible="{Binding !HasCoordinates}"/>
+                                                                      </Grid>
+                                                                  </Border>
+
+                                                                  <!-- Expanded sub-results -->
+                                                                  <ItemsControl ItemsSource="{Binding Results}"
+                                                                                IsVisible="{Binding IsExpanded}">
+                                                                      <ItemsControl.ItemTemplate>
+                                                                          <DataTemplate x:DataType="vm:GeocodingResultViewModel">
+                                                                              <Border Margin="24,1,0,1"
+                                                                                      Padding="4,2"
+                                                                                      Background="#22222222"
+                                                                                      BorderBrush="#44444444"
+                                                                                      BorderThickness="1">
+                                                                                  <Grid ColumnDefinitions="20,*,70,70">
+                                                                          <!-- Radio button for selection -->
+                                                                          <RadioButton Grid.Column="0"
+                                                                                      IsChecked="{Binding IsSelected}"
+                                                                                      GroupName="{Binding Result.Name}"
+                                                                                      HorizontalAlignment="Center"
+                                                                                      VerticalAlignment="Center"/>
+                                                                                      <!-- Display name -->
+                                                                                      <TextBlock Grid.Column="1"
+                                                                                                 Text="{Binding Result.DisplayName}"
+                                                                                                 FontSize="9"
+                                                                                                 Opacity="0.8"
+                                                                                                 TextTrimming="CharacterEllipsis"
+                                                                                                 TextWrapping="Wrap"/>
+                                                                                      <!-- Latitude -->
+                                                                                      <TextBlock Grid.Column="2"
+                                                                                                 Text="{Binding Result.Latitude, StringFormat='{}{0:F4}'}"
+                                                                                                 FontSize="9"
+                                                                                                 Opacity="0.6"/>
+                                                                                      <!-- Longitude -->
+                                                                                      <TextBlock Grid.Column="3"
+                                                                                                 Text="{Binding Result.Longitude, StringFormat='{}{0:F4}'}"
+                                                                                                 FontSize="9"
+                                                                                                 Opacity="0.6"/>
+                                                                                  </Grid>
+                                                                              </Border>
+                                                                          </DataTemplate>
+                                                                      </ItemsControl.ItemTemplate>
+                                                                  </ItemsControl>
+                                                              </StackPanel>
+                                                          </DataTemplate>
                                                     </ItemsControl.ItemTemplate>
                                                 </ItemsControl>
                                            </StackPanel>

@@ -18,10 +18,14 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using Avalonia.Media;
 using Caly.Core.Models;
 using Caly.Core.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 
 
 namespace Caly.Core.ViewModels;
@@ -38,7 +42,34 @@ public enum GeocodingStatus
 }
 
 /// <summary>
+/// ViewModel for a single geocoding result (sub-item in expandable row).
+/// </summary>
+public partial class GeocodingResultViewModel : ObservableObject
+{
+    public GeocodingResult Result { get; }
+
+    [ObservableProperty]
+    private int _index;
+
+    [ObservableProperty]
+    private bool _isSelected;
+
+    partial void OnIsSelectedChanged(bool value) => OnPropertyChanged(nameof(SelectedColor));
+
+    public IBrush SelectedColor => IsSelected
+        ? new SolidColorBrush(Color.Parse("#4CAF50"))
+        : new SolidColorBrush(Color.Parse("#999999"));
+
+    public GeocodingResultViewModel(int index, GeocodingResult result)
+    {
+        _index = index;
+        Result = result;
+    }
+}
+
+/// <summary>
 /// ViewModel for a single location in the geocoding table.
+/// Supports multiple results with expand/collapse.
 /// </summary>
 public partial class GeocodingLocationViewModel : ObservableObject
 {
@@ -55,11 +86,11 @@ public partial class GeocodingLocationViewModel : ObservableObject
 
     partial void OnStatusChanged(GeocodingStatus value)
     {
-        // Notify dependent computed properties
         OnPropertyChanged(nameof(StatusColor));
         OnPropertyChanged(nameof(StatusLabel));
         OnPropertyChanged(nameof(HasCoordinates));
         OnPropertyChanged(nameof(CoordinateText));
+        OnPropertyChanged(nameof(ResultCount));
     }
 
     [ObservableProperty]
@@ -106,6 +137,34 @@ public partial class GeocodingLocationViewModel : ObservableObject
 
     [ObservableProperty]
     private GeocodingFailureType _failureType = GeocodingFailureType.Unknown;
+
+    // Expand/collapse for multiple results
+    [ObservableProperty]
+    private bool _isExpanded;
+
+    partial void OnIsExpandedChanged(bool value) => OnPropertyChanged(nameof(ExpandIcon));
+
+    public string ExpandIcon => IsExpanded ? "▼" : "▶";
+
+    /// <summary>
+    /// All geocoding results for this location (sorted by confidence).
+    /// </summary>
+    public ObservableCollection<GeocodingResultViewModel> Results { get; } = new();
+
+    /// <summary>
+    /// Number of results.
+    /// </summary>
+    public int ResultCount => Results.Count;
+
+    /// <summary>
+    /// Whether there are multiple results (show expand indicator).
+    /// </summary>
+    public bool HasMultipleResults => Results.Count > 1;
+
+    [ObservableProperty]
+    private int _selectedResultIndex = 0;
+
+    partial void OnSelectedResultIndexChanged(int value) => UpdateFromSelectedResult();
 
     partial void OnFailureTypeChanged(GeocodingFailureType value)
     {
@@ -185,7 +244,7 @@ public partial class GeocodingLocationViewModel : ObservableObject
     };
 
     /// <summary>
-    /// Whether coordinates are available.
+    /// Whether coordinates are available (from selected result).
     /// </summary>
     public bool HasCoordinates => Status == GeocodingStatus.Success && Latitude != 0 && Longitude != 0;
 
@@ -196,26 +255,62 @@ public partial class GeocodingLocationViewModel : ObservableObject
         ? $"({Latitude:F4}, {Longitude:F4})" 
         : "-";
 
+    /// <summary>
+    /// Result count text for display.
+    /// </summary>
+    public string ResultCountText => ResultCount > 1 ? $"{ResultCount} 个结果" : "";
+
     public GeocodingLocationViewModel(string name)
     {
         _name = name;
     }
 
     /// <summary>
-    /// Mark this location as successfully geocoded with full result.
+    /// Mark this location as successfully geocoded with multiple results.
     /// </summary>
-    public void MarkSuccess(GeocodingResult result)
+    public void MarkSuccess(List<GeocodingResult> results)
     {
         Status = GeocodingStatus.Success;
-        Latitude = result.Latitude;
-        Longitude = result.Longitude;
-        DisplayName = result.DisplayName;
-        PlaceType = string.IsNullOrEmpty(result.Type) ? result.Class : result.Type;
-        Importance = result.Importance;
-        MatchType = result.MatchType;
-        MatchedNameTag = result.MatchedNameTag;
-        MatchedName = result.MatchedName;
         Error = "";
+
+        // Clear existing results
+        Results.Clear();
+
+        // Add all results
+        for (int i = 0; i < results.Count; i++)
+        {
+            var vm = new GeocodingResultViewModel(i, results[i]);
+            Results.Add(vm);
+        }
+
+        // Auto-select the first (best) result
+        SelectedResultIndex = 0;
+        UpdateFromSelectedResult();
+
+        // Auto-expand if multiple results
+        if (results.Count > 1)
+        {
+            IsExpanded = false; // Default collapsed, user can expand
+        }
+    }
+
+    /// <summary>
+    /// Update display fields from the selected result.
+    /// </summary>
+    private void UpdateFromSelectedResult()
+    {
+        if (SelectedResultIndex >= 0 && SelectedResultIndex < Results.Count)
+        {
+            var result = Results[SelectedResultIndex].Result;
+            Latitude = result.Latitude;
+            Longitude = result.Longitude;
+            DisplayName = result.DisplayName;
+            PlaceType = string.IsNullOrEmpty(result.Type) ? result.Class : result.Type;
+            Importance = result.Importance;
+            MatchType = result.MatchType;
+            MatchedNameTag = result.MatchedNameTag;
+            MatchedName = result.MatchedName;
+        }
     }
 
     /// <summary>
@@ -234,5 +329,11 @@ public partial class GeocodingLocationViewModel : ObservableObject
     public void MarkProcessing()
     {
         Status = GeocodingStatus.Processing;
+    }
+
+    [RelayCommand]
+    private void ToggleExpanded()
+    {
+        IsExpanded = !IsExpanded;
     }
 }

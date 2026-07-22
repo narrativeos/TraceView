@@ -47,7 +47,7 @@ public sealed class GeoJsonService
     /// <param name="semanticResults">Semantic analysis results.</param>
     /// <param name="outputDir">Output directory for the GeoJSON file.</param>
     /// <param name="onProcessing">Callback when a location starts processing.</param>
-    /// <param name="onSuccess">Callback when a location succeeds.</param>
+    /// <param name="onSuccess">Callback when a location succeeds (with all results).</param>
     /// <param name="onFailed">Callback when a location fails (with failure type for smart retry classification).</param>
     /// <param name="locationOrder">Optional: explicit order of location names to process (matches UI display order). If null, uses semantic results order.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
@@ -55,7 +55,7 @@ public sealed class GeoJsonService
         SemanticResultFile? semanticResults,
         string outputDir,
         Action<string>? onProcessing = null,
-        Action<GeocodingResult>? onSuccess = null,
+        GeocodingService.GeocodingSuccessCallback? onSuccess = null,
         GeocodingService.GeocodingFailedCallback? onFailed = null,
         List<string>? locationOrder = null,
         CancellationToken cancellationToken = default)
@@ -87,7 +87,10 @@ public sealed class GeoJsonService
 
         // Geocode all locations with per-location callbacks (using confidence-based geocoding)
         var geocodingResults = await _geocodingService.GeocodeManyWithConfidenceAsync(
-            locationNames, onProcessing, onSuccess, 
+            locationNames, onProcessing, 
+            onSuccess: (name, results) => {
+                onSuccess?.Invoke(name, results);
+            },
             onFailed: (name, error, failureType) => {
                 failedLocations[name] = (error, failureType.ToString());
                 onFailed?.Invoke(name, error, failureType);
@@ -101,29 +104,33 @@ public sealed class GeoJsonService
         {
             var entity = locationByName.TryGetValue(locationName, out var e) ? e : null;
 
-            if (geocodingResults.TryGetValue(locationName, out var result))
+            if (geocodingResults.TryGetValue(locationName, out var results))
             {
-                // Successful geocoding
-                var properties = new Dictionary<string, object>
+                // Successful geocoding - use the best (first) result for GeoJSON
+                var result = results.FirstOrDefault();
+                if (result != null)
                 {
-                    { "name", locationName },
-                    { "display_name", result.DisplayName },
-                    { "status", "success" },
-                    { "syntactic_role", entity?.SyntacticRole ?? "" },
-                    { "syntactic_role_display", entity != null ? LocationSyntacticRole.ToDisplay(entity.SyntacticRole) : "" },
-                    { "governing_verb", entity?.GoverningVerb ?? "" },
-                    { "is_cached", result.IsCached },
-                    { "place_id", result.PlaceId },
-                    { "osm_type", result.OsmType },
-                    { "osm_id", result.OsmId },
-                    { "class", result.Class },
-                    { "type", result.Type },
-                    { "importance", result.Importance },
-                    { "confidence", result.Confidence },
-                    { "match_type", result.MatchType },
-                    { "matched_name_tag", result.MatchedNameTag },
-                    { "matched_name", result.MatchedName }
-                };
+                    // Successful geocoding
+                    var properties = new Dictionary<string, object>
+                    {
+                        { "name", locationName },
+                        { "display_name", result.DisplayName },
+                        { "status", "success" },
+                        { "syntactic_role", entity?.SyntacticRole ?? "" },
+                        { "syntactic_role_display", entity != null ? LocationSyntacticRole.ToDisplay(entity.SyntacticRole) : "" },
+                        { "governing_verb", entity?.GoverningVerb ?? "" },
+                        { "is_cached", result.IsCached },
+                        { "place_id", result.PlaceId },
+                        { "osm_type", result.OsmType },
+                        { "osm_id", result.OsmId },
+                        { "class", result.Class },
+                        { "type", result.Type },
+                        { "importance", result.Importance },
+                        { "confidence", result.Confidence },
+                        { "match_type", result.MatchType },
+                        { "matched_name_tag", result.MatchedNameTag },
+                        { "matched_name", result.MatchedName }
+                    };
 
                 if (result.BoundingBoxMinLat.HasValue && result.BoundingBoxMaxLat.HasValue && 
                     result.BoundingBoxMinLon.HasValue && result.BoundingBoxMaxLon.HasValue)
@@ -151,6 +158,7 @@ public sealed class GeoJsonService
                 };
 
                 features.Add(feature);
+                }
             }
             else if (failedLocations.TryGetValue(locationName, out var failure))
             {
@@ -307,9 +315,10 @@ public sealed class GeoJsonService
         if (geocodingResults.Count == 0)
             return null;
 
-        // Calculate bounding box for map view center
-        var longitudes = geocodingResults.Values.Select(r => r.Longitude).ToList();
-        var latitudes = geocodingResults.Values.Select(r => r.Latitude).ToList();
+        // Calculate bounding box for map view center (use best result from each location)
+        var bestResults = geocodingResults.Values.Select(r => r.FirstOrDefault()).Where(r => r != null).ToList();
+        var longitudes = bestResults.Select(r => r!.Longitude).ToList();
+        var latitudes = bestResults.Select(r => r!.Latitude).ToList();
 
         var minLon = longitudes.Min();
         var maxLon = longitudes.Max();
@@ -321,11 +330,12 @@ public sealed class GeoJsonService
         // Calculate an appropriate zoom level based on the bounding box size
         var zoom = CalculateZoomLevel(minLon, maxLon, minLat, maxLat);
 
-        // Group geocoding results by syntactic role
+        // Group geocoding results by syntactic role (use best result from each location)
         var roles = new Dictionary<string, List<GeocodingResult>>();
         foreach (var kvp in geocodingResults)
         {
-            var result = kvp.Value;
+            var result = kvp.Value.FirstOrDefault();
+            if (result == null) continue;
             var (entity, _) = locationByName.TryGetValue(result.Name, out var info) ? info : (null, "");
             var role = entity?.SyntacticRole ?? LocationSyntacticRole.Unknown;
 

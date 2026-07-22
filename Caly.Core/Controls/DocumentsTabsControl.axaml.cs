@@ -376,6 +376,15 @@ public sealed partial class DocumentsTabsControl : UserControl
         UpdateConnectionLines();
     }
 
+    private void ToggleExpanded_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Button btn || btn.DataContext is not GeocodingLocationViewModel vm)
+            return;
+        
+        vm.ToggleExpandedCommand?.Execute(null);
+        e.Handled = true;
+    }
+
     private void SubscribeToDocumentPropertyChanged(DocumentViewModel docVm)
     {
         // Unsubscribe first to avoid duplicate handlers if called multiple times

@@ -279,16 +279,16 @@ public sealed partial class DocumentViewModel
                 });
             };
 
-            Action<GeocodingResult> onSuccess = (result) =>
+            GeocodingService.GeocodingSuccessCallback onSuccess = (name, results) =>
             {
                 Dispatcher.UIThread.InvokeAsync(() =>
                 {
-                    if (vmLookup.TryGetValue(result.Name, out var vm))
+                    if (vmLookup.TryGetValue(name, out var vm))
                     {
-                        vm.MarkSuccess(result);
+                        vm.MarkSuccess(results);
                     }
                     var done = vmLookup.Values.Count(v => v.Status == GeocodingStatus.Success || v.Status == GeocodingStatus.Failed);
-                    GeoStatusText = $"Geocoding: {result.Name} ({done}/{vmLookup.Count})";
+                    GeoStatusText = $"Geocoding: {name} ({done}/{vmLookup.Count})";
                 });
             };
 

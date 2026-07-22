@@ -79,16 +79,17 @@ public enum GeocodingFailureType
     Ambiguous,
 }
 
-/// <summary>
-/// Result of a geocoding attempt, containing either a success result or an error message.
-/// </summary>
-public class GeocodingAttemptResult
-{
-    public GeocodingResult? Result { get; set; }
-    public string? ErrorMessage { get; set; }
-    public GeocodingFailureType FailureType { get; set; } = GeocodingFailureType.Unknown;
-    public bool IsSuccess => Result is not null;
-}
+    /// <summary>
+    /// Result of a geocoding attempt, containing success results (may be multiple) or an error message.
+    /// </summary>
+    public class GeocodingAttemptResult
+    {
+        public List<GeocodingResult> Results { get; set; } = new List<GeocodingResult>();
+        public GeocodingResult? Result => Results.FirstOrDefault();
+        public string? ErrorMessage { get; set; }
+        public GeocodingFailureType FailureType { get; set; } = GeocodingFailureType.Unknown;
+        public bool IsSuccess => Results.Count > 0;
+    }
 
 public sealed class GeocodingService : IDisposable
 {
@@ -385,18 +386,24 @@ public sealed class GeocodingService : IDisposable
     public delegate void GeocodingFailedCallback(string name, string error, GeocodingFailureType failureType);
 
     /// <summary>
+    /// Callback for geocoding success with multiple results.
+    /// </summary>
+    public delegate void GeocodingSuccessCallback(string name, List<GeocodingResult> results);
+
+    /// <summary>
     /// Geocode multiple location names sequentially with confidence calculation.
     /// Processes locations one by one to avoid overwhelming the API.
     /// No retry logic - each location is attempted once.
+    /// Returns all results (up to 5 per location).
     /// </summary>
-    public async Task<Dictionary<string, GeocodingResult>> GeocodeManyWithConfidenceAsync(
+    public async Task<Dictionary<string, List<GeocodingResult>>> GeocodeManyWithConfidenceAsync(
         IEnumerable<string> locationNames,
         Action<string>? onProcessing = null,
-        Action<GeocodingResult>? onSuccess = null,
+        GeocodingSuccessCallback? onSuccess = null,
         GeocodingFailedCallback? onFailed = null,
         CancellationToken cancellationToken = default)
     {
-        var results = new Dictionary<string, GeocodingResult>();
+        var results = new Dictionary<string, List<GeocodingResult>>();
         var distinctNames = locationNames.Distinct().ToList();
 
         for (int i = 0; i < distinctNames.Count; i++)
@@ -413,8 +420,8 @@ public sealed class GeocodingService : IDisposable
             // Result update
             if (attempt.IsSuccess)
             {
-                results[locationName] = attempt.Result!;
-                onSuccess?.Invoke(attempt.Result!);
+                results[locationName] = attempt.Results;
+                onSuccess?.Invoke(locationName, attempt.Results);
             }
             else
             {
@@ -528,9 +535,9 @@ public sealed class GeocodingService : IDisposable
                 };
             }
 
-            // 返回置信度最高的结果
-            var best = allResults.OrderByDescending(r => r.Confidence).FirstOrDefault();
-            return new GeocodingAttemptResult { Result = best };
+            // 返回所有结果（按置信度排序）
+            var sorted = allResults.OrderByDescending(r => r.Confidence).ToList();
+            return new GeocodingAttemptResult { Results = sorted };
         }
         catch (OperationCanceledException)
         {
