@@ -96,8 +96,8 @@ public sealed class GeocodingService : IDisposable
     // 最大并发数：同时处理的地理编码请求数
     const int MaxConcurrency = 5;
     // 请求间隔：每个请求之间的最小间隔（毫秒），用于速率限制
-    // Nominatim 官方建议至少 1 秒/请求，这里设置 500ms 平衡速度和稳定性
-    const int RateLimitMs = 500;
+    // Nominatim 官方建议至少 1 秒/请求，设置为 1000ms 确保本地服务稳定响应
+    const int RateLimitMs = 1000;
 
     public GeocodingService()
     {
