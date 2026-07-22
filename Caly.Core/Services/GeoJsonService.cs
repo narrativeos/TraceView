@@ -84,67 +84,146 @@ public sealed class GeoJsonService
         // Use explicit order if provided (to match UI display order), otherwise use dictionary order
         var locationNames = locationOrder ?? locationByName.Keys.ToList();
 
+        // Track failed locations with their error info
+        var failedLocations = new Dictionary<string, (string error, string failureType)>();
+
         // Geocode all locations with per-location callbacks (using confidence-based geocoding)
         var geocodingResults = await _geocodingService.GeocodeManyWithConfidenceAsync(
-            locationNames, onProcessing, onSuccess, onFailed, exactMatch, cancellationToken);
+            locationNames, onProcessing, onSuccess, 
+            onFailed: (name, error, failureType) => {
+                failedLocations[name] = (error, failureType.ToString());
+                onFailed?.Invoke(name, error, failureType);
+            }, 
+            exactMatch, cancellationToken);
 
-        if (geocodingResults.Count == 0)
-            return null;
-
-        // Generate GeoJSON FeatureCollection
+        // Generate GeoJSON FeatureCollection with ALL locations (success + failed)
         var features = new List<Dictionary<string, object>>();
 
-        foreach (var kvp in geocodingResults)
+        foreach (var locationName in locationNames)
         {
-            var result = kvp.Value;
-            var entity = locationByName.TryGetValue(result.Name, out var e) ? e : null;
+            var entity = locationByName.TryGetValue(locationName, out var e) ? e : null;
 
-            var properties = new Dictionary<string, object>
+            if (geocodingResults.TryGetValue(locationName, out var result))
             {
-                { "name", result.Name },
-                { "display_name", result.DisplayName },
-                { "syntactic_role", entity?.SyntacticRole ?? "" },
-                { "syntactic_role_display", entity != null ? LocationSyntacticRole.ToDisplay(entity.SyntacticRole) : "" },
-                { "governing_verb", entity?.GoverningVerb ?? "" },
-                { "is_cached", result.IsCached },
-                { "place_id", result.PlaceId },
-                { "osm_type", result.OsmType },
-                { "osm_id", result.OsmId },
-                { "class", result.Class },
-                { "type", result.Type },
-                { "importance", result.Importance },
-                { "confidence", result.Confidence },
-                { "match_type", result.MatchType },
-                { "matched_name_tag", result.MatchedNameTag },
-                { "matched_name", result.MatchedName }
-            };
-
-            if (result.BoundingBoxMinLat.HasValue && result.BoundingBoxMaxLat.HasValue && 
-                result.BoundingBoxMinLon.HasValue && result.BoundingBoxMaxLon.HasValue)
-            {
-                properties["bbox"] = new object[]
+                // Successful geocoding
+                var properties = new Dictionary<string, object>
                 {
-                    result.BoundingBoxMinLat.Value,
-                    result.BoundingBoxMaxLat.Value,
-                    result.BoundingBoxMinLon.Value,
-                    result.BoundingBoxMaxLon.Value
+                    { "name", locationName },
+                    { "display_name", result.DisplayName },
+                    { "status", "success" },
+                    { "syntactic_role", entity?.SyntacticRole ?? "" },
+                    { "syntactic_role_display", entity != null ? LocationSyntacticRole.ToDisplay(entity.SyntacticRole) : "" },
+                    { "governing_verb", entity?.GoverningVerb ?? "" },
+                    { "is_cached", result.IsCached },
+                    { "place_id", result.PlaceId },
+                    { "osm_type", result.OsmType },
+                    { "osm_id", result.OsmId },
+                    { "class", result.Class },
+                    { "type", result.Type },
+                    { "importance", result.Importance },
+                    { "confidence", result.Confidence },
+                    { "match_type", result.MatchType },
+                    { "matched_name_tag", result.MatchedNameTag },
+                    { "matched_name", result.MatchedName }
                 };
+
+                if (result.BoundingBoxMinLat.HasValue && result.BoundingBoxMaxLat.HasValue && 
+                    result.BoundingBoxMinLon.HasValue && result.BoundingBoxMaxLon.HasValue)
+                {
+                    properties["bbox"] = new object[]
+                    {
+                        result.BoundingBoxMinLat.Value,
+                        result.BoundingBoxMaxLat.Value,
+                        result.BoundingBoxMinLon.Value,
+                        result.BoundingBoxMaxLon.Value
+                    };
+                }
+
+                var geometry = new Dictionary<string, object>
+                {
+                    { "type", "Point" },
+                    { "coordinates", new[] { result.Longitude, result.Latitude } }
+                };
+
+                var feature = new Dictionary<string, object>
+                {
+                    { "type", "Feature" },
+                    { "geometry", geometry },
+                    { "properties", properties }
+                };
+
+                features.Add(feature);
             }
-
-            var geometry = new Dictionary<string, object>
+            else if (failedLocations.TryGetValue(locationName, out var failure))
             {
-                { "type", "Point" },
-                { "coordinates", new[] { result.Longitude, result.Latitude } }
-            };
+                // Failed geocoding - include with null geometry
+                var properties = new Dictionary<string, object>
+                {
+                    { "name", locationName },
+                    { "display_name", "" },
+                    { "status", "failed" },
+                    { "error", failure.error },
+                    { "failure_type", failure.failureType },
+                    { "syntactic_role", entity?.SyntacticRole ?? "" },
+                    { "syntactic_role_display", entity != null ? LocationSyntacticRole.ToDisplay(entity.SyntacticRole) : "" },
+                    { "governing_verb", entity?.GoverningVerb ?? "" },
+                    { "is_cached", false },
+                    { "place_id", "" },
+                    { "osm_type", "" },
+                    { "osm_id", 0 },
+                    { "class", "" },
+                    { "type", "" },
+                    { "importance", 0.0 },
+                    { "confidence", 0.0 },
+                    { "match_type", "" },
+                    { "matched_name_tag", "" },
+                    { "matched_name", "" }
+                };
 
-            var feature = new Dictionary<string, object>
+                var feature = new Dictionary<string, object>
+                {
+                    { "type", "Feature" },
+                    { "geometry", null },
+                    { "properties", properties }
+                };
+
+                features.Add(feature);
+            }
+            else
             {
-                { "type", "Feature" },
-                { "geometry", geometry },
-                { "properties", properties }
-            };
+                // Location not processed at all (shouldn't happen, but handle gracefully)
+                var properties = new Dictionary<string, object>
+                {
+                    { "name", locationName },
+                    { "display_name", "" },
+                    { "status", "not_processed" },
+                    { "error", "Location was not processed" },
+                    { "failure_type", "Unknown" },
+                    { "syntactic_role", entity?.SyntacticRole ?? "" },
+                    { "syntactic_role_display", entity != null ? LocationSyntacticRole.ToDisplay(entity.SyntacticRole) : "" },
+                    { "governing_verb", entity?.GoverningVerb ?? "" },
+                    { "is_cached", false },
+                    { "place_id", "" },
+                    { "osm_type", "" },
+                    { "osm_id", 0 },
+                    { "class", "" },
+                    { "type", "" },
+                    { "importance", 0.0 },
+                    { "confidence", 0.0 },
+                    { "match_type", "" },
+                    { "matched_name_tag", "" },
+                    { "matched_name", "" }
+                };
 
-            features.Add(feature);
+                var feature = new Dictionary<string, object>
+                {
+                    { "type", "Feature" },
+                    { "geometry", null },
+                    { "properties", properties }
+                };
+
+                features.Add(feature);
+            }
         }
 
         var geoJson = new Dictionary<string, object>
