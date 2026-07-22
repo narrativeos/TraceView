@@ -288,7 +288,7 @@ public sealed partial class DocumentViewModel
                         vm.MarkSuccess(results);
                     }
                     var done = vmLookup.Values.Count(v => v.Status == GeocodingStatus.Success || v.Status == GeocodingStatus.Failed);
-                    GeoStatusText = $"Geocoding: {name} ({done}/{vmLookup.Count})";
+                    GeoStatusText = $"{done}/{vmLookup.Count} ({name})";
                 });
             };
 
@@ -301,7 +301,7 @@ public sealed partial class DocumentViewModel
                         vm.MarkFailed(error, failureType);
                     }
                     var done = vmLookup.Values.Count(v => v.Status == GeocodingStatus.Success || v.Status == GeocodingStatus.Failed);
-                    GeoStatusText = $"Geocoding: {name} ({done}/{vmLookup.Count})";
+                    GeoStatusText = $"{done}/{vmLookup.Count} ({name})";
                 });
             };
 
