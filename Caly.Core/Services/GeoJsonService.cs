@@ -63,15 +63,15 @@ public sealed class GeoJsonService
         if (semanticResults is null || semanticResults.Blocks.Count == 0)
             return null;
 
-        // Collect all unique location entities (preserve entity info for syntactic role)
-        var locationByName = new Dictionary<string, SemanticEntity>();
+        // Collect all unique location entities (preserve entity info for syntactic role + source block ids)
+        var locationByName = new Dictionary<string, (SemanticEntity Entity, List<string> SourceBlockIds)>();
         foreach (var block in semanticResults.Blocks)
         {
             foreach (var entity in block.LocationEntities)
             {
                 if (!locationByName.ContainsKey(entity.Text))
                 {
-                    locationByName[entity.Text] = entity;
+                    locationByName[entity.Text] = (entity, new List<string>(block.SourceBlockIds));
                 }
             }
         }
@@ -102,23 +102,23 @@ public sealed class GeoJsonService
 
         foreach (var locationName in locationNames)
         {
-            var entity = locationByName.TryGetValue(locationName, out var e) ? e : null;
-
             if (geocodingResults.TryGetValue(locationName, out var results))
             {
                 // Successful geocoding - use the best (first) result for GeoJSON
                 var result = results.FirstOrDefault();
                 if (result != null)
                 {
+                    var (locEntity, sourceBlockIds) = locationByName.TryGetValue(locationName, out var info) ? info : (null, new List<string>());
                     // Successful geocoding
                     var properties = new Dictionary<string, object>
                     {
                         { "name", locationName },
                         { "display_name", result.DisplayName },
                         { "status", "success" },
-                        { "syntactic_role", entity?.SyntacticRole ?? "" },
-                        { "syntactic_role_display", entity != null ? LocationSyntacticRole.ToDisplay(entity.SyntacticRole) : "" },
-                        { "governing_verb", entity?.GoverningVerb ?? "" },
+                        { "syntactic_role", locEntity?.SyntacticRole ?? "" },
+                        { "syntactic_role_display", locEntity != null ? LocationSyntacticRole.ToDisplay(locEntity.SyntacticRole) : "" },
+                        { "governing_verb", locEntity?.GoverningVerb ?? "" },
+                        { "source_block_ids", sourceBlockIds },
                         { "is_cached", result.IsCached },
                         { "place_id", result.PlaceId },
                         { "osm_type", result.OsmType },
@@ -162,6 +162,7 @@ public sealed class GeoJsonService
             }
             else if (failedLocations.TryGetValue(locationName, out var failure))
             {
+                var (locEntity2, sourceBlockIds2) = locationByName.TryGetValue(locationName, out var info2) ? info2 : (null, new List<string>());
                 // Failed geocoding - include with null geometry
                 var properties = new Dictionary<string, object>
                 {
@@ -170,9 +171,10 @@ public sealed class GeoJsonService
                     { "status", "failed" },
                     { "error", failure.error },
                     { "failure_type", failure.failureType },
-                    { "syntactic_role", entity?.SyntacticRole ?? "" },
-                    { "syntactic_role_display", entity != null ? LocationSyntacticRole.ToDisplay(entity.SyntacticRole) : "" },
-                    { "governing_verb", entity?.GoverningVerb ?? "" },
+                    { "syntactic_role", locEntity2?.SyntacticRole ?? "" },
+                    { "syntactic_role_display", locEntity2 != null ? LocationSyntacticRole.ToDisplay(locEntity2.SyntacticRole) : "" },
+                    { "governing_verb", locEntity2?.GoverningVerb ?? "" },
+                    { "source_block_ids", sourceBlockIds2 },
                     { "is_cached", false },
                     { "place_id", "" },
                     { "osm_type", "" },
@@ -197,6 +199,7 @@ public sealed class GeoJsonService
             }
             else
             {
+                var (locEntity3, sourceBlockIds3) = locationByName.TryGetValue(locationName, out var info3) ? info3 : (null, new List<string>());
                 // Location not processed at all (shouldn't happen, but handle gracefully)
                 var properties = new Dictionary<string, object>
                 {
@@ -205,9 +208,10 @@ public sealed class GeoJsonService
                     { "status", "not_processed" },
                     { "error", "Location was not processed" },
                     { "failure_type", "Unknown" },
-                    { "syntactic_role", entity?.SyntacticRole ?? "" },
-                    { "syntactic_role_display", entity != null ? LocationSyntacticRole.ToDisplay(entity.SyntacticRole) : "" },
-                    { "governing_verb", entity?.GoverningVerb ?? "" },
+                    { "syntactic_role", locEntity3?.SyntacticRole ?? "" },
+                    { "syntactic_role_display", locEntity3 != null ? LocationSyntacticRole.ToDisplay(locEntity3.SyntacticRole) : "" },
+                    { "governing_verb", locEntity3?.GoverningVerb ?? "" },
+                    { "source_block_ids", sourceBlockIds3 },
                     { "is_cached", false },
                     { "place_id", "" },
                     { "osm_type", "" },
@@ -287,8 +291,8 @@ public sealed class GeoJsonService
         if (semanticResults is null || semanticResults.Blocks.Count == 0)
             return null;
 
-        // Collect all unique location entities (preserve entity info for syntactic role + block content)
-        var locationByName = new Dictionary<string, (SemanticEntity Entity, string BlockContent)>();
+        // Collect all unique location entities (preserve entity info for syntactic role + block content + source block ids)
+        var locationByName = new Dictionary<string, (SemanticEntity Entity, string BlockContent, List<string> SourceBlockIds)>();
         foreach (var block in semanticResults.Blocks)
         {
             foreach (var entity in block.LocationEntities)
@@ -298,7 +302,7 @@ public sealed class GeoJsonService
                     // Truncate block content to 200 chars for label purposes
                     var content = string.IsNullOrEmpty(block.Content) ? "" :
                         block.Content.Length > 200 ? block.Content.Substring(0, 200) + "..." : block.Content;
-                    locationByName[entity.Text] = (entity, content);
+                    locationByName[entity.Text] = (entity, content, new List<string>(block.SourceBlockIds));
                 }
             }
         }
@@ -331,13 +335,13 @@ public sealed class GeoJsonService
         var zoom = CalculateZoomLevel(minLon, maxLon, minLat, maxLat);
 
         // Group geocoding results by syntactic role (use best result from each location)
-        var roles = new Dictionary<string, List<GeocodingResult>>();
-        foreach (var kvp in geocodingResults)
-        {
-            var result = kvp.Value.FirstOrDefault();
-            if (result == null) continue;
-            var (entity, _) = locationByName.TryGetValue(result.Name, out var info) ? info : (null, "");
-            var role = entity?.SyntacticRole ?? LocationSyntacticRole.Unknown;
+            var roles = new Dictionary<string, List<GeocodingResult>>();
+            foreach (var kvp in geocodingResults)
+            {
+                var result = kvp.Value.FirstOrDefault();
+                if (result == null) continue;
+                var (entity, _, _) = locationByName.TryGetValue(result.Name, out var info) ? info : (null, "", new List<string>());
+                var role = entity?.SyntacticRole ?? LocationSyntacticRole.Unknown;
 
             if (!roles.ContainsKey(role))
                 roles[role] = new List<GeocodingResult>();
@@ -372,7 +376,7 @@ public sealed class GeoJsonService
 
             foreach (var result in results)
             {
-                var (entity, blockContent) = locationByName.TryGetValue(result.Name, out var info) ? info : (null, "");
+                var (entity, blockContent, sourceBlockIds) = locationByName.TryGetValue(result.Name, out var info) ? info : (null, "", new List<string>());
 
                 var properties = new Dictionary<string, object>
                 {
@@ -381,6 +385,7 @@ public sealed class GeoJsonService
                     { "syntactic_role", entity?.SyntacticRole ?? "" },
                     { "syntactic_role_display", entity != null ? LocationSyntacticRole.ToDisplay(entity.SyntacticRole) : "" },
                     { "governing_verb", entity?.GoverningVerb ?? "" },
+                    { "source_block_ids", sourceBlockIds },
                     { "block_content", blockContent }
                 };
 
