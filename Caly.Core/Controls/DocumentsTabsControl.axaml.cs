@@ -20,18 +20,22 @@
 
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Controls.Metadata;
 using Avalonia.Data;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using Caly.Core.Models;
+using Caly.Core.Services.Interfaces;
 using Caly.Core.Utilities;
 using Caly.Core.ViewModels;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace Caly.Core.Controls;
 
@@ -63,9 +67,11 @@ public sealed partial class DocumentsTabsControl : UserControl
     private ScrollViewer? _popoScrollViewer;
     private TreeView? _popoTreeView;
     private ScrollViewer? _semanticScrollViewer;
-    
+
     // Debounce for UpdateConnectionLines to avoid excessive calls during scrolling
     private System.Threading.Timer? _updateConnectionLinesTimer;
+
+    private IDialogService? DialogService => App.Current?.Services?.GetService<IDialogService>();
 
     public DocumentsTabsControl()
     {
@@ -90,12 +96,12 @@ public sealed partial class DocumentsTabsControl : UserControl
     protected override void OnLoaded(RoutedEventArgs e)
     {
         base.OnLoaded(e);
-        
+
         // DataContext is MainViewModel (inherited from parent window).
         // Subscribe immediately on load to ensure we catch async data loading
         // (e.g., TryLoadMinerUData/TryLoadPopoData on project reopen).
         SubscribeToCurrentDocument();
-        
+
         DataContextChanged += OnDataContextChanged;
     }
 
@@ -119,7 +125,7 @@ public sealed partial class DocumentsTabsControl : UserControl
         {
             // Subscribe to MainViewModel's SelectedDocument changes (tab switches)
             mainVm.PropertyChanged += OnMainViewModelPropertyChanged;
-            
+
             if (mainVm.SelectedDocument is DocumentViewModel docVm)
             {
                 SubscribeToDocumentPropertyChanged(docVm);
@@ -145,13 +151,13 @@ public sealed partial class DocumentsTabsControl : UserControl
             _lastSubscribedDocument.PropertyChanged -= OnDocumentPropertyChanged;
             _lastSubscribedDocument = null;
         }
-        
+
         // Also unsubscribe from MainViewModel
         if (DataContext is MainViewModel mainVm)
         {
             mainVm.PropertyChanged -= OnMainViewModelPropertyChanged;
         }
-        
+
         // CRITICAL: Clear cached control references when document changes.
         // ConnectionLinesControl is inside the TabControl.ContentTemplate's DataTemplate,
         // meaning it gets destroyed and recreated on each tab switch/document reopen.
@@ -315,7 +321,7 @@ public sealed partial class DocumentsTabsControl : UserControl
         {
             return;
         }
-        
+
         vm.OpenCommand.Execute(null);
         e.Handled = true;
     }
@@ -343,7 +349,7 @@ public sealed partial class DocumentsTabsControl : UserControl
 
         // Set the actual rendered height so ConnectionLinesControl can calculate accurate positions
         blockVm.ActualHeight = border.Bounds.Height;
-        
+
         // Trigger connection lines redraw when a block is loaded
         UpdateConnectionLines();
     }
@@ -356,7 +362,7 @@ public sealed partial class DocumentsTabsControl : UserControl
         // Set the actual rendered height so ConnectionLinesControl can calculate accurate positions
         // SizeChanged fires continuously as the border is resized/reused by TreeView virtualization
         nodeVm.ActualHeight = e.NewSize.Height;
-        
+
         // Trigger connection lines redraw
         UpdateConnectionLines();
     }
@@ -380,10 +386,134 @@ public sealed partial class DocumentsTabsControl : UserControl
     {
         if (sender is not Button btn || btn.DataContext is not GeocodingLocationViewModel vm)
             return;
-        
+
         vm.ToggleExpandedCommand?.Execute(null);
         e.Handled = true;
     }
+
+    #region Completion Confirmation Dialogs
+
+    private async void OnMinerUParseClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel mainVm || mainVm.SelectedDocument is not DocumentViewModel docVm)
+            return;
+
+        if (docVm.IsMinerUCompleted)
+        {
+            var dialogService = DialogService;
+            if (dialogService is not null)
+            {
+                var confirmed = await dialogService.ShowConfirmationDialogAsync(
+                    "确认重新解析",
+                    "AI 解析已完成，重新解析将覆盖现有数据。是否继续？");
+                if (!confirmed)
+                {
+                    e.Handled = true;
+                    return;
+                }
+            }
+        }
+
+        docVm.ParseWithMinerUCommand?.Execute(null);
+    }
+
+    private async void OnPopoProcessClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel mainVm || mainVm.SelectedDocument is not DocumentViewModel docVm)
+            return;
+
+        if (docVm.IsPopoCompleted)
+        {
+            var dialogService = DialogService;
+            if (dialogService is not null)
+            {
+                var confirmed = await dialogService.ShowConfirmationDialogAsync(
+                    "确认重新处理",
+                    "Popo 处理已完成，重新处理将覆盖现有数据。是否继续？");
+                if (!confirmed)
+                {
+                    e.Handled = true;
+                    return;
+                }
+            }
+        }
+
+        docVm.ProcessWithPopoCommand?.Execute(null);
+    }
+
+    private async void OnSemanticProcessClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel mainVm || mainVm.SelectedDocument is not DocumentViewModel docVm)
+            return;
+
+        if (docVm.IsSemanticCompleted)
+        {
+            var dialogService = DialogService;
+            if (dialogService is not null)
+            {
+                var confirmed = await dialogService.ShowConfirmationDialogAsync(
+                    "确认重新分析",
+                    "NLP 分析已完成，重新分析将覆盖现有数据。是否继续？");
+                if (!confirmed)
+                {
+                    e.Handled = true;
+                    return;
+                }
+            }
+        }
+
+        docVm.ProcessWithSemanticCommand?.Execute(null);
+    }
+
+    private async void OnGenerateGeoJsonClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel mainVm || mainVm.SelectedDocument is not DocumentViewModel docVm)
+            return;
+
+        if (docVm.IsGeoCompleted)
+        {
+            var dialogService = DialogService;
+            if (dialogService is not null)
+            {
+                var confirmed = await dialogService.ShowConfirmationDialogAsync(
+                    "确认重新生成",
+                    "地理数据已生成，重新生成将覆盖现有数据。是否继续？");
+                if (!confirmed)
+                {
+                    e.Handled = true;
+                    return;
+                }
+            }
+        }
+
+        docVm.GenerateGeoJsonCommand?.Execute(null);
+    }
+
+    private async void OnExportGeoLibreClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel mainVm || mainVm.SelectedDocument is not DocumentViewModel docVm)
+            return;
+
+        if (docVm.HasGeoLibreFile)
+        {
+            var dialogService = DialogService;
+            if (dialogService is not null)
+            {
+                var confirmed = await dialogService.ShowConfirmationDialogAsync(
+                    "确认重新导出",
+                    "GeoLibre 数据已导出，重新导出将覆盖现有数据。是否继续？");
+                if (!confirmed)
+                {
+                    e.Handled = true;
+                    return;
+                }
+            }
+        }
+
+        docVm.ExportGeoLibreJsonCommand?.Execute(null);
+    }
+
+    #endregion
 
     private void SubscribeToDocumentPropertyChanged(DocumentViewModel docVm)
     {
@@ -506,7 +636,7 @@ public sealed partial class DocumentsTabsControl : UserControl
         // This ensures that property changes (e.g., VisiblePages being set after data loads)
         // are not lost due to debouncing.
         _updateConnectionLinesTimer?.Dispose();
-        
+
         // Use 100ms debounce during scrolling to reduce expensive DOM queries.
         // Scroll events fire at ~60fps (16ms interval), so 100ms means we process
         // only ~10 updates per second instead of ~60, dramatically reducing CPU usage.
@@ -587,14 +717,14 @@ public sealed partial class DocumentsTabsControl : UserControl
         // On project reopen, the new MinerUBlockViewModels may not have had their borders loaded yet,
         // meaning ActualHeight is 0. In this case, defer the update to allow UI to render first.
         bool anyBlockHasHeight = docVm2.VisibleMinerUBlocks?.Any(b => b.ActualHeight > 0) == true;
-        
+
         if (!anyBlockHasHeight)
         {
             // Defer: schedule another update after a frame to allow MinerUBlockBorder_OnLoaded to fire
-            Avalonia.Threading.Dispatcher.UIThread.Post(() => UpdateConnectionLines(), 
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => UpdateConnectionLines(),
                 Avalonia.Threading.DispatcherPriority.Render);
         }
-        
+
         connControl.ShowConnections = true;
         connControl.PreprocBlocksByPage = preprocBlocksByPage;
         connControl.MinerUBlocks = docVm2.VisibleMinerUBlocks;
@@ -620,14 +750,14 @@ public sealed partial class DocumentsTabsControl : UserControl
                         var scale = pageItemsControl.LayoutTransform?.LayoutTransform?.Value.M11 ?? 1.0;
                         connControl.PdfScrollOffsetY = pdfScroll.Offset.Y - pageItem.Bounds.Top * scale;
                         connControl.PdfPageTopOffset = 0;
-                        
+
                         // Calculate the actual left offset of the PDF page in screen coordinates.
                         // The PageItemsControl uses LayoutTransformControl with HorizontalAlignment="Center",
                         // so the ItemsPresenter is centered within the LayoutTransformControl.
                         // We need to account for this centering offset.
                         var layoutTransform = pageItemsControl.LayoutTransform;
                         var docControlLeft = docControl.Bounds.X;
-                        
+
                         if (layoutTransform is not null && layoutTransform.Bounds.Width > 0)
                         {
                             // The page's rendered width after PpiScale but before Zoom

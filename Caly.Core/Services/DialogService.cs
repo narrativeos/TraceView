@@ -218,4 +218,21 @@ internal sealed class DialogService : IDialogService
             return result;
         }, DispatcherPriority.Loaded);
     }
+
+    public async Task<bool> ShowConfirmationDialogAsync(string title, string message)
+    {
+        return await Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            Debug.ThrowNotOnUiThread();
+
+            if (_target is not Window w)
+            {
+                return false;
+            }
+
+            var dialog = new ConfirmationDialogWindow(title, message);
+            var result = await dialog.ShowDialog<bool?>(w);
+            return result == true;
+        }, DispatcherPriority.Loaded);
+    }
 }

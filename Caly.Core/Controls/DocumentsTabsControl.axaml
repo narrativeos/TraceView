@@ -285,7 +285,7 @@
 								HorizontalAlignment="Center"
 								VerticalAlignment="Stretch"
 								Background="Transparent"
-								Command="{Binding ExportGeoLibreJsonCommand}"
+                                Click="OnExportGeoLibreClick"
                                 IsVisible="{Binding HasSemanticData}">
 							<PathIcon Width="17"
 									  Height="17"
@@ -303,7 +303,7 @@
 								HorizontalAlignment="Center"
 								VerticalAlignment="Stretch"
 								Background="Transparent"
-								Command="{Binding GenerateGeoJsonCommand}"
+                                Click="OnGenerateGeoJsonClick"
                                 IsVisible="{Binding HasSemanticData}">
 							<PathIcon Width="17"
 									  Height="17"
@@ -321,7 +321,7 @@
 								HorizontalAlignment="Center"
 								VerticalAlignment="Stretch"
 								Background="Transparent"
-								Command="{Binding ProcessWithSemanticCommand}"
+                                Click="OnSemanticProcessClick"
                                   IsVisible="{Binding HasMinerUData}">
 							<PathIcon Width="17"
 									  Height="17"
@@ -339,7 +339,7 @@
 								HorizontalAlignment="Center"
 								VerticalAlignment="Stretch"
 								Background="Transparent"
-								Command="{Binding ProcessWithPopoCommand}"
+                                Click="OnPopoProcessClick"
                                 IsVisible="{Binding HasMinerUZip}">
 							<PathIcon Width="17"
 									  Height="17"
@@ -357,7 +357,7 @@
 								HorizontalAlignment="Center"
 								VerticalAlignment="Stretch"
 								Background="Transparent"
-								Command="{Binding ParseWithMinerUCommand}"
+                                Click="OnMinerUParseClick"
                                 IsVisible="{Binding MinerUEnabled}">
 							<PathIcon Width="17"
 									  Height="17"

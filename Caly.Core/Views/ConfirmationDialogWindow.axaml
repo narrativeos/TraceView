@@ -1,0 +1,21 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="400" d:DesignHeight="180"
+        x:Class="Caly.Core.Views.ConfirmationDialogWindow"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        ShowActivated="True"
+        Width="400" MinWidth="400"
+        Height="180" MinHeight="180">
+    <Grid RowDefinitions="Auto,*,Auto" Margin="16">
+        <TextBlock x:Name="TitleText" Grid.Row="0" FontSize="14" FontWeight="Bold" Margin="0,0,0,8"/>
+        <TextBlock x:Name="MessageText" Grid.Row="1" FontSize="13" TextWrapping="Wrap" Margin="0,0,0,12"/>
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+            <Button Content="取消" Click="OnCancelClick" Width="80"/>
+            <Button Content="继续" Click="OnContinueClick" Width="80" IsDefault="True"/>
+        </StackPanel>
+    </Grid>
+</Window>

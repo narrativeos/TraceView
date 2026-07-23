@@ -80,5 +80,10 @@ namespace Caly.Core.Services.Interfaces
         /// Returns the selected project path, or null if the user chose to create a new project.
         /// </summary>
         Task<string?> ShowProjectExistsDialogAsync(string pdfPath, List<string> existingProjects);
+
+        /// Shows a confirmation dialog with OK/Cancel buttons.
+        /// Returns true if the user confirmed, false if cancelled.
+        /// </summary>
+        Task<bool> ShowConfirmationDialogAsync(string title, string message);
     }
 }
