@@ -21,6 +21,7 @@
         <utilities:IsNullConverter x:Key="IsNullConverter"/>
         <utilities:IsGreaterThanConverter x:Key="IsGreaterThanConverter"/>
         <utilities:InverseBoolConverter x:Key="InverseBoolConverter"/>
+        <utilities:CompletedToOpacityConverter x:Key="CompletedToOpacityConverter"/>
     </UserControl.Resources>
 
     <Design.DataContext>
@@ -286,20 +287,14 @@
 								Background="Transparent"
 								Command="{Binding ExportGeoLibreJsonCommand}"
                                 IsVisible="{Binding HasSemanticData}">
-							<Grid>
-								<PathIcon Width="17"
-										  Height="17"
-										  Data="{StaticResource share_regular}"
-										  IsVisible="{Binding HasGeoLibreFile, Converter={StaticResource InverseBoolConverter}}"/>
-								<PathIcon Width="17"
-										  Height="17"
-										  Data="{StaticResource checkmark_circle_regular}"
-										  Foreground="{DynamicResource SystemAccentColor}"
-										  IsVisible="{Binding HasGeoLibreFile}"/>
+							<PathIcon Width="17"
+									  Height="17"
+									  Data="{StaticResource share_regular}"
+									  Opacity="{Binding HasGeoLibreFile, Converter={StaticResource CompletedToOpacityConverter}}">
 								<ToolTip.Tip>
 									<TextBlock Text="{Binding ExportGeoLibreButtonTooltip}"/>
 								</ToolTip.Tip>
-							</Grid>
+							</PathIcon>
 						</Button>
 
 						<!-- GeoJSON Generate (visible when semantic data exists) -->
@@ -310,44 +305,32 @@
 								Background="Transparent"
 								Command="{Binding GenerateGeoJsonCommand}"
                                 IsVisible="{Binding HasSemanticData}">
-							<Grid>
-								<PathIcon Width="17"
-										  Height="17"
-										  Data="{StaticResource map_regular}"
-										  IsVisible="{Binding IsGeoCompleted, Converter={StaticResource InverseBoolConverter}}"/>
-								<PathIcon Width="17"
-										  Height="17"
-										  Data="{StaticResource checkmark_circle_regular}"
-										  Foreground="{DynamicResource SystemAccentColor}"
-										  IsVisible="{Binding IsGeoCompleted}"/>
+							<PathIcon Width="17"
+									  Height="17"
+									  Data="{StaticResource map_regular}"
+									  Opacity="{Binding IsGeoCompleted, Converter={StaticResource CompletedToOpacityConverter}}">
 								<ToolTip.Tip>
 									<TextBlock Text="{Binding GeoButtonTooltip}"/>
 								</ToolTip.Tip>
-							</Grid>
+							</PathIcon>
 						</Button>
 
 							<!-- NLP Analyze (visible when MinerU data exists) -->
 						<Button DockPanel.Dock="Right"
-                                 Margin="0,0,5,0"
+                                  Margin="0,0,5,0"
 								HorizontalAlignment="Center"
 								VerticalAlignment="Stretch"
 								Background="Transparent"
 								Command="{Binding ProcessWithSemanticCommand}"
-                                 IsVisible="{Binding HasMinerUData}">
-							<Grid>
-								<PathIcon Width="17"
-										  Height="17"
-										  Data="{StaticResource nlp_process_regular}"
-										  IsVisible="{Binding IsSemanticCompleted, Converter={StaticResource InverseBoolConverter}}"/>
-								<PathIcon Width="17"
-										  Height="17"
-										  Data="{StaticResource checkmark_circle_regular}"
-										  Foreground="{DynamicResource SystemAccentColor}"
-										  IsVisible="{Binding IsSemanticCompleted}"/>
+                                  IsVisible="{Binding HasMinerUData}">
+							<PathIcon Width="17"
+									  Height="17"
+									  Data="{StaticResource nlp_process_regular}"
+									  Opacity="{Binding IsSemanticCompleted, Converter={StaticResource CompletedToOpacityConverter}}">
 								<ToolTip.Tip>
 									<TextBlock Text="{Binding SemanticButtonTooltip}"/>
 								</ToolTip.Tip>
-							</Grid>
+							</PathIcon>
 						</Button>
 
 						<!-- Popo Process (always visible when MinerU ZIP exists, allows re-processing) -->
@@ -358,20 +341,14 @@
 								Background="Transparent"
 								Command="{Binding ProcessWithPopoCommand}"
                                 IsVisible="{Binding HasMinerUZip}">
-							<Grid>
-								<PathIcon Width="17"
-										  Height="17"
-										  Data="{StaticResource popo_process_regular}"
-										  IsVisible="{Binding IsPopoCompleted, Converter={StaticResource InverseBoolConverter}}"/>
-								<PathIcon Width="17"
-										  Height="17"
-										  Data="{StaticResource checkmark_circle_regular}"
-										  Foreground="{DynamicResource SystemAccentColor}"
-										  IsVisible="{Binding IsPopoCompleted}"/>
+							<PathIcon Width="17"
+									  Height="17"
+									  Data="{StaticResource popo_process_regular}"
+									  Opacity="{Binding IsPopoCompleted, Converter={StaticResource CompletedToOpacityConverter}}">
 								<ToolTip.Tip>
 									<TextBlock Text="{Binding PopoButtonTooltip}"/>
 								</ToolTip.Tip>
-							</Grid>
+							</PathIcon>
 						</Button>
 
 						<!-- MinerU AI Parse -->
@@ -382,20 +359,14 @@
 								Background="Transparent"
 								Command="{Binding ParseWithMinerUCommand}"
                                 IsVisible="{Binding MinerUEnabled}">
-							<Grid>
-								<PathIcon Width="17"
-										  Height="17"
-										  Data="{StaticResource mineru_parse_regular}"
-										  IsVisible="{Binding IsMinerUCompleted, Converter={StaticResource InverseBoolConverter}}"/>
-								<PathIcon Width="17"
-										  Height="17"
-										  Data="{StaticResource checkmark_circle_regular}"
-										  Foreground="{DynamicResource SystemAccentColor}"
-										  IsVisible="{Binding IsMinerUCompleted}"/>
+							<PathIcon Width="17"
+									  Height="17"
+									  Data="{StaticResource mineru_parse_regular}"
+									  Opacity="{Binding IsMinerUCompleted, Converter={StaticResource CompletedToOpacityConverter}}">
 								<ToolTip.Tip>
 									<TextBlock Text="{Binding MinerUButtonTooltip}"/>
 								</ToolTip.Tip>
-							</Grid>
+							</PathIcon>
 						</Button>
 
 						<!-- Print -->

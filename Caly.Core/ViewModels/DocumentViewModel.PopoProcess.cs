@@ -42,6 +42,9 @@ public sealed partial class DocumentViewModel : PopoService.IPopoProgressCallbac
     partial void OnPopoStatusChanged(PopoProcessStatus value)
     {
         OnPropertyChanged(nameof(ShowPopoBlocksList));
+        OnPropertyChanged(nameof(IsPopoCompleted));
+        OnPropertyChanged(nameof(IsPopoFailed));
+        OnPropertyChanged(nameof(PopoButtonTooltip));
     }
 
     [ObservableProperty]

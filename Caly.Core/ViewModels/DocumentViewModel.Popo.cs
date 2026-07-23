@@ -396,5 +396,10 @@ public sealed partial class DocumentViewModel
         {
             PopoBlocks.Add(new BlockViewModel(block));
         }
+
+        // Mark Popo as completed so the UI shows the checkmark icon
+        PopoStatus = PopoProcessStatus.Completed;
+        PopoProgress = 100;
+        PopoStatusText = $"Loaded ({PopoBlocks.Count} blocks)";
     }
 }

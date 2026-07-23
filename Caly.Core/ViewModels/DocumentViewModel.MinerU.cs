@@ -270,6 +270,8 @@ public sealed partial class DocumentViewModel
     partial void OnMinerUStatusChanged(MinerUParseStatus value)
     {
         OnPropertyChanged(nameof(ShowMinerUBlocksList));
+        OnPropertyChanged(nameof(IsMinerUCompleted));
+        OnPropertyChanged(nameof(MinerUButtonTooltip));
     }
 
     partial void OnIsMinerUParsingChanged(bool value)

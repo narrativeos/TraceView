@@ -77,6 +77,13 @@ public sealed partial class DocumentViewModel
     [ObservableProperty]
     private SemanticProcessStatus _semanticStatus = SemanticProcessStatus.Idle;
 
+    partial void OnSemanticStatusChanged(SemanticProcessStatus value)
+    {
+        OnPropertyChanged(nameof(IsSemanticCompleted));
+        OnPropertyChanged(nameof(IsSemanticFailed));
+        OnPropertyChanged(nameof(SemanticButtonTooltip));
+    }
+
     [ObservableProperty]
     private int _semanticProgress;
 

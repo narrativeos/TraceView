@@ -140,3 +140,25 @@ public class IsGreaterThanConverter : IValueConverter
         throw new NotImplementedException();
     }
 }
+
+/// <summary>
+/// Converts a boolean completed state to opacity: true (completed) = 0.4, false (not completed) = 1.0.
+/// Used to make completed button icons semi-transparent while keeping the original icon visible.
+/// </summary>
+public class CompletedToOpacityConverter : IValueConverter
+{
+    public const double OpacityCompleted = 0.4;
+    public const double OpacityNotCompleted = 1.0;
+
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is bool boolValue)
+            return boolValue ? OpacityCompleted : OpacityNotCompleted;
+        return OpacityNotCompleted;
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        throw new NotImplementedException();
+    }
+}
