@@ -21,6 +21,7 @@
 using Avalonia.Controls.Notifications;
 using Caly.Core.Models;
 using Caly.Core.ViewModels;
+using Caly.Core.Views;
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -85,5 +86,19 @@ namespace Caly.Core.Services.Interfaces
         /// Returns true if the user confirmed, false if cancelled.
         /// </summary>
         Task<bool> ShowConfirmationDialogAsync(string title, string message);
+
+        /// <summary>
+        /// Shows a choice dialog for GeoLibre export, allowing the user to choose
+        /// between saving the file or opening it in the GeoLibre app.
+        /// Returns the user's choice as a GeoLibreExportChoice enum.
+        /// </summary>
+        Task<GeoLibreExportChoice> ShowGeoLibreExportChoiceDialogAsync(string title, string message);
+
+        /// <summary>
+        /// Shows a choice dialog for GeoLibre regenerate, allowing the user to choose
+        /// between cancelling, skipping regeneration, or regenerating GeoLibre data.
+        /// Returns the user's choice as a GeoLibreRegenerateChoice enum.
+        /// </summary>
+        Task<GeoLibreRegenerateChoice> ShowGeoLibreRegenerateChoiceDialogAsync(string title, string message);
     }
 }

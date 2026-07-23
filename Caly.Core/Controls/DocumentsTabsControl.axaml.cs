@@ -28,6 +28,7 @@ using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using Caly.Core.Models;
 using Caly.Core.Services.Interfaces;
+using Caly.Core.Views;
 using Caly.Core.Utilities;
 using Caly.Core.ViewModels;
 using CommunityToolkit.Mvvm.Input;
@@ -494,23 +495,90 @@ public sealed partial class DocumentsTabsControl : UserControl
         if (DataContext is not MainViewModel mainVm || mainVm.SelectedDocument is not DocumentViewModel docVm)
             return;
 
+        string? jsonContent = null;
+
+        // If GeoLibre file already exists, show the three-choice dialog
         if (docVm.HasGeoLibreFile)
         {
             var dialogService = DialogService;
             if (dialogService is not null)
             {
-                var confirmed = await dialogService.ShowConfirmationDialogAsync(
-                    "确认重新导出",
-                    "GeoLibre 数据已导出，重新导出将覆盖现有数据。是否继续？");
-                if (!confirmed)
+                var regenerateChoice = await dialogService.ShowGeoLibreRegenerateChoiceDialogAsync(
+                    "GeoLibre 数据已导出",
+                    "GeoLibre 数据已存在，请选择处理方式：");
+
+                switch (regenerateChoice)
                 {
-                    e.Handled = true;
-                    return;
+                    case GeoLibreRegenerateChoice.Cancel:
+                        e.Handled = true;
+                        return;
+
+                    case GeoLibreRegenerateChoice.Skip:
+                        // Skip regeneration, use existing file content
+                        jsonContent = docVm.GetExistingGeoLibreContent();
+                        if (jsonContent is null)
+                        {
+                            docVm.GeoStatus = GeoProcessStatus.Failed;
+                            docVm.GeoStatusText = "Failed to read existing GeoLibre file.";
+                            return;
+                        }
+                        break;
+
+                    case GeoLibreRegenerateChoice.Regenerate:
+                        // Regenerate GeoLibre JSON content
+                        jsonContent = await docVm.GenerateGeoLibreContentAsync();
+                        if (jsonContent is null)
+                            return;
+                        break;
                 }
             }
+            else
+            {
+                // No dialog service, regenerate by default
+                jsonContent = await docVm.GenerateGeoLibreContentAsync();
+                if (jsonContent is null)
+                    return;
+            }
+        }
+        else
+        {
+            // No existing file, generate GeoLibre JSON content
+            jsonContent = await docVm.GenerateGeoLibreContentAsync();
+            if (jsonContent is null)
+                return;
         }
 
-        docVm.ExportGeoLibreJsonCommand?.Execute(null);
+        // Show choice dialog: save file or open in GeoLibre app
+        var exportChoiceDialog = DialogService;
+        if (exportChoiceDialog is not null)
+        {
+            var choice = await exportChoiceDialog.ShowGeoLibreExportChoiceDialogAsync(
+                "选择导出方式",
+                "请选择 GeoLibre 导出文件的处理方式：");
+
+            switch (choice)
+            {
+                case GeoLibreExportChoice.SaveFile:
+                    await docVm.SaveGeoLibreFileAsync(jsonContent);
+                    break;
+                case GeoLibreExportChoice.OpenInRelease:
+                    docVm.OpenInGeoLibreRelease(jsonContent);
+                    break;
+                case GeoLibreExportChoice.OpenInDebug:
+                    docVm.OpenInGeoLibreDebug(jsonContent);
+                    break;
+                case GeoLibreExportChoice.Cancel:
+                default:
+                    docVm.GeoStatus = GeoProcessStatus.Idle;
+                    docVm.GeoStatusText = "Export cancelled";
+                    break;
+            }
+        }
+        else
+        {
+            // Fallback: if no dialog service, use default save behavior
+            await docVm.SaveGeoLibreFileAsync(jsonContent);
+        }
     }
 
     #endregion

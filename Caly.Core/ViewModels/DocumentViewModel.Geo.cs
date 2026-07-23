@@ -22,6 +22,8 @@ using Avalonia.Collections;
 using Avalonia.Threading;
 using Caly.Core.Models;
 using Caly.Core.Services;
+using Caly.Core.Services.Interfaces;
+using Caly.Core.Views;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System;
@@ -215,15 +217,107 @@ public sealed partial class DocumentViewModel
     private CancellationTokenSource? _geoCts;
     private CancellationTokenSource? _geoLibreCts;
 
-    #endregion
-
-    #region Geo Commands
-
-    [RelayCommand]
-    private void ToggleGeoColumn()
+    /// <summary>
+    /// Opens the GeoLibre file in the GeoLibre release app (/Applications/GeoLibre Desktop.app).
+    /// </summary>
+    public void OpenInGeoLibreRelease(string jsonContent)
     {
-        ShowGeoColumn = !ShowGeoColumn;
+        var outputDir = GetSemanticOutputDir();
+        var filePath = Path.Combine(outputDir, "locations.geolibre.json");
+
+        try
+        {
+            Directory.CreateDirectory(outputDir);
+            File.WriteAllText(filePath, jsonContent);
+            GeoLibreFilePath = filePath;
+
+            if (OperatingSystem.IsMacOS())
+            {
+                var releasePath = "/Applications/GeoLibre Desktop.app/Contents/MacOS/geolibre-desktop";
+                System.Diagnostics.Debug.WriteLine($"[GeoLibre] Opening with release app: {releasePath} {filePath}");
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = releasePath,
+                    Arguments = filePath,
+                    UseShellExecute = false
+                });
+            }
+            else if (OperatingSystem.IsWindows())
+            {
+                System.Diagnostics.Debug.WriteLine($"[GeoLibre] Opening on Windows: geolibre {filePath}");
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "geolibre",
+                    Arguments = filePath,
+                    UseShellExecute = true
+                });
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine($"[GeoLibre] Opening on Linux/other: geolibre {filePath}");
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "geolibre",
+                    Arguments = filePath,
+                    UseShellExecute = false
+                });
+            }
+
+            GeoStatus = GeoProcessStatus.Completed;
+            GeoStatusText = $"已在 GeoLibre 正式版中打开";
+            ShowGeoColumn = true;
+        }
+        catch (Exception ex)
+        {
+            GeoStatus = GeoProcessStatus.Failed;
+            GeoStatusText = $"Failed to open in GeoLibre: {ex.Message}";
+        }
     }
+
+#if DEBUG
+    /// <summary>
+    /// Opens the GeoLibre file in the GeoLibre debug build. Only available in Debug builds.
+    /// </summary>
+    public void OpenInGeoLibreDebug(string jsonContent)
+    {
+        var outputDir = GetSemanticOutputDir();
+        var filePath = Path.Combine(outputDir, "locations.geolibre.json");
+
+        try
+        {
+            Directory.CreateDirectory(outputDir);
+            File.WriteAllText(filePath, jsonContent);
+            GeoLibreFilePath = filePath;
+
+            if (OperatingSystem.IsMacOS())
+            {
+                var debugPath = "/Users/futuremeng/github/narrativeos/GeoLibre/apps/geolibre-desktop/src-tauri/target/debug/geolibre-desktop";
+                System.Diagnostics.Debug.WriteLine($"[GeoLibre] Opening with debug build: {debugPath} {filePath}");
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = debugPath,
+                    Arguments = filePath,
+                    UseShellExecute = false
+                });
+            }
+            else
+            {
+                GeoStatus = GeoProcessStatus.Failed;
+                GeoStatusText = "调试版仅支持 macOS。";
+                return;
+            }
+
+            GeoStatus = GeoProcessStatus.Completed;
+            GeoStatusText = $"已在 GeoLibre 调试版中打开";
+            ShowGeoColumn = true;
+        }
+        catch (Exception ex)
+        {
+            GeoStatus = GeoProcessStatus.Failed;
+            GeoStatusText = $"Failed to open in GeoLibre Debug: {ex.Message}";
+        }
+    }
+#endif
 
     [RelayCommand]
     private async Task GenerateGeoJsonAsync()
@@ -462,14 +556,29 @@ public sealed partial class DocumentViewModel
         }
     }
 
-    [RelayCommand]
-    private async Task ExportGeoLibreJsonAsync()
+    /// <summary>
+    /// Gets the existing GeoLibre JSON file content if it exists.
+    /// </summary>
+    public string? GetExistingGeoLibreContent()
+    {
+        if (!string.IsNullOrEmpty(GeoLibreFilePath) && File.Exists(GeoLibreFilePath))
+        {
+            return File.ReadAllText(GeoLibreFilePath);
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Generate GeoLibre JSON content without saving. Used by the export flow
+    /// so the caller can decide what to do with the content.
+    /// </summary>
+    public async Task<string?> GenerateGeoLibreContentAsync()
     {
         if (SemanticResults is null || !HasSemanticResults)
         {
             GeoStatus = GeoProcessStatus.Failed;
             GeoStatusText = "No semantic data available. Run NLP analysis first.";
-            return;
+            return null;
         }
 
         // If already processing, cancel
@@ -477,7 +586,7 @@ public sealed partial class DocumentViewModel
         {
             _geoLibreCts?.Cancel();
             GeoStatusText = "Cancelling...";
-            return;
+            return null;
         }
 
         _geoLibreCts = new CancellationTokenSource();
@@ -512,7 +621,7 @@ public sealed partial class DocumentViewModel
             GeoStatusText = "Export cancelled";
             _geoLibreCts?.Dispose();
             _geoLibreCts = null;
-            return;
+            return null;
         }
         catch (Exception ex)
         {
@@ -520,7 +629,7 @@ public sealed partial class DocumentViewModel
             GeoStatusText = $"Export error: {ex.Message}";
             _geoLibreCts?.Dispose();
             _geoLibreCts = null;
-            return;
+            return null;
         }
         finally
         {
@@ -532,31 +641,167 @@ public sealed partial class DocumentViewModel
         {
             GeoStatus = GeoProcessStatus.Failed;
             GeoStatusText = "No location entities found in semantic data.";
-            return;
+            return null;
         }
 
+        GeoStatus = GeoProcessStatus.Completed;
+        GeoStatusText = "GeoLibre JSON 已生成，请选择处理方式...";
+        return jsonContent;
+    }
+
+    /// <summary>
+    /// Save GeoLibre JSON content to a file via the save dialog.
+    /// </summary>
+    public async Task SaveGeoLibreFileAsync(string jsonContent)
+    {
         GeoStatusText = "请选择保存位置...";
 
-        // Show "Save As" dialog
         var fileName = FileName?.Replace(".pdf", "") ?? "document";
         var bytes = System.Text.Encoding.UTF8.GetBytes(jsonContent);
-        
+
         var savedFile = await _filesService.SaveFileAsync(bytes, $"{fileName}.geolibre.json");
 
         if (savedFile is not null)
         {
-            // Get the file path from the storage file
             var savedPath = savedFile.Path.LocalPath;
+            GeoLibreFilePath = savedPath;
             GeoStatus = GeoProcessStatus.Completed;
             GeoStatusText = $"GeoLibre JSON 已保存到: {System.IO.Path.GetFileName(savedPath)}";
             ShowGeoColumn = true;
         }
         else
         {
-            // User cancelled the save dialog
             GeoStatus = GeoProcessStatus.Idle;
             GeoStatusText = "Export cancelled";
         }
+    }
+
+    /// <summary>
+    /// Open GeoLibre JSON content in the GeoLibre desktop app by first saving to a file.
+    /// On macOS, uses 'open -a' to specify the app (debug or release).
+    /// </summary>
+    public void OpenInGeoLibreApp(string jsonContent)
+    {
+        // Save to project's semantic output directory first
+        var outputDir = GetSemanticOutputDir();
+        var filePath = Path.Combine(outputDir, "locations.geolibre.json");
+
+        try
+        {
+            Directory.CreateDirectory(outputDir);
+            File.WriteAllText(filePath, jsonContent);
+            GeoLibreFilePath = filePath;
+
+            // Open with GeoLibre desktop app using platform-specific command
+            OpenGeoLibreWithSystemCommand(filePath);
+
+            GeoStatus = GeoProcessStatus.Completed;
+            GeoStatusText = $"已在 GeoLibre 中打开";
+            ShowGeoColumn = true;
+        }
+        catch (Exception ex)
+        {
+            GeoStatus = GeoProcessStatus.Failed;
+            GeoStatusText = $"Failed to open in GeoLibre: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Checks if the GeoLibre debug build is running by looking for the process.
+    /// Returns true if running, false otherwise.
+    /// </summary>
+    bool IsGeoLibreDebugRunning()
+    {
+        if (!OperatingSystem.IsMacOS())
+            return false;
+
+        foreach (var process in System.Diagnostics.Process.GetProcesses())
+        {
+            try
+            {
+                if (process.ProcessName == "geolibre-desktop")
+                    return true;
+            }
+            catch
+            {
+                // Process may have exited, skip it
+            }
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Opens the file with the GeoLibre desktop app using platform-specific commands.
+    /// Uses runtime OS detection (OperatingSystem.IsMacOS etc.) instead of compile-time conditionals.
+    /// </summary>
+    void OpenGeoLibreWithSystemCommand(string filePath)
+    {
+        if (OperatingSystem.IsMacOS())
+        {
+            if (IsGeoLibreDebugRunning())
+            {
+                var debugPath = "/Users/futuremeng/github/narrativeos/GeoLibre/apps/geolibre-desktop/src-tauri/target/debug/geolibre-desktop";
+                System.Diagnostics.Debug.WriteLine($"[GeoLibre] Opening with debug build: {debugPath} {filePath}");
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = debugPath,
+                    Arguments = filePath,
+                    UseShellExecute = false
+                });
+            }
+            else
+            {
+                // Debug build not running, show error message instead of falling back to 'open'
+                System.Diagnostics.Debug.WriteLine($"[GeoLibre] Debug build not running, cannot open.");
+                GeoStatus = GeoProcessStatus.Failed;
+                GeoStatusText = "GeoLibre 未运行，请先启动 GeoLibre 应用后再试。";
+                return;
+            }
+        }
+        else if (OperatingSystem.IsWindows())
+        {
+            System.Diagnostics.Debug.WriteLine($"[GeoLibre] Opening on Windows: geolibre {filePath}");
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "geolibre",
+                Arguments = filePath,
+                UseShellExecute = true
+            });
+        }
+        else if (OperatingSystem.IsLinux())
+        {
+            System.Diagnostics.Debug.WriteLine($"[GeoLibre] Opening on Linux: geolibre {filePath}");
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "geolibre",
+                Arguments = filePath,
+                UseShellExecute = false
+            });
+        }
+        else
+        {
+            System.Diagnostics.Debug.WriteLine($"[GeoLibre] Opening on unknown OS: geolibre {filePath}");
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "geolibre",
+                Arguments = filePath,
+                UseShellExecute = true
+            });
+        }
+    }
+
+    [RelayCommand]
+    private async Task ExportGeoLibreJsonAsync()
+    {
+        // This is kept for backward compatibility (direct command invocation).
+        // The primary flow now goes through DocumentsTabsControl.OnExportGeoLibreClick
+        // which shows the choice dialog first.
+        var jsonContent = await GenerateGeoLibreContentAsync();
+        if (jsonContent is null)
+            return;
+
+        // Default behavior: save file (backward compatible)
+        await SaveGeoLibreFileAsync(jsonContent);
     }
 
     [RelayCommand]

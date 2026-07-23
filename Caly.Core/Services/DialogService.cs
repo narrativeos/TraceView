@@ -235,4 +235,38 @@ internal sealed class DialogService : IDialogService
             return result == true;
         }, DispatcherPriority.Loaded);
     }
+
+    public async Task<GeoLibreExportChoice> ShowGeoLibreExportChoiceDialogAsync(string title, string message)
+    {
+        return await Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            Debug.ThrowNotOnUiThread();
+
+            if (_target is not Window w)
+            {
+                return GeoLibreExportChoice.Cancel;
+            }
+
+            var dialog = new GeoLibreExportChoiceWindow(title, message);
+            var result = await dialog.ShowDialog<GeoLibreExportChoice?>(w);
+            return result ?? GeoLibreExportChoice.Cancel;
+        }, DispatcherPriority.Loaded);
+    }
+
+    public async Task<GeoLibreRegenerateChoice> ShowGeoLibreRegenerateChoiceDialogAsync(string title, string message)
+    {
+        return await Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            Debug.ThrowNotOnUiThread();
+
+            if (_target is not Window w)
+            {
+                return GeoLibreRegenerateChoice.Cancel;
+            }
+
+            var dialog = new GeoLibreRegenerateChoiceWindow(title, message);
+            var result = await dialog.ShowDialog<GeoLibreRegenerateChoice?>(w);
+            return result ?? GeoLibreRegenerateChoice.Cancel;
+        }, DispatcherPriority.Loaded);
+    }
 }

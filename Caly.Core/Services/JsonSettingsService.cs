@@ -19,6 +19,7 @@
 // SOFTWARE.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -57,6 +58,9 @@ namespace Caly.Core.Services;
 [JsonSerializable(typeof(HanLPToken), GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(HanLPEntity), GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(HanLPRelation), GenerationMode = JsonSourceGenerationMode.Metadata)]
+// Table of Contents models
+[JsonSerializable(typeof(TocEntry), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(List<TocEntry>), GenerationMode = JsonSourceGenerationMode.Metadata)]
 internal partial class SourceGenerationContext : JsonSerializerContext;
 
 internal sealed class JsonSettingsService : ISettingsService

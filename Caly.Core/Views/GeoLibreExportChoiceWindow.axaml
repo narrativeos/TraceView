@@ -1,0 +1,23 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="420" d:DesignHeight="200"
+        x:Class="Caly.Core.Views.GeoLibreExportChoiceWindow"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        ShowActivated="True"
+        Width="420" MinWidth="420"
+        Height="200" MinHeight="200">
+    <Grid RowDefinitions="Auto,*,Auto" Margin="16">
+        <TextBlock x:Name="TitleText" Grid.Row="0" FontSize="14" FontWeight="Bold" Margin="0,0,0,8"/>
+        <TextBlock x:Name="MessageText" Grid.Row="1" FontSize="13" TextWrapping="Wrap" Margin="0,0,0,12"/>
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+            <Button x:Name="SaveFileButton" Content="下载保存文件" Click="OnSaveFileClick" Width="120"/>
+            <Button x:Name="OpenInAppButton" Content="用正式版打开" Click="OnOpenInAppClick" Width="120" IsDefault="True"/>
+            <Button x:Name="OpenInDebugButton" Content="用调试版打开" Click="OnOpenInDebugClick" Width="120" IsVisible="False"/>
+            <Button Content="取消" Click="OnCancelClick" Width="80"/>
+        </StackPanel>
+    </Grid>
+</Window>
