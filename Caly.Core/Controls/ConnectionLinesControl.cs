@@ -189,6 +189,12 @@ public sealed class ConnectionLinesControl : Control
         AvaloniaProperty.Register<ConnectionLinesControl, bool>(nameof(ShowSemanticConnections), false);
 
     /// <summary>
+    /// Whether to show direct connection lines between MinerU Blocks and Semantic Blocks (bypassing Popo).
+    /// </summary>
+    public static readonly StyledProperty<bool> ShowMinerUSemanticConnectionsProperty =
+        AvaloniaProperty.Register<ConnectionLinesControl, bool>(nameof(ShowMinerUSemanticConnections), false);
+
+    /// <summary>
     /// Flat list of SemanticBlockResult items for drawing connection lines from Popo nodes to Semantic items.
     /// </summary>
     public static readonly StyledProperty<IReadOnlyList<SemanticBlockResult>?> VisibleSemanticItemsProperty =
@@ -207,6 +213,7 @@ public sealed class ConnectionLinesControl : Control
             ZoomLevelProperty,
             PdfColumnRightEdgeProperty,
             MinerUColumnLeftEdgeProperty,
+            MinerUColumnRightEdgeProperty,
             PdfPageLeftOffsetProperty,
             PdfPageTopOffsetProperty,
             MinerUListTopOffsetProperty,
@@ -220,6 +227,7 @@ public sealed class ConnectionLinesControl : Control
             PopoListTopOffsetProperty,
             VisiblePopoNodesProperty,
             ShowSemanticConnectionsProperty,
+            ShowMinerUSemanticConnectionsProperty,
             VisibleSemanticItemsProperty,
             SemanticScrollOffsetYProperty,
             SemanticListTopOffsetProperty);
@@ -275,6 +283,11 @@ public sealed class ConnectionLinesControl : Control
             control.InvalidateVisual();
         });
         ShowSemanticConnectionsProperty.Changed.AddClassHandler<ConnectionLinesControl>((control, e) =>
+        {
+            control.InvalidateCaches();
+            control.InvalidateVisual();
+        });
+        ShowMinerUSemanticConnectionsProperty.Changed.AddClassHandler<ConnectionLinesControl>((control, e) =>
         {
             control.InvalidateCaches();
             control.InvalidateVisual();
@@ -503,6 +516,12 @@ public sealed class ConnectionLinesControl : Control
         set => SetValue(ShowSemanticConnectionsProperty, value);
     }
 
+    public bool ShowMinerUSemanticConnections
+    {
+        get => GetValue(ShowMinerUSemanticConnectionsProperty);
+        set => SetValue(ShowMinerUSemanticConnectionsProperty, value);
+    }
+
     public IReadOnlyList<SemanticBlockResult>? VisibleSemanticItems
     {
         get => GetValue(VisibleSemanticItemsProperty);
@@ -668,6 +687,12 @@ public sealed class ConnectionLinesControl : Control
         if (ShowSemanticConnections)
         {
             RenderPopoToSemanticConnections(context);
+        }
+
+        // Render MinerU → Semantic direct connections
+        if (ShowMinerUSemanticConnections)
+        {
+            RenderMinerUSemanticConnections(context);
         }
     }
 
@@ -1375,6 +1400,171 @@ public sealed class ConnectionLinesControl : Control
 
         _cachedSemanticCumulativeY = cache;
         _semanticCumulativeYCacheValid = true;
+    }
+
+    #endregion
+
+    #region MinerU → Semantic Direct Connections
+
+    /// <summary>
+    /// Renders direct connection lines from MinerU Blocks to Semantic Blocks (bypassing Popo).
+    /// Start point: Center of MinerU block.
+    /// End point: Left edge center of Semantic item.
+    /// Uses SourceBlockIds for matching between MinerU blocks and Semantic items.
+    /// </summary>
+    private void RenderMinerUSemanticConnections(DrawingContext context)
+    {
+        var minerUBlocks = MinerUBlocks;
+        var semanticItems = VisibleSemanticItems;
+
+        if (minerUBlocks is null || minerUBlocks.Count == 0)
+            return;
+        if (semanticItems is null || semanticItems.Count == 0)
+            return;
+
+        // Build cumulative Y caches
+        BuildCumulativeYCacheForList(minerUBlocks);
+        BuildSemanticCumulativeYCache(semanticItems);
+
+        // Build a map: SourceBlockId (UUID) -> Semantic item index
+        var blockIdToSemanticIndex = new Dictionary<string, int>();
+        for (int i = 0; i < semanticItems.Count; i++)
+        {
+            var item = semanticItems[i];
+            foreach (var srcId in item.SourceBlockIds)
+            {
+                if (!string.IsNullOrEmpty(srcId) && !blockIdToSemanticIndex.ContainsKey(srcId))
+                {
+                    blockIdToSemanticIndex[srcId] = i;
+                }
+            }
+        }
+
+        // Draw connections: MinerU block -> Semantic item
+        for (int i = 0; i < minerUBlocks.Count; i++)
+        {
+            var block = minerUBlocks[i];
+            if (string.IsNullOrEmpty(block.BlockId))
+                continue;
+
+            // Only match by exact BlockId - no fallback to SourceBlockIds
+            // to prevent image/other blocks from incorrectly connecting to the first Semantic node
+            if (!blockIdToSemanticIndex.TryGetValue(block.BlockId, out var semanticIdx))
+                continue;
+
+            // Calculate start point (center of MinerU block)
+            var startPoint = CalculateMinerUBlockCenter(i);
+
+            // Calculate end point (LEFT edge of Semantic item)
+            var endPoint = CalculateSemanticItemLeftEdge(semanticIdx);
+
+            // Skip if outside visible area
+            if (IsOutsideVisibleArea(startPoint.Y, endPoint.Y))
+                continue;
+
+            // Calculate vertical distance for bow
+            var verticalDist = Math.Abs(endPoint.Y - startPoint.Y);
+            // Larger bow distance since MinerU and Semantic columns are far apart
+            var bowDistance = Math.Clamp(verticalDist * 0.3, 20.0, 80.0);
+
+            // S-curve: bow RIGHT from MinerU start, bow LEFT from Semantic end
+            var controlPoint1 = new Point(startPoint.X + bowDistance, startPoint.Y);
+            var controlPoint2 = new Point(endPoint.X - bowDistance, endPoint.Y);
+
+            var sg = new StreamGeometry();
+            using (var ctx = sg.Open())
+            {
+                ctx.BeginFigure(startPoint, false);
+                ctx.CubicBezierTo(controlPoint1, controlPoint2, endPoint);
+                ctx.EndFigure(false);
+            }
+
+            // Use colored pen based on the semantic item's dominant entity type
+            var pen = GetSemanticPenForItem(semanticItems[semanticIdx]);
+            context.DrawGeometry(null, pen, sg);
+        }
+    }
+
+    /// <summary>
+    /// Calculates the RIGHT EDGE of a MinerU block for direct connection start point.
+    /// </summary>
+    private Point CalculateMinerUBlockRightEdge(int blockIndex)
+    {
+        if (blockIndex < 0)
+            return new Point(MinerUColumnRightEdge, MinerUListTopOffset);
+
+        var blocks = MinerUBlocks;
+        if (blocks is null || blockIndex >= blocks.Count)
+            return new Point(MinerUColumnRightEdge, MinerUListTopOffset);
+
+        // Use pre-computed cumulative Y cache
+        double itemTop;
+        if (_cumulativeYCacheValid && blockIndex < _cachedMinerUCumulativeY.Length)
+        {
+            itemTop = _cachedMinerUCumulativeY[blockIndex];
+        }
+        else
+        {
+            itemTop = 0;
+            for (int i = 0; i < blockIndex; i++)
+            {
+                var h = blocks[i].ActualHeight;
+                if (h <= 0)
+                    h = MinerUBlockItemHeight;
+                itemTop += h + 4.0;
+            }
+        }
+
+        var currentBlock = blocks[blockIndex];
+        var itemHeight = currentBlock?.ActualHeight ?? MinerUBlockItemHeight;
+        if (itemHeight <= 0)
+            itemHeight = MinerUBlockItemHeight;
+        var itemCenterY = itemTop + itemHeight / 2.0;
+
+        // Right edge X of MinerU column
+        var screenY = MinerUListTopOffset + itemCenterY - MinerUScrollOffsetY;
+
+        return new Point(MinerUColumnRightEdge, screenY);
+    }
+
+    /// <summary>
+    /// Gets the appropriate pen for a Semantic item based on its dominant entity type.
+    /// </summary>
+    private static ImmutablePen GetSemanticPenForItem(SemanticBlockResult item)
+    {
+        if (item.Entities.Count == 0)
+            return DefaultSemanticPen;
+
+        // Count by category and return the most frequent
+        var categoryCounts = new Dictionary<string, int>();
+        foreach (var entity in item.Entities)
+        {
+            if (!categoryCounts.ContainsKey(entity.Category))
+                categoryCounts[entity.Category] = 0;
+            categoryCounts[entity.Category]++;
+        }
+
+        string dominant = "DEFAULT";
+        int maxCount = 0;
+        foreach (var kvp in categoryCounts)
+        {
+            if (kvp.Value > maxCount)
+            {
+                maxCount = kvp.Value;
+                dominant = kvp.Key;
+            }
+        }
+
+        return dominant switch
+        {
+            "LOCATION" => LocationPen,
+            "DATE" => DatePen,
+            "PERSON" => PersonPen,
+            "NUMBER" => NumberPen,
+            "FACILITY" => FacilityPen,
+            "ORGANIZATION" => OrganizationPen,
+            _ => DefaultSemanticPen
+        };
     }
 
     #endregion

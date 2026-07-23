@@ -727,6 +727,10 @@ public sealed partial class DocumentsTabsControl : UserControl
         // Show Semantic connections only when both Popo and Semantic columns are visible with data
         connControl.ShowSemanticConnections = docVm2.ShowAnalysisColumn && docVm2.ShowSemanticColumn && docVm2.HasSemanticResults;
 
+        // Show MinerU -> Semantic direct connections when both MinerU and Semantic columns are visible with data
+        // This provides a fallback visualization when Popo data is unavailable or the Popo column is hidden
+        connControl.ShowMinerUSemanticConnections = docVm2.ShowMinerUColumn && docVm2.ShowSemanticColumn && docVm2.HasSemanticResults;
+
         // Set Semantic items for Popo -> Semantic connections
         if (docVm2.SemanticResults is not null)
         {
