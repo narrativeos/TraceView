@@ -320,9 +320,16 @@ public sealed class GeoJsonService
     /// Features are grouped into separate layers by syntactic role for independent filtering/styling.
     /// Each feature includes location name label and source block content for context.
     /// Returns the JSON string content (does not write to file).
+    /// Prioritizes reading from cached GeoJSON file to avoid re-calling the geocoding API.
     /// </summary>
+    /// <param name="semanticResults">Semantic analysis results.</param>
+    /// <param name="geoJsonPath">Optional path to cached GeoJSON file. If provided and exists, reads from cache instead of calling API.</param>
+    /// <param name="onProgress">Optional progress callback showing current status.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<string?> GenerateGeoLibreJsonStringAsync(
         SemanticResultFile? semanticResults,
+        string? geoJsonPath = null,
+        Action<string>? onProgress = null,
         CancellationToken cancellationToken = default)
     {
         if (semanticResults is null || semanticResults.Blocks.Count == 0)
@@ -348,15 +355,38 @@ public sealed class GeoJsonService
             return null;
 
         var locationNames = locationByName.Keys.ToList();
+        var geocodingResults = new Dictionary<string, List<GeocodingResult>>();
 
-        // Geocode all locations using the confidence-based parallel method
-        var geocodingResults = await _geocodingService.GeocodeManyWithConfidenceAsync(
-            locationNames,
-            onFailed: (name, error, failureType) => {
-                // Failed locations are ignored in GeoLibre output (only successful locations are included)
-                System.Diagnostics.Debug.WriteLine($"[GeoLibre] Geocoding failed for '{name}': {error} ({failureType})");
-            },
-            cancellationToken: cancellationToken);
+        // Try to read from cached GeoJSON file first (fast, no API calls needed)
+        bool cacheLoaded = false;
+        if (!string.IsNullOrEmpty(geoJsonPath) && File.Exists(geoJsonPath))
+        {
+            cacheLoaded = TryLoadFromGeoJsonCache(geoJsonPath, locationByName, locationNames, ref geocodingResults, onProgress);
+            System.Diagnostics.Debug.WriteLine($"[GeoLibre] Cache loaded: {cacheLoaded}, got {geocodingResults.Count} results from {locationNames.Count} locations");
+        }
+
+        // Only call API if cache was not available or did not cover all locations
+        if (!cacheLoaded)
+        {
+            onProgress?.Invoke("调用地理编码 API...");
+            System.Diagnostics.Debug.WriteLine($"[GeoLibre] No cache available, calling geocoding API for {locationNames.Count} locations");
+            
+            // Geocode all locations using the confidence-based parallel method
+            geocodingResults = await _geocodingService.GeocodeManyWithConfidenceAsync(
+                locationNames,
+                onProcessing: (name) => {
+                    onProgress?.Invoke($"地理编码: {name}");
+                },
+                onSuccess: (name, results) => {
+                    onProgress?.Invoke($"成功: {name}");
+                },
+                onFailed: (name, error, failureType) => {
+                    // Failed locations are ignored in GeoLibre output (only successful locations are included)
+                    System.Diagnostics.Debug.WriteLine($"[GeoLibre] Geocoding failed for '{name}': {error} ({failureType})");
+                    onProgress?.Invoke($"失败: {name}");
+                },
+                cancellationToken: cancellationToken);
+        }
 
         // Calculate bounding box for map view center (use best result from each location)
         var bestResults = geocodingResults.Values.Select(r => r.FirstOrDefault()).Where(r => r != null).ToList();
@@ -558,15 +588,260 @@ public sealed class GeoJsonService
     }
 
     /// <summary>
+    /// Tries to load geocoding results from a cached GeoJSON file.
+    /// Returns true if the cache was loaded successfully.
+    /// </summary>
+    bool TryLoadFromGeoJsonCache(
+        string geoJsonPath,
+        Dictionary<string, (SemanticEntity Entity, string BlockContent, List<string> SourceBlockIds)> locationByName,
+        List<string> locationNames,
+        ref Dictionary<string, List<GeocodingResult>> geocodingResults,
+        Action<string>? onProgress)
+    {
+        try
+        {
+            var content = File.ReadAllText(geoJsonPath);
+            using (var doc = System.Text.Json.JsonDocument.Parse(content))
+            {
+                var root = doc.RootElement;
+                if (!root.TryGetProperty("features", out System.Text.Json.JsonElement features) ||
+                    features.ValueKind != System.Text.Json.JsonValueKind.Array)
+                {
+                    return false;
+                }
+
+                int count = 0;
+                int total = features.GetArrayLength();
+                
+                foreach (var feature in features.EnumerateArray())
+                {
+                    if (feature.ValueKind != System.Text.Json.JsonValueKind.Object)
+                        continue;
+
+                    string? name = null;
+                    double? lat = null;
+                    double? lon = null;
+                    string? displayName = null;
+                    string? placeId = null;
+                    string? osmType = null;
+                    long osmId = 0;
+                    string? cls = null;
+                    string? type = null;
+                    double importance = 0;
+                    double confidence = 0;
+                    string? matchType = null;
+                    string? matchedNameTag = null;
+                    string? matchedName = null;
+                    bool matchByHomophone = false;
+                    double? bboxMinLat = null;
+                    double? bboxMaxLat = null;
+                    double? bboxMinLon = null;
+                    double? bboxMaxLon = null;
+
+                    // Parse properties
+                    if (feature.TryGetProperty("properties", out System.Text.Json.JsonElement props) &&
+                        props.ValueKind == System.Text.Json.JsonValueKind.Object)
+                    {
+                        // Get status - skip failed entries
+                        if (props.TryGetProperty("status", out System.Text.Json.JsonElement statusEl) &&
+                            statusEl.ValueKind == System.Text.Json.JsonValueKind.String)
+                        {
+                            var status = statusEl.GetString();
+                            if (status != "success")
+                                continue; // Skip failed/not_processed locations
+                        }
+                        else
+                        {
+                            // No status field, check if geometry is null
+                            if (feature.TryGetProperty("geometry", out System.Text.Json.JsonElement geom))
+                            {
+                                if (geom.ValueKind == System.Text.Json.JsonValueKind.Null)
+                                    continue;
+                            }
+                        }
+
+                        if (props.TryGetProperty("name", out System.Text.Json.JsonElement nameEl) && nameEl.ValueKind == System.Text.Json.JsonValueKind.String)
+                            name = nameEl.GetString();
+                        if (props.TryGetProperty("display_name", out System.Text.Json.JsonElement dnEl) && dnEl.ValueKind == System.Text.Json.JsonValueKind.String)
+                            displayName = dnEl.GetString();
+                        if (props.TryGetProperty("place_id", out System.Text.Json.JsonElement piEl) && piEl.ValueKind == System.Text.Json.JsonValueKind.String)
+                            placeId = piEl.GetString();
+                        if (props.TryGetProperty("osm_type", out System.Text.Json.JsonElement otEl) && otEl.ValueKind == System.Text.Json.JsonValueKind.String)
+                            osmType = otEl.GetString();
+                        if (props.TryGetProperty("osm_id", out System.Text.Json.JsonElement oidEl) && oidEl.ValueKind == System.Text.Json.JsonValueKind.Number)
+                            osmId = oidEl.GetInt64();
+                        if (props.TryGetProperty("class", out System.Text.Json.JsonElement cEl) && cEl.ValueKind == System.Text.Json.JsonValueKind.String)
+                            cls = cEl.GetString();
+                        if (props.TryGetProperty("type", out System.Text.Json.JsonElement tEl) && tEl.ValueKind == System.Text.Json.JsonValueKind.String)
+                            type = tEl.GetString();
+                        if (props.TryGetProperty("importance", out System.Text.Json.JsonElement impEl) && impEl.ValueKind == System.Text.Json.JsonValueKind.Number)
+                            importance = impEl.GetDouble();
+                        if (props.TryGetProperty("confidence", out System.Text.Json.JsonElement confEl) && confEl.ValueKind == System.Text.Json.JsonValueKind.Number)
+                            confidence = confEl.GetDouble();
+                        if (props.TryGetProperty("match_type", out System.Text.Json.JsonElement mtEl) && mtEl.ValueKind == System.Text.Json.JsonValueKind.String)
+                            matchType = mtEl.GetString();
+                        if (props.TryGetProperty("matched_name_tag", out System.Text.Json.JsonElement mntEl) && mntEl.ValueKind == System.Text.Json.JsonValueKind.String)
+                            matchedNameTag = mntEl.GetString();
+                        if (props.TryGetProperty("matched_name", out System.Text.Json.JsonElement mnEl) && mnEl.ValueKind == System.Text.Json.JsonValueKind.String)
+                            matchedName = mnEl.GetString();
+                        if (props.TryGetProperty("match_by_homophone", out System.Text.Json.JsonElement mbhEl))
+                        {
+                            if (mbhEl.ValueKind == System.Text.Json.JsonValueKind.True)
+                                matchByHomophone = true;
+                        }
+                        
+                        // Parse bounding box if present
+                        if (props.TryGetProperty("bbox", out System.Text.Json.JsonElement bboxEl) &&
+                            bboxEl.ValueKind == System.Text.Json.JsonValueKind.Array &&
+                            bboxEl.GetArrayLength() >= 4)
+                        {
+                            bboxMinLat = bboxEl[0].GetDouble();
+                            bboxMaxLat = bboxEl[1].GetDouble();
+                            bboxMinLon = bboxEl[2].GetDouble();
+                            bboxMaxLon = bboxEl[3].GetDouble();
+                        }
+                    }
+
+                    // Parse geometry coordinates [lon, lat]
+                    if (feature.TryGetProperty("geometry", out System.Text.Json.JsonElement geom2) &&
+                        geom2.ValueKind == System.Text.Json.JsonValueKind.Object &&
+                        geom2.TryGetProperty("coordinates", out System.Text.Json.JsonElement coords) &&
+                        coords.ValueKind == System.Text.Json.JsonValueKind.Array &&
+                        coords.GetArrayLength() >= 2)
+                    {
+                        lon = coords[0].GetDouble();
+                        lat = coords[1].GetDouble();
+                    }
+
+                    if (string.IsNullOrEmpty(name) || !lat.HasValue || !lon.HasValue)
+                        continue;
+
+                    var result = new GeocodingResult
+                    {
+                        Name = name,
+                        Latitude = lat.Value,
+                        Longitude = lon.Value,
+                        DisplayName = displayName ?? name,
+                        IsCached = true,
+                        PlaceId = placeId ?? "",
+                        OsmType = osmType ?? "",
+                        OsmId = osmId,
+                        Class = cls ?? "",
+                        Type = type ?? "",
+                        Importance = importance,
+                        Confidence = confidence,
+                        MatchType = matchType ?? "",
+                        MatchedNameTag = matchedNameTag ?? "",
+                        MatchedName = matchedName ?? "",
+                        MatchByHomophone = matchByHomophone
+                    };
+
+                    if (bboxMinLat.HasValue)
+                    {
+                        result.BoundingBoxMinLat = bboxMinLat;
+                        result.BoundingBoxMaxLat = bboxMaxLat;
+                        result.BoundingBoxMinLon = bboxMinLon;
+                        result.BoundingBoxMaxLon = bboxMaxLon;
+                    }
+
+                    // Also try to load all_results from cache
+                    var allResults = new List<GeocodingResult> { result };
+                    if (props.ValueKind == System.Text.Json.JsonValueKind.Object &&
+                        props.TryGetProperty("all_results", out System.Text.Json.JsonElement allResultsEl) &&
+                        allResultsEl.ValueKind == System.Text.Json.JsonValueKind.Array)
+                    {
+                        allResults = new List<GeocodingResult>();
+                        foreach (var r in allResultsEl.EnumerateArray())
+                        {
+                            if (r.ValueKind != System.Text.Json.JsonValueKind.Object)
+                                continue;
+                            
+                            var rName = (r.TryGetProperty("name", out System.Text.Json.JsonElement rn) && rn.ValueKind == System.Text.Json.JsonValueKind.String) ? rn.GetString() : name;
+                            var rLat = r.TryGetProperty("latitude", out System.Text.Json.JsonElement rl) && rl.ValueKind == System.Text.Json.JsonValueKind.Number ? (double?)rl.GetDouble() : null;
+                            var rLon = r.TryGetProperty("longitude", out System.Text.Json.JsonElement rlo) && rlo.ValueKind == System.Text.Json.JsonValueKind.Number ? (double?)rlo.GetDouble() : null;
+                            
+                            if (!rLat.HasValue || !rLon.HasValue)
+                                continue;
+
+                            var rDisplayName = (r.TryGetProperty("display_name", out System.Text.Json.JsonElement rdn) && rdn.ValueKind == System.Text.Json.JsonValueKind.String) ? rdn.GetString() : rName;
+                            var rPlaceId = (r.TryGetProperty("place_id", out System.Text.Json.JsonElement rpi) && rpi.ValueKind == System.Text.Json.JsonValueKind.String) ? rpi.GetString() : "";
+                            var rOsmType = (r.TryGetProperty("osm_type", out System.Text.Json.JsonElement rot) && rot.ValueKind == System.Text.Json.JsonValueKind.String) ? rot.GetString() : "";
+                            var rOsmId = r.TryGetProperty("osm_id", out System.Text.Json.JsonElement roid) && roid.ValueKind == System.Text.Json.JsonValueKind.Number ? roid.GetInt64() : 0L;
+                            var rClass = (r.TryGetProperty("class", out System.Text.Json.JsonElement rc) && rc.ValueKind == System.Text.Json.JsonValueKind.String) ? rc.GetString() : "";
+                            var rType = (r.TryGetProperty("type", out System.Text.Json.JsonElement rt) && rt.ValueKind == System.Text.Json.JsonValueKind.String) ? rt.GetString() : "";
+                            var rImportance = r.TryGetProperty("importance", out System.Text.Json.JsonElement ri) && ri.ValueKind == System.Text.Json.JsonValueKind.Number ? ri.GetDouble() : 0.0;
+                            var rConfidence = r.TryGetProperty("confidence", out System.Text.Json.JsonElement rcf) && rcf.ValueKind == System.Text.Json.JsonValueKind.Number ? rcf.GetDouble() : 0.0;
+                            var rMatchType = (r.TryGetProperty("match_type", out System.Text.Json.JsonElement rmt) && rmt.ValueKind == System.Text.Json.JsonValueKind.String) ? rmt.GetString() : "";
+                            var rMatchedNameTag = (r.TryGetProperty("matched_name_tag", out System.Text.Json.JsonElement rmnt) && rmnt.ValueKind == System.Text.Json.JsonValueKind.String) ? rmnt.GetString() : "";
+                            var rMatchedName = (r.TryGetProperty("matched_name", out System.Text.Json.JsonElement rmn) && rmn.ValueKind == System.Text.Json.JsonValueKind.String) ? rmn.GetString() : "";
+                            var rMatchByHomophone = false;
+                            if (r.TryGetProperty("match_by_homophone", out System.Text.Json.JsonElement rmh))
+                            {
+                                if (rmh.ValueKind == System.Text.Json.JsonValueKind.True) rMatchByHomophone = true;
+                            }
+
+                            var cachedResult = new GeocodingResult
+                            {
+                                Name = rName,
+                                Latitude = rLat.Value,
+                                Longitude = rLon.Value,
+                                DisplayName = rDisplayName,
+                                IsCached = true,
+                                PlaceId = rPlaceId,
+                                OsmType = rOsmType,
+                                OsmId = rOsmId,
+                                Class = rClass,
+                                Type = rType,
+                                Importance = rImportance,
+                                Confidence = rConfidence,
+                                MatchType = rMatchType,
+                                MatchedNameTag = rMatchedNameTag,
+                                MatchedName = rMatchedName,
+                                MatchByHomophone = rMatchByHomophone
+                            };
+
+                            if (r.TryGetProperty("bbox_min_lat", out System.Text.Json.JsonElement bml) && bml.ValueKind == System.Text.Json.JsonValueKind.Number)
+                            {
+                                cachedResult.BoundingBoxMinLat = bml.GetDouble();
+                                cachedResult.BoundingBoxMaxLat = r.TryGetProperty("bbox_max_lat", out System.Text.Json.JsonElement bmal) && bmal.ValueKind == System.Text.Json.JsonValueKind.Number ? (double?)bmal.GetDouble() : null;
+                                cachedResult.BoundingBoxMinLon = r.TryGetProperty("bbox_min_lon", out System.Text.Json.JsonElement bmlo) && bmlo.ValueKind == System.Text.Json.JsonValueKind.Number ? (double?)bmlo.GetDouble() : null;
+                                cachedResult.BoundingBoxMaxLon = r.TryGetProperty("bbox_max_lon", out System.Text.Json.JsonElement bma) && bma.ValueKind == System.Text.Json.JsonValueKind.Number ? (double?)bma.GetDouble() : null;
+                            }
+
+                            allResults.Add(cachedResult);
+                        }
+                    }
+
+                    if (allResults.Count > 0)
+                    {
+                        geocodingResults[name] = allResults;
+                        count++;
+                        onProgress?.Invoke($"从缓存加载: {count}/{total} ({name})");
+                    }
+                }
+            }
+
+            return geocodingResults.Count > 0;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[GeoLibre] Failed to load from cache: {ex.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Generate a GeoLibre-compatible JSON file with embedded GeoJSON data.
     /// This format can be loaded directly by GeoLibre via ?url= parameter.
     /// </summary>
     public async Task<string?> GenerateGeoLibreJsonAsync(
         SemanticResultFile? semanticResults,
         string outputDir,
+        string? geoJsonPath = null,
+        Action<string>? onProgress = null,
         CancellationToken cancellationToken = default)
     {
-        var json = await GenerateGeoLibreJsonStringAsync(semanticResults, cancellationToken);
+        var json = await GenerateGeoLibreJsonStringAsync(semanticResults, geoJsonPath, onProgress, cancellationToken);
         if (json is null)
             return null;
 

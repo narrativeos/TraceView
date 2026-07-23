@@ -491,9 +491,19 @@ public sealed partial class DocumentViewModel
         {
             var geoJsonService = new GeoJsonService();
 
-            // Generate GeoLibre JSON string (without writing to file)
+            // Get the cached GeoJSON file path (if it exists)
+            var outputDir = GetSemanticOutputDir();
+            var geoJsonPath = Path.Combine(outputDir, "locations.geojson");
+
+            // Generate GeoLibre JSON string, prioritizing cache
             jsonContent = await geoJsonService.GenerateGeoLibreJsonStringAsync(
                 SemanticResults,
+                geoJsonPath: HasGeoJsonFile ? GeoJsonFilePath : (string)null,
+                onProgress: (status) => {
+                    Dispatcher.UIThread.InvokeAsync(() => {
+                        GeoStatusText = status;
+                    });
+                },
                 cancellationToken: _geoLibreCts.Token);
         }
         catch (OperationCanceledException)
