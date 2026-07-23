@@ -72,6 +72,14 @@ public sealed partial class DocumentViewModel
     [ObservableProperty]
     private GeoProcessStatus _geoStatus = GeoProcessStatus.Idle;
 
+    partial void OnGeoStatusChanged(GeoProcessStatus value)
+    {
+        OnPropertyChanged(nameof(IsGeoCompleted));
+        OnPropertyChanged(nameof(IsGeoFailed));
+        OnPropertyChanged(nameof(ShowGeoPlaceholder));
+        OnPropertyChanged(nameof(GeoButtonTooltip));
+    }
+
     [ObservableProperty]
     private string _geoStatusText = "Ready";
 
@@ -96,6 +104,7 @@ public sealed partial class DocumentViewModel
         OnPropertyChanged(nameof(GeocodingSuccessCount));
         OnPropertyChanged(nameof(GeocodingFailedCount));
         OnPropertyChanged(nameof(GeocodingProgressText));
+        OnPropertyChanged(nameof(ShowGeoPlaceholder));
     }
 
     private void OnGeocodingLocationsCollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
@@ -104,6 +113,7 @@ public sealed partial class DocumentViewModel
         OnPropertyChanged(nameof(GeocodingSuccessCount));
         OnPropertyChanged(nameof(GeocodingFailedCount));
         OnPropertyChanged(nameof(GeocodingProgressText));
+        OnPropertyChanged(nameof(ShowGeoPlaceholder));
     }
 
     /// <summary>
@@ -150,6 +160,25 @@ public sealed partial class DocumentViewModel
     /// Whether geo processing has failed.
     /// </summary>
     public bool IsGeoFailed => GeoStatus == GeoProcessStatus.Failed;
+
+    /// <summary>
+    /// Whether to show the empty placeholder (no locations, not processing, not failed).
+    /// </summary>
+    public bool ShowGeoPlaceholder
+    {
+        get
+        {
+            if (GeocodingTotalCount > 0)
+                return false;
+            if (GeoStatus == GeoProcessStatus.Processing)
+                return false;
+            if (GeoStatus == GeoProcessStatus.Failed)
+                return false;
+            if (GeoStatus == GeoProcessStatus.Completed)
+                return false;
+            return true;
+        }
+    }
 
     /// <summary>
     /// Human-readable status for the Geo button tooltip.
@@ -599,146 +628,176 @@ public sealed partial class DocumentViewModel
                 GeoJsonFilePath = geoJsonPath;
                 GeoStatus = GeoProcessStatus.Completed;
                 ShowGeoColumn = true;
-                
-                // Parse the GeoJSON file to populate the locations table
+
+                // Parse the GeoJSON file using System.Text.Json (fast, AOT-compatible)
                 var content = File.ReadAllText(geoJsonPath);
                 var locations = new ObservableCollection<GeocodingLocationViewModel>();
-                
-                // Parse features from GeoJSON (simple string-based parsing to avoid AOT issues)
-                // Format: "features": [ { "type":"Feature", "properties":{...}, "geometry":{...} } ]
-                int loadIndex = 0;
-                var featuresStart = content.IndexOf("\"features\"");
-                if (featuresStart >= 0)
+
+                using (var doc = System.Text.Json.JsonDocument.Parse(content))
                 {
-                    // Find the array after "features":
-                    var arrayStart = content.IndexOf('[', featuresStart);
-                    if (arrayStart >= 0)
+                    var root = doc.RootElement;
+                    if (!root.TryGetProperty("features", out System.Text.Json.JsonElement features) ||
+                        features.ValueKind != System.Text.Json.JsonValueKind.Array)
+                        return;
+
+                    int loadIndex = 0;
+                    foreach (var feature in features.EnumerateArray())
                     {
-                        // Extract each feature object by counting braces
-                        int pos = arrayStart + 1;
-                        while (pos < content.Length)
+                        if (feature.ValueKind != System.Text.Json.JsonValueKind.Object)
+                            continue;
+
+                        string? name = null;
+                        string? displayName = null;
+                        string? type = null;
+                        string? syntacticRole = null;
+                        string? matchType = null;
+                        string? matchedName = null;
+                        string? matchedNameTag = null;
+                        bool matchByHomophone = false;
+                        double? lat = null;
+                        double? lon = null;
+
+                        // Parse properties
+                        System.Text.Json.JsonElement props = default;
+                        if (feature.TryGetProperty("properties", out System.Text.Json.JsonElement p) &&
+                            p.ValueKind == System.Text.Json.JsonValueKind.Object)
                         {
-                            // Skip whitespace and commas
-                            while (pos < content.Length && (char.IsWhiteSpace(content[pos]) || content[pos] == ',' || content[pos] == '\n' || content[pos] == '\r' || content[pos] == ' '))
-                                pos++;
-                            
-                            if (content[pos] == ']')
-                                break;
-                            
-                            if (content[pos] == '{')
+                            props = p;
+                            if (props.TryGetProperty("name", out System.Text.Json.JsonElement nameEl) && nameEl.ValueKind == System.Text.Json.JsonValueKind.String)
+                                name = nameEl.GetString();
+                            if (props.TryGetProperty("display_name", out System.Text.Json.JsonElement dnEl) && dnEl.ValueKind == System.Text.Json.JsonValueKind.String)
+                                displayName = dnEl.GetString();
+                            if (props.TryGetProperty("type", out System.Text.Json.JsonElement tEl) && tEl.ValueKind == System.Text.Json.JsonValueKind.String)
+                                type = tEl.GetString();
+                            if (type == null && props.TryGetProperty("class", out System.Text.Json.JsonElement cEl) && cEl.ValueKind == System.Text.Json.JsonValueKind.String)
+                                type = cEl.GetString();
+                            if (props.TryGetProperty("syntactic_role", out System.Text.Json.JsonElement srEl) && srEl.ValueKind == System.Text.Json.JsonValueKind.String)
+                                syntacticRole = srEl.GetString();
+                            if (props.TryGetProperty("match_type", out System.Text.Json.JsonElement mtEl) && mtEl.ValueKind == System.Text.Json.JsonValueKind.String)
+                                matchType = mtEl.GetString();
+                            if (props.TryGetProperty("matched_name", out System.Text.Json.JsonElement mnEl) && mnEl.ValueKind == System.Text.Json.JsonValueKind.String)
+                                matchedName = mnEl.GetString();
+                            if (props.TryGetProperty("matched_name_tag", out System.Text.Json.JsonElement mntEl) && mntEl.ValueKind == System.Text.Json.JsonValueKind.String)
+                                matchedNameTag = mntEl.GetString();
+                            if (props.TryGetProperty("match_by_homophone", out System.Text.Json.JsonElement mbhEl))
                             {
-                                // Find matching closing brace
-                                int depth = 0;
-                                int featureStart = pos;
-                                while (pos < content.Length)
-                                {
-                                    if (content[pos] == '{') depth++;
-                                    if (content[pos] == '}') depth--;
-                                    pos++;
-                                    if (depth == 0) break;
-                                }
-                                
-                                string feature = content.Substring(featureStart, pos - featureStart);
-                                
-                                // Extract name and display_name from "properties" object
-                                var propertiesStart = feature.IndexOf("\"properties\"");
-                                    string? name = null;
-                                    string? displayName = null;
-                                    string? type = null;
-                                    string? syntacticRole = null;
-                                    
-                                    if (propertiesStart >= 0)
-                                {
-                                    var propObjStart = feature.IndexOf('{', propertiesStart);
-                                    if (propObjStart >= 0)
-                                    {
-                                        int propDepth = 0;
-                                        int propObjEnd = propObjStart;
-                                        while (propObjEnd < feature.Length)
-                                        {
-                                            if (feature[propObjEnd] == '{') propDepth++;
-                                            if (feature[propObjEnd] == '}') propDepth--;
-                                            propObjEnd++;
-                                            if (propDepth == 0) break;
-                                        }
-                                        string propertiesObj = feature.Substring(propObjStart, propObjEnd - propObjStart);
-                                        name = ExtractJsonStringValue(propertiesObj, "name");
-                                        displayName = ExtractJsonStringValue(propertiesObj, "display_name");
-                                        type = ExtractJsonStringValue(propertiesObj, "type") ?? ExtractJsonStringValue(propertiesObj, "class");
-                                        syntacticRole = ExtractJsonStringValue(propertiesObj, "syntactic_role");
-                                    }
-                                }
-                                
-                                // Extract coordinates from "geometry": { "type": "Point", "coordinates": [lon, lat] }
-                                // GeoJSON coordinates are [longitude, latitude]
-                                double? lat = null;
-                                double? lon = null;
-                                var geometryIdx = feature.IndexOf("\"geometry\"");
-                                if (geometryIdx >= 0)
-                                {
-                                    var geomObjStart = feature.IndexOf('{', geometryIdx);
-                                    if (geomObjStart >= 0)
-                                    {
-                                        int geomDepth = 0;
-                                        int geomObjEnd = geomObjStart;
-                                        while (geomObjEnd < feature.Length)
-                                        {
-                                            if (feature[geomObjEnd] == '{') geomDepth++;
-                                            if (feature[geomObjEnd] == '}') geomDepth--;
-                                            geomObjEnd++;
-                                            if (geomDepth == 0) break;
-                                        }
-                                        string geometryObj = feature.Substring(geomObjStart, geomObjEnd - geomObjStart);
-                                        // Extract "coordinates": [lon, lat]
-                                        var coordsIdx = geometryObj.IndexOf("\"coordinates\"");
-                                        if (coordsIdx >= 0)
-                                        {
-                                            var arrayIdx = geometryObj.IndexOf('[', coordsIdx);
-                                            if (arrayIdx >= 0)
-                                            {
-                                                var closeBracket = geometryObj.IndexOf(']', arrayIdx);
-                                                if (closeBracket > arrayIdx)
-                                                {
-                                                    string coordsStr = geometryObj.Substring(arrayIdx + 1, closeBracket - arrayIdx - 1);
-                                                    var parts = coordsStr.Split(',').Select(s => s.Trim()).ToArray();
-                                                    if (parts.Length >= 2 && double.TryParse(parts[0], out var lonVal) && double.TryParse(parts[1], out var latVal))
-                                                    {
-                                                        lon = lonVal;  // GeoJSON: [longitude, latitude]
-                                                        lat = latVal;
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                
-                                if (!string.IsNullOrEmpty(name))
-                                {
-                                    var vm = new GeocodingLocationViewModel(name);
-                                    vm.Index = loadIndex++;
-                                    vm.DisplayName = displayName ?? name;
-                                    vm.PlaceType = type ?? "";
-                                    vm.SyntacticRole = syntacticRole ?? "";
-                                    
-                                    if (lat.HasValue && lon.HasValue)
-                                    {
-                                        vm.Status = GeocodingStatus.Success;
-                                        vm.Latitude = lat.Value;
-                                        vm.Longitude = lon.Value;
-                                    }
-                                    
-                                    locations.Add(vm);
-                                }
+                                if (mbhEl.ValueKind == System.Text.Json.JsonValueKind.True)
+                                    matchByHomophone = true;
+                                else if (mbhEl.ValueKind == System.Text.Json.JsonValueKind.False)
+                                    matchByHomophone = false;
                             }
                         }
+
+                        // Parse geometry coordinates [lon, lat]
+                        if (feature.TryGetProperty("geometry", out System.Text.Json.JsonElement geom) &&
+                            geom.ValueKind == System.Text.Json.JsonValueKind.Object &&
+                            geom.TryGetProperty("coordinates", out System.Text.Json.JsonElement coords) &&
+                            coords.ValueKind == System.Text.Json.JsonValueKind.Array &&
+                            coords.GetArrayLength() >= 2)
+                        {
+                            lon = coords[0].GetDouble();
+                            lat = coords[1].GetDouble();
+                        }
+
+                        if (string.IsNullOrEmpty(name))
+                            continue;
+
+                        var vm = new GeocodingLocationViewModel(name);
+                        vm.Index = loadIndex++;
+                        vm.DisplayName = displayName ?? name;
+                        vm.PlaceType = type ?? "";
+                        vm.SyntacticRole = syntacticRole ?? "";
+                        vm.MatchType = matchType ?? "";
+                        vm.MatchedName = matchedName ?? "";
+                        vm.MatchedNameTag = matchedNameTag ?? "";
+                        vm.MatchByHomophone = matchByHomophone;
+
+                        if (lat.HasValue && lon.HasValue)
+                        {
+                            vm.Status = GeocodingStatus.Success;
+                            vm.Latitude = lat.Value;
+                            vm.Longitude = lon.Value;
+                        }
+
+                        // Parse all_results array
+                        if (props.ValueKind == System.Text.Json.JsonValueKind.Object &&
+                            props.TryGetProperty("all_results", out System.Text.Json.JsonElement allResults) &&
+                            allResults.ValueKind == System.Text.Json.JsonValueKind.Array)
+                        {
+                            foreach (var r in allResults.EnumerateArray())
+                            {
+                                if (r.ValueKind != System.Text.Json.JsonValueKind.Object)
+                                    continue;
+
+                                var rName = (r.TryGetProperty("name", out System.Text.Json.JsonElement rn) && rn.ValueKind == System.Text.Json.JsonValueKind.String) ? rn.GetString() : name;
+                                var rLat = r.TryGetProperty("latitude", out System.Text.Json.JsonElement rl) && rl.ValueKind == System.Text.Json.JsonValueKind.Number ? (double?)rl.GetDouble() : null;
+                                var rLon = r.TryGetProperty("longitude", out System.Text.Json.JsonElement rlo) && rlo.ValueKind == System.Text.Json.JsonValueKind.Number ? (double?)rlo.GetDouble() : null;
+                                var rDisplayName = (r.TryGetProperty("display_name", out System.Text.Json.JsonElement rdn) && rdn.ValueKind == System.Text.Json.JsonValueKind.String) ? rdn.GetString() : rName;
+                                var rIsCached = false;
+                                if (r.TryGetProperty("is_cached", out System.Text.Json.JsonElement ric))
+                                {
+                                    if (ric.ValueKind == System.Text.Json.JsonValueKind.True) rIsCached = true;
+                                }
+                                var rPlaceId = (r.TryGetProperty("place_id", out System.Text.Json.JsonElement rpi) && rpi.ValueKind == System.Text.Json.JsonValueKind.String) ? rpi.GetString() : "";
+                                var rOsmType = (r.TryGetProperty("osm_type", out System.Text.Json.JsonElement rot) && rot.ValueKind == System.Text.Json.JsonValueKind.String) ? rot.GetString() : "";
+                                var rOsmId = r.TryGetProperty("osm_id", out System.Text.Json.JsonElement roid) && roid.ValueKind == System.Text.Json.JsonValueKind.Number ? roid.GetInt64() : 0L;
+                                var rClass = (r.TryGetProperty("class", out System.Text.Json.JsonElement rc) && rc.ValueKind == System.Text.Json.JsonValueKind.String) ? rc.GetString() : "";
+                                var rType = (r.TryGetProperty("type", out System.Text.Json.JsonElement rt) && rt.ValueKind == System.Text.Json.JsonValueKind.String) ? rt.GetString() : "";
+                                var rImportance = r.TryGetProperty("importance", out System.Text.Json.JsonElement ri) && ri.ValueKind == System.Text.Json.JsonValueKind.Number ? ri.GetDouble() : 0.0;
+                                var rConfidence = r.TryGetProperty("confidence", out System.Text.Json.JsonElement rcf) && rcf.ValueKind == System.Text.Json.JsonValueKind.Number ? rcf.GetDouble() : 0.0;
+                                var rMatchType = (r.TryGetProperty("match_type", out System.Text.Json.JsonElement rmt) && rmt.ValueKind == System.Text.Json.JsonValueKind.String) ? rmt.GetString() : "";
+                                var rMatchedNameTag = (r.TryGetProperty("matched_name_tag", out System.Text.Json.JsonElement rmnt) && rmnt.ValueKind == System.Text.Json.JsonValueKind.String) ? rmnt.GetString() : "";
+                                var rMatchedName = (r.TryGetProperty("matched_name", out System.Text.Json.JsonElement rmn) && rmn.ValueKind == System.Text.Json.JsonValueKind.String) ? rmn.GetString() : "";
+                                var rMatchByHomophone = false;
+                                if (r.TryGetProperty("match_by_homophone", out System.Text.Json.JsonElement rmh))
+                                {
+                                    if (rmh.ValueKind == System.Text.Json.JsonValueKind.True) rMatchByHomophone = true;
+                                }
+
+                                var result = new GeocodingResult
+                                {
+                                    Name = rName,
+                                    Latitude = rLat ?? 0,
+                                    Longitude = rLon ?? 0,
+                                    DisplayName = rDisplayName,
+                                    IsCached = rIsCached,
+                                    PlaceId = rPlaceId,
+                                    OsmType = rOsmType,
+                                    OsmId = rOsmId,
+                                    Class = rClass,
+                                    Type = rType,
+                                    Importance = rImportance,
+                                    Confidence = rConfidence,
+                                    MatchType = rMatchType,
+                                    MatchedNameTag = rMatchedNameTag,
+                                    MatchedName = rMatchedName,
+                                    MatchByHomophone = rMatchByHomophone
+                                };
+
+                                if (rLat.HasValue)
+                                {
+                                    result.BoundingBoxMinLat = r.TryGetProperty("bbox_min_lat", out System.Text.Json.JsonElement bml) && bml.ValueKind == System.Text.Json.JsonValueKind.Number ? (double?)bml.GetDouble() : null;
+                                    result.BoundingBoxMaxLat = r.TryGetProperty("bbox_max_lat", out System.Text.Json.JsonElement bmal) && bmal.ValueKind == System.Text.Json.JsonValueKind.Number ? (double?)bmal.GetDouble() : null;
+                                    result.BoundingBoxMinLon = r.TryGetProperty("bbox_min_lon", out System.Text.Json.JsonElement bmlo) && bmlo.ValueKind == System.Text.Json.JsonValueKind.Number ? (double?)bmlo.GetDouble() : null;
+                                    result.BoundingBoxMaxLon = r.TryGetProperty("bbox_max_lon", out System.Text.Json.JsonElement bma) && bma.ValueKind == System.Text.Json.JsonValueKind.Number ? (double?)bma.GetDouble() : null;
+                                }
+
+                                vm.Results.Add(new GeocodingResultViewModel(vm.Results.Count, result));
+                            }
+
+                            if (vm.Results.Count > 0)
+                                vm.SelectedResultIndex = 0;
+                        }
+
+                        locations.Add(vm);
                     }
                 }
-                
+
                 GeocodingLocations = locations;
-                GeoStatusText = locations.Count > 0 
-                    ? $"Loaded {locations.Count} locations from cache" 
+                GeoStatusText = locations.Count > 0
+                    ? $"Loaded {locations.Count} locations from cache"
                     : "GeoJSON loaded (no locations)";
-                
+
                 System.Diagnostics.Debug.WriteLine($"[Geo] TryLoadGeoData: loaded {locations.Count} locations from {geoJsonPath}");
             }
 
@@ -755,7 +814,40 @@ public sealed partial class DocumentViewModel
             System.Diagnostics.Debug.WriteLine($"[Geo] TryLoadGeoData ERROR: {ex.Message}");
         }
     }
-    
+
+    #endregion
+
+    /// <summary>
+    /// Extract a boolean value for a given key from a JSON string (simple parsing).
+    /// </summary>
+    static void ExtractJsonBool(string json, string key, out bool result)
+    {
+        result = false;
+        var searchKey = "\"" + key + "\"";
+        int idx = json.IndexOf(searchKey);
+        if (idx < 0) return;
+        
+        // Find the colon after the key
+        idx = json.IndexOf(':', idx + searchKey.Length);
+        if (idx < 0) return;
+        
+        // Skip whitespace
+        idx++;
+        while (idx < json.Length && char.IsWhiteSpace(json[idx])) idx++;
+        
+        if (idx >= json.Length) return;
+        
+        // Check for true/false
+        if (json.Substring(idx, 4) == "true")
+        {
+            result = true;
+        }
+        else if (json.Substring(idx, 5) == "false")
+        {
+            result = false;
+        }
+    }
+
     /// <summary>
     /// Extract a string value for a given key from a JSON string (simple parsing).
     /// </summary>
@@ -799,7 +891,82 @@ public sealed partial class DocumentViewModel
         return end > start ? json.Substring(start, end - start).Replace("\\\"", "\"") : null;
     }
 
-    #endregion
+    /// <summary>
+    /// Extract a double value for a given key from a JSON string (simple parsing).
+    /// </summary>
+    static double? ExtractJsonDoubleValue(string json, string key)
+    {
+        var searchKey = "\"" + key + "\"";
+        int idx = json.IndexOf(searchKey);
+        if (idx < 0) return null;
+        
+        // Find the colon after the key
+        idx = json.IndexOf(':', idx + searchKey.Length);
+        if (idx < 0) return null;
+        
+        // Skip whitespace
+        idx++;
+        while (idx < json.Length && char.IsWhiteSpace(json[idx])) idx++;
+        
+        if (idx >= json.Length) return null;
+        
+        // Check for null
+        if (json.Substring(idx, 4) == "null") return null;
+        
+        // Read number until comma, }, ], or whitespace
+        int start = idx;
+        int end = idx;
+        while (end < json.Length && json[end] != ',' && json[end] != '}' && json[end] != ']' && !char.IsWhiteSpace(json[end]))
+            end++;
+        
+        if (end > start && double.TryParse(json.Substring(start, end - start), out var value))
+            return value;
+        
+        return null;
+    }
+
+    /// <summary>
+    /// Extract a long value for a given key from a JSON string (simple parsing).
+    /// </summary>
+    static long? ExtractJsonLongValue(string json, string key)
+    {
+        var searchKey = "\"" + key + "\"";
+        int idx = json.IndexOf(searchKey);
+        if (idx < 0) return null;
+        
+        // Find the colon after the key
+        idx = json.IndexOf(':', idx + searchKey.Length);
+        if (idx < 0) return null;
+        
+        // Skip whitespace
+        idx++;
+        while (idx < json.Length && char.IsWhiteSpace(json[idx])) idx++;
+        
+        if (idx >= json.Length) return null;
+        
+        // Check for null
+        if (json.Substring(idx, 4) == "null") return null;
+        
+        // Read number until comma, }, ], or whitespace
+        int start = idx;
+        int end = idx;
+        while (end < json.Length && json[end] != ',' && json[end] != '}' && json[end] != ']' && !char.IsWhiteSpace(json[end]))
+            end++;
+        
+        if (end > start && long.TryParse(json.Substring(start, end - start), out var value))
+            return value;
+        
+        return null;
+    }
+
+    /// <summary>
+    /// Extract a boolean value for a given key from a JSON string (returns default false if not found).
+    /// </summary>
+    static bool ExtractJsonBoolValue(string json, string key)
+    {
+        ExtractJsonBool(json, key, out var result);
+        return result;
+    }
 }
 
 /// <summary>

@@ -1398,19 +1398,28 @@
                                       BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
                                       BorderThickness="1"
                                       IsVisible="{Binding ShowGeoColumn}">
-                                  <DockPanel>
-                                      <!-- Header -->
-                                      <StackPanel DockPanel.Dock="Top"
-                                                  Orientation="Horizontal"
-                                                  Spacing="4"
-                                                  Margin="0,0,0,6">
-                                          <TextBlock Text="Geo"
-                                                     FontWeight="Bold"
-                                                     FontSize="12"/>
-                                          <TextBlock Text="{Binding GeoStatusText}"
-                                                     FontSize="10"
-                                                     Opacity="0.5"/>
-                                      </StackPanel>
+                                   <DockPanel>
+                                        <!-- Header -->
+                                        <Grid DockPanel.Dock="Top"
+                                              Margin="0,0,0,6"
+                                              ColumnDefinitions="*,Auto">
+                                           <StackPanel Grid.Column="0"
+                                                       Orientation="Horizontal"
+                                                       Spacing="4">
+                                               <TextBlock Text="Geo"
+                                                          FontWeight="Bold"
+                                                          FontSize="12"/>
+                                               <TextBlock Text="{Binding GeoStatusText}"
+                                                          FontSize="10"
+                                                          Opacity="0.5"/>
+                                           </StackPanel>
+                                           <Button Grid.Column="1"
+                                                   Content="Cancel"
+                                                   Command="{Binding CancelGeoProcessCommand}"
+                                                   IsVisible="{Binding IsGeoProcessing}"
+                                                   Padding="12,2"
+                                                   FontSize="10"/>
+                                       </Grid>
 
                                        <!-- Location Table -->
                                        <ScrollViewer IsVisible="{Binding GeocodingTotalCount, Converter={StaticResource IsGreaterThanConverter}, ConverterParameter=0}"
@@ -1664,14 +1673,25 @@
                                           </StackPanel>
                                       </Border>
 
-                                      <!-- Cancel Button during processing (at bottom) -->
-                                      <Button DockPanel.Dock="Bottom"
-                                              IsVisible="{Binding IsGeoProcessing}"
-                                              Content="Cancel"
-                                              Command="{Binding CancelGeoProcessCommand}"
-                                              HorizontalAlignment="Center"
-                                              Margin="0,8,0,8"
-                                              Padding="20,4"/>
+
+                                       <!-- Placeholder: shown when no locations loaded -->
+                                       <Border IsVisible="{Binding ShowGeoPlaceholder}"
+                                               VerticalAlignment="Center"
+                                               HorizontalAlignment="Stretch"
+                                               Padding="16">
+                                           <StackPanel Spacing="8"
+                                                       HorizontalAlignment="Center">
+                                               <TextBlock Text="{Binding GeoStatusText}"
+                                                          FontSize="12"
+                                                          FontWeight="SemiBold"
+                                                          HorizontalAlignment="Center"
+                                                          Opacity="0.7"/>
+                                               <TextBlock Text="点击顶部地图图标生成地理数据"
+                                                          FontSize="10"
+                                                          Opacity="0.5"
+                                                          TextAlignment="Center"/>
+                                           </StackPanel>
+                                       </Border>
 
                                        <!-- Geo Control: shown when completed -->
                                        <controls:GeoViewControl

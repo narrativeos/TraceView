@@ -104,50 +104,87 @@ public sealed class GeoJsonService
         {
             if (geocodingResults.TryGetValue(locationName, out var results))
             {
-                // Successful geocoding - use the best (first) result for GeoJSON
-                var result = results.FirstOrDefault();
-                if (result != null)
+                // Successful geocoding - save ALL results
+                var bestResult = results.FirstOrDefault();
+                if (bestResult != null)
                 {
                     var (locEntity, sourceBlockIds) = locationByName.TryGetValue(locationName, out var info) ? info : (null, new List<string>());
-                    // Successful geocoding
+                    
+                    // Build all_results array to save all geocoding results
+                    var allResultsArray = new object[results.Count];
+                    for (int i = 0; i < results.Count; i++)
+                    {
+                        var r = results[i];
+                        var resultDict = new Dictionary<string, object>
+                        {
+                            { "name", r.Name },
+                            { "latitude", r.Latitude },
+                            { "longitude", r.Longitude },
+                            { "display_name", r.DisplayName },
+                            { "is_cached", r.IsCached },
+                            { "place_id", r.PlaceId },
+                            { "osm_type", r.OsmType },
+                            { "osm_id", r.OsmId },
+                            { "class", r.Class },
+                            { "type", r.Type },
+                            { "importance", r.Importance },
+                            { "confidence", r.Confidence },
+                            { "match_type", r.MatchType },
+                            { "matched_name_tag", r.MatchedNameTag },
+                            { "matched_name", r.MatchedName },
+                            { "match_by_homophone", r.MatchByHomophone }
+                        };
+                        if (r.BoundingBoxMinLat.HasValue)
+                        {
+                            resultDict["bbox_min_lat"] = r.BoundingBoxMinLat.Value;
+                            resultDict["bbox_max_lat"] = r.BoundingBoxMaxLat.Value;
+                            resultDict["bbox_min_lon"] = r.BoundingBoxMinLon.Value;
+                            resultDict["bbox_max_lon"] = r.BoundingBoxMaxLon.Value;
+                        }
+                        allResultsArray[i] = resultDict;
+                    }
+                    
+                    // Successful geocoding (properties use best result)
                     var properties = new Dictionary<string, object>
                     {
                         { "name", locationName },
-                        { "display_name", result.DisplayName },
+                        { "display_name", bestResult.DisplayName },
                         { "status", "success" },
                         { "syntactic_role", locEntity?.SyntacticRole ?? "" },
                         { "syntactic_role_display", locEntity != null ? LocationSyntacticRole.ToDisplay(locEntity.SyntacticRole) : "" },
                         { "governing_verb", locEntity?.GoverningVerb ?? "" },
                         { "source_block_ids", sourceBlockIds },
-                        { "is_cached", result.IsCached },
-                        { "place_id", result.PlaceId },
-                        { "osm_type", result.OsmType },
-                        { "osm_id", result.OsmId },
-                        { "class", result.Class },
-                        { "type", result.Type },
-                        { "importance", result.Importance },
-                        { "confidence", result.Confidence },
-                        { "match_type", result.MatchType },
-                        { "matched_name_tag", result.MatchedNameTag },
-                        { "matched_name", result.MatchedName }
+                        { "is_cached", bestResult.IsCached },
+                        { "place_id", bestResult.PlaceId },
+                        { "osm_type", bestResult.OsmType },
+                        { "osm_id", bestResult.OsmId },
+                        { "class", bestResult.Class },
+                        { "type", bestResult.Type },
+                        { "importance", bestResult.Importance },
+                        { "confidence", bestResult.Confidence },
+                        { "match_type", bestResult.MatchType },
+                        { "matched_name_tag", bestResult.MatchedNameTag },
+                        { "matched_name", bestResult.MatchedName },
+                        { "match_by_homophone", bestResult.MatchByHomophone },
+                        { "all_results", allResultsArray }
                     };
 
-                if (result.BoundingBoxMinLat.HasValue && result.BoundingBoxMaxLat.HasValue && 
-                    result.BoundingBoxMinLon.HasValue && result.BoundingBoxMaxLon.HasValue)
+                if (bestResult.BoundingBoxMinLat.HasValue && bestResult.BoundingBoxMaxLat.HasValue && 
+                    bestResult.BoundingBoxMinLon.HasValue && bestResult.BoundingBoxMaxLon.HasValue)
                 {
                     properties["bbox"] = new object[]
                     {
-                        result.BoundingBoxMinLat.Value,
-                        result.BoundingBoxMaxLat.Value,
-                        result.BoundingBoxMinLon.Value,
-                        result.BoundingBoxMaxLon.Value
+                        bestResult.BoundingBoxMinLat.Value,
+                        bestResult.BoundingBoxMaxLat.Value,
+                        bestResult.BoundingBoxMinLon.Value,
+                        bestResult.BoundingBoxMaxLon.Value
                     };
                 }
 
                 var geometry = new Dictionary<string, object>
                 {
                     { "type", "Point" },
-                    { "coordinates", new[] { result.Longitude, result.Latitude } }
+                    { "coordinates", new[] { bestResult.Longitude, bestResult.Latitude } }
                 };
 
                 var feature = new Dictionary<string, object>
