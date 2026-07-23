@@ -597,19 +597,29 @@
                                     BorderThickness="1"
                                     IsVisible="{Binding ShowAnalysisColumn}">
                                 <DockPanel>
-                                    <!-- Header -->
-                                    <StackPanel DockPanel.Dock="Top"
-                                                Orientation="Horizontal"
-                                                Spacing="4"
-                                                Margin="0,0,0,6">
-                                        <TextBlock Text="Popo"
-                                                   FontWeight="Bold"
-                                                   FontSize="12"/>
-                                        <TextBlock Text="{Binding PopoTreeNodeCount, StringFormat='({0} nodes)'}"
-                                                   FontSize="11"
-                                                   Opacity="0.6"
-                                                   IsVisible="{Binding !IsPopoProcessing}"/>
-                                    </StackPanel>
+                                     <!-- Header -->
+                                     <Grid DockPanel.Dock="Top"
+                                           Margin="0,0,0,6"
+                                           ColumnDefinitions="*,Auto">
+                                         <StackPanel Grid.Column="0"
+                                                     Orientation="Horizontal"
+                                                     Spacing="4">
+                                             <TextBlock Text="Popo"
+                                                        FontWeight="Bold"
+                                                        FontSize="12"/>
+                                             <TextBlock Text="{Binding PopoTreeNodeCount, StringFormat='({0} nodes)'}"
+                                                        FontSize="11"
+                                                        Opacity="0.6"
+                                                        IsVisible="{Binding !IsPopoProcessing}"/>
+                                         </StackPanel>
+                                         <Button Grid.Column="1"
+                                                 Content="目录"
+                                                 Command="{Binding GenerateTocCommand}"
+                                                 IsEnabled="{Binding CanGenerateToc}"
+                                                 IsVisible="{Binding !IsPopoProcessing}"
+                                                 MinWidth="60"
+                                                 FontSize="11"/>
+                                     </Grid>
 
                                      <!-- Progress State: shown during Popo processing -->
                                      <Border IsVisible="{Binding IsPopoProcessing}"
@@ -1681,6 +1691,48 @@
                                  Name="PART_ConnectionLinesControl"
                                  IsVisible="True"
                                  IsHitTestVisible="False"/>
+
+                             <!-- TOC Overlay (covers all columns) -->
+                             <Panel Grid.Column="0"
+                                    Grid.ColumnSpan="5"
+                                    IsVisible="{Binding ShowTocPanel}">
+                                 <Rectangle Fill="Gray"
+                                            Opacity="0.3"/>
+                                 <Border Background="White"
+                                         BorderBrush="Gray"
+                                         BorderThickness="1"
+                                         CornerRadius="4"
+                                         Padding="16"
+                                         HorizontalAlignment="Center"
+                                         VerticalAlignment="Center"
+                                         MaxWidth="800"
+                                         MaxHeight="600">
+                                     <DockPanel>
+                                         <StackPanel Orientation="Horizontal"
+                                                     DockPanel.Dock="Top"
+                                                     HorizontalAlignment="Right"
+                                                     Margin="0,0,0,8">
+                                              <TextBlock Text="目录"
+                                                         FontWeight="Bold"
+                                                         FontSize="16"
+                                                         Foreground="#333333"
+                                                         VerticalAlignment="Center"/>
+                                             <Button Content="✕"
+                                                     Command="{Binding CloseTocPanelCommand}"
+                                                     Margin="12,0,0,0"
+                                                     Padding="8,4"/>
+                                         </StackPanel>
+                                         <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                                       MaxHeight="500">
+                                             <TextBlock Text="{Binding TocMarkdownText}"
+                                                        TextWrapping="Wrap"
+                                                        FontFamily="Consolas, Menlo, monospace"
+                                                        FontSize="12"
+                                                        Foreground="#333333"/>
+                                         </ScrollViewer>
+                                     </DockPanel>
+                                 </Border>
+                             </Panel>
                         </Grid>
                         </Grid>
                     </SplitView.Content>

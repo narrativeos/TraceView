@@ -24,8 +24,10 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
+using System.Threading.Tasks;
 
 namespace Caly.Core.Services;
 
@@ -1039,6 +1041,168 @@ public static class PopoJsonService
         {
             MatchTreeNodesToBlocksById(child, blocks, pageIdx, pageW, pageH);
         }
+    }
+
+    #endregion
+
+    #region Table of Contents
+
+    /// <summary>
+    /// Builds a flat table of contents list from the Popo analysis tree.
+    /// Extracts text/title nodes that have meaningful content, along with their
+    /// hierarchical level and starting page number.
+    /// </summary>
+    /// <param name="root">The root node of the document tree.</param>
+    /// <returns>A list of TOC entries ordered by their appearance in the tree.</returns>
+    public static List<TocEntry> BuildTableOfContents(AnalysisTreeNode root)
+    {
+        var entries = new List<TocEntry>();
+        BuildTocRecursive(root, entries);
+        return entries;
+    }
+
+    /// <summary>
+    /// Recursively traverses the tree to extract TOC entries.
+    /// Skips root, page_number, header, footer, image-only nodes without meaningful titles.
+    /// </summary>
+    private static void BuildTocRecursive(AnalysisTreeNode node, List<TocEntry> entries)
+    {
+        bool isRoot = node.Type == "root" && node.Level == 0;
+
+        if (!isRoot)
+        {
+            var type = node.Type;
+            var level = node.Level;
+            var title = node.Title;
+            var content = node.Content;
+
+            // Only extract text/title nodes with meaningful heading content
+            if (type is "text" or "title" && level > 0 && (!string.IsNullOrEmpty(title) || !string.IsNullOrEmpty(content)))
+            {
+                // Get first page from location — skip entries with no valid page number
+                if (node.Location.Count == 0)
+                {
+                    // No location data available, skip this entry but continue traversing children
+                }
+                else
+                {
+                    int page = node.Location[0].Page;
+
+                    // Use title if available, otherwise fall back to first segment of content
+                    var displayTitle = !string.IsNullOrEmpty(title)
+                        ? title
+                        : content.Split(new[] { "<|txt_split|>" }, StringSplitOptions.None)[0];
+
+                    entries.Add(new TocEntry
+                    {
+                        Title = displayTitle,
+                        Level = level,
+                        Page = page,
+                        Type = type
+                    });
+                }
+            }
+        }
+
+        foreach (var child in node.Children)
+        {
+            BuildTocRecursive(child, entries);
+        }
+    }
+
+    /// <summary>
+    /// Saves the table of contents to both JSON and Markdown files in the specified output directory.
+    /// Creates the directory if it doesn't exist.
+    /// </summary>
+    /// <param name="doc">The structure document containing the tree root.</param>
+    /// <param name="outputDir">Directory where toc.json and toc.md will be written.</param>
+    /// <returns>The list of TOC entries that were saved.</returns>
+    public static async Task<List<TocEntry>> SaveTocFilesAsync(StructureDocument doc, string outputDir)
+    {
+        if (doc.TreeRoot is null)
+            return new List<TocEntry>();
+
+        Directory.CreateDirectory(outputDir);
+
+        var entries = BuildTableOfContents(doc.TreeRoot);
+
+        // Save toc.json
+        var jsonPath = Path.Combine(outputDir, "toc.json");
+        var jsonOptions = new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            TypeInfoResolver = SourceGenerationContext.Default
+        };
+        var json = JsonSerializer.Serialize(entries, jsonOptions);
+        await File.WriteAllTextAsync(jsonPath, json);
+
+        // Save toc.md
+        var mdPath = Path.Combine(outputDir, "toc.md");
+        var md = GenerateTocMarkdown(entries);
+        await File.WriteAllTextAsync(mdPath, md);
+
+        return entries;
+    }
+
+    /// <summary>
+    /// Estimates the visual width of a string in a monospace font, accounting for
+    /// CJK (Chinese/Japanese/Korean) characters which typically render at 2x width.
+    /// </summary>
+    private static int GetVisualWidth(string text)
+    {
+        int width = 0;
+        foreach (char c in text)
+        {
+            // CJK Unified Ideographs, CJK Radicals, Bopomofo, Hangul, etc.
+            // These ranges cover the most common East Asian character blocks
+            if ((c >= 0x2E80 && c <= 0x9FFF) ||   // CJK Radicals Supplement, CJK Ideographs
+                (c >= 0xF900 && c <= 0xFAFF) ||   // CJK Compatibility Ideographs
+                (c >= 0xFF00 && c <= 0xFFEF) ||   // Fullwidth ASCII variants
+                (c >= 0x3000 && c <= 0x30FF) ||   // CJK Symbols and Punctuation, Hiragana, Katakana
+                (c >= 0xAC00 && c <= 0xD7AF))     // Hangul Syllables
+            {
+                width += 2;
+            }
+            else
+            {
+                width += 1;
+            }
+        }
+        return width;
+    }
+
+    /// <summary>
+    /// Generates a formatted Markdown table of contents with hierarchical indentation
+    /// and dotted page number alignment. Uses visual-width-aware padding for proper
+    /// alignment with CJK (Chinese) characters.
+    /// </summary>
+    internal static string GenerateTocMarkdown(List<TocEntry> entries)
+    {
+        if (entries.Count == 0)
+            return "# 目录\n\n(空)\n";
+
+        var sb = new StringBuilder();
+        sb.AppendLine("# 目录");
+        sb.AppendLine();
+
+        // Target visual width for dot leaders (accounts for CJK double-width characters)
+        const int targetVisualWidth = 50;
+
+        foreach (var entry in entries)
+        {
+            var indent = new string(' ', (entry.Level - 1) * 2);
+            var title = entry.Title.Trim();
+            var page = entry.Page;
+
+            // Calculate visual width of indent + title (CJK chars count as 2)
+            var visualWidth = GetVisualWidth(indent) + GetVisualWidth(title);
+            var dotCount = Math.Max(1, targetVisualWidth - visualWidth);
+            var dots = new string('.', dotCount);
+
+            sb.AppendLine($"{indent}{title} {dots} {page}");
+        }
+
+        return sb.ToString();
     }
 
     #endregion

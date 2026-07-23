@@ -648,7 +648,7 @@ public sealed partial class DocumentViewModel
     {
         _minerUArtifactsDirectory = artifactsDirectory;
         StructureDocument = minerUDoc;
-        AnalysisViewModel = new AnalysisViewModel(minerUDoc, artifactsDirectory);
+        AnalysisViewModel = new AnalysisViewModel(minerUDoc, artifactsDirectory, ProjectPath);
 
         // Assign blocks and page type to each page view model
         foreach (var page in Pages)
@@ -735,7 +735,7 @@ public sealed partial class DocumentViewModel
         // Set StructureDocument first — subscribes the Pages.CollectionChanged handler
         // so any pages added later will automatically get blocks assigned.
         StructureDocument = minerUDoc;
-        AnalysisViewModel = new AnalysisViewModel(minerUDoc, artifactsDir);
+        AnalysisViewModel = new AnalysisViewModel(minerUDoc, artifactsDir, ProjectPath);
 
         // Assign blocks and page type to existing pages (the CollectionChanged handler only covers future additions)
         foreach (var page in Pages)

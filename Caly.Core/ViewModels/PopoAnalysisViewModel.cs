@@ -36,15 +36,17 @@ namespace Caly.Core.ViewModels;
 public partial class AnalysisViewModel : ViewModelBase
 {
     private readonly StructureDocument _structureDocument;
+    private readonly string? _projectPath;
 
     /// <summary>
     /// Path to the extracted artifacts directory (images, etc.).
     /// </summary>
     public string? ArtifactsDirectory { get; }
 
-    public AnalysisViewModel(StructureDocument structureDocument, string? artifactsDirectory = null)
+    public AnalysisViewModel(StructureDocument structureDocument, string? artifactsDirectory = null, string? projectPath = null)
     {
         _structureDocument = structureDocument;
+        _projectPath = projectPath;
         ArtifactsDirectory = artifactsDirectory;
 
         // Store raw blocks for lazy ViewModel creation
@@ -406,4 +408,53 @@ public partial class AnalysisViewModel : ViewModelBase
     {
         ShowAlignmentReport = false;
     }
+
+    #region Table of Contents
+
+    [ObservableProperty]
+    private string _tocMarkdownText = string.Empty;
+
+    [ObservableProperty]
+    private bool _showTocPanel;
+
+    [ObservableProperty]
+    private bool _isTocGenerating;
+
+    /// <summary>
+    /// Gets whether the TOC can be generated (tree data available).
+    /// </summary>
+    public bool CanGenerateToc => _structureDocument.TreeRoot is not null;
+
+    /// <summary>
+    /// Generates the table of contents and saves toc.json + toc.md files to the project's popo/ directory.
+    /// Also populates TocMarkdownText for inline preview.
+    /// </summary>
+    [RelayCommand]
+    private async System.Threading.Tasks.Task GenerateTocAsync()
+    {
+        if (_structureDocument.TreeRoot is null || _projectPath is null)
+            return;
+
+        IsTocGenerating = true;
+
+        try
+        {
+            var popoDir = System.IO.Path.Combine(_projectPath, "popo");
+            var entries = await PopoJsonService.SaveTocFilesAsync(_structureDocument, popoDir);
+            TocMarkdownText = PopoJsonService.GenerateTocMarkdown(entries);
+            ShowTocPanel = true;
+        }
+        finally
+        {
+            IsTocGenerating = false;
+        }
+    }
+
+    [RelayCommand]
+    private void CloseTocPanel()
+    {
+        ShowTocPanel = false;
+    }
+
+    #endregion
 }

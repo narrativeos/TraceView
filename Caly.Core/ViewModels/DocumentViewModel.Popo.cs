@@ -190,6 +190,7 @@ public sealed partial class DocumentViewModel
         OnPropertyChanged(nameof(PopoTreeRootChildren));
         OnPropertyChanged(nameof(VisiblePopoNodes));
         OnPropertyChanged(nameof(HasPopoTree));
+        OnPropertyChanged(nameof(CanGenerateToc));
     }
 
     [RelayCommand]
@@ -227,6 +228,61 @@ public sealed partial class DocumentViewModel
     private void CloseAlignmentReport()
     {
         // No-op for the window-based approach
+    }
+
+    // === Table of Contents (TOC) ===
+    [ObservableProperty]
+    private string _tocMarkdownText = string.Empty;
+
+    [ObservableProperty]
+    private bool _showTocPanel;
+
+    /// <summary>
+    /// Can generate TOC when there is a Popo tree available.
+    /// </summary>
+    public bool CanGenerateToc => PopoTreeRoot is not null;
+
+    /// <summary>
+    /// Generates a Table of Contents from the Popo tree and displays it in an overlay.
+    /// Also saves toc.json and toc.md to the project's popo/ directory.
+    /// </summary>
+    [RelayCommand]
+    private async System.Threading.Tasks.Task GenerateToc()
+    {
+        if (PopoTreeRoot is null || StructureDocument is null)
+            return;
+
+        try
+        {
+            // Generate TOC entries from the tree
+            var entries = StructureDocument.TreeRoot is not null
+                ? PopoJsonService.BuildTableOfContents(StructureDocument.TreeRoot)
+                : new System.Collections.Generic.List<TocEntry>();
+            TocMarkdownText = PopoJsonService.GenerateTocMarkdown(entries);
+
+            // Save to popo/ directory
+            if (ProjectPath is not null)
+            {
+                var popoDir = Path.Combine(ProjectPath, "popo");
+                await PopoJsonService.SaveTocFilesAsync(StructureDocument, popoDir);
+            }
+
+            ShowTocPanel = true;
+        }
+        catch (System.Exception ex)
+        {
+            TocMarkdownText = $"# 目录\n\n生成失败: {ex.Message}";
+            ShowTocPanel = true;
+        }
+    }
+
+    /// <summary>
+    /// Closes the TOC overlay panel.
+    /// </summary>
+    [RelayCommand]
+    private void CloseTocPanel()
+    {
+        ShowTocPanel = false;
     }
 
     /// <summary>
@@ -374,6 +430,9 @@ public sealed partial class DocumentViewModel
                 }
             }
         }
+
+        // Assign the loaded document to StructureDocument (needed for TOC generation and other features)
+        StructureDocument = minerUDoc;
 
         // Show the analysis column when Popo data is loaded
         ShowAnalysisColumn = true;
