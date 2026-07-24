@@ -613,7 +613,9 @@ public sealed partial class DocumentViewModel
                         GeoStatusText = status;
                     });
                 },
-                cancellationToken: _geoLibreCts.Token);
+                cancellationToken: _geoLibreCts.Token,
+                popoTreeRoot: StructureDocument?.TreeRoot,
+                documentName: FileName ?? "Document Story");
         }
         catch (OperationCanceledException)
         {

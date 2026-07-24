@@ -326,11 +326,15 @@ public sealed class GeoJsonService
     /// <param name="geoJsonPath">Optional path to cached GeoJSON file. If provided and exists, reads from cache instead of calling API.</param>
     /// <param name="onProgress">Optional progress callback showing current status.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <param name="popoTreeRoot">Optional Popo document tree root for building GeoStory chapters.</param>
+    /// <param name="documentName">Optional document name used as the GeoStory title.</param>
     public async Task<string?> GenerateGeoLibreJsonStringAsync(
         SemanticResultFile? semanticResults,
         string? geoJsonPath = null,
         Action<string>? onProgress = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        AnalysisTreeNode? popoTreeRoot = null,
+        string? documentName = null)
     {
         if (semanticResults is null || semanticResults.Blocks.Count == 0)
             return null;
@@ -567,7 +571,7 @@ public sealed class GeoJsonService
 
         var geoLibreJson = new Dictionary<string, object>
         {
-            { "version", "0.1.0" },
+            { "version", "0.2.0" },
             { "name", "Document Locations" },
             { "mapView", new Dictionary<string, object>
                 {
@@ -583,6 +587,40 @@ public sealed class GeoJsonService
             { "basemapOpacity", 1.0 },
             { "layers", layers }
         };
+
+        // Build GeoStory (story map) from Popo tree + verified geocoded features
+        if (popoTreeRoot is not null && geocodingResults.Count > 0)
+        {
+            var geoFeatures = new List<GeoStoryBuilder.GeoFeature>();
+            foreach (var kvp in geocodingResults)
+            {
+                var result = kvp.Value.FirstOrDefault();
+                if (result == null) continue;
+
+                var (entity, blockContent, sourceBlockIds) = locationByName.TryGetValue(result.Name, out var info)
+                    ? info : (null, "", new List<string>());
+
+                geoFeatures.Add(new GeoStoryBuilder.GeoFeature
+                {
+                    Name = result.Name,
+                    Longitude = result.Longitude,
+                    Latitude = result.Latitude,
+                    SyntacticRole = entity?.SyntacticRole ?? "Unknown",
+                    SourceBlockIds = sourceBlockIds ?? new List<string>(),
+                    SourceBlockContent = blockContent ?? ""
+                });
+            }
+
+            var storyBuilder = new GeoStoryBuilder();
+            var storyConfig = storyBuilder.Build(popoTreeRoot, geoFeatures,
+                documentName ?? "Document Story");
+
+            var storyDict = GeoStoryBuilder.GeoStoryConfigToDict(storyConfig);
+            if (storyDict is not null)
+            {
+                geoLibreJson["storymap"] = storyDict;
+            }
+        }
 
         return BuildJson(geoLibreJson);
     }
@@ -839,9 +877,11 @@ public sealed class GeoJsonService
         string outputDir,
         string? geoJsonPath = null,
         Action<string>? onProgress = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        AnalysisTreeNode? popoTreeRoot = null,
+        string? documentName = null)
     {
-        var json = await GenerateGeoLibreJsonStringAsync(semanticResults, geoJsonPath, onProgress, cancellationToken);
+        var json = await GenerateGeoLibreJsonStringAsync(semanticResults, geoJsonPath, onProgress, cancellationToken, popoTreeRoot, documentName);
         if (json is null)
             return null;
 
