@@ -425,6 +425,7 @@ public sealed partial class DocumentViewModel
             MinerUProgress = 100;
             MinerUStatusText = "Loaded from cache";
             IsMinerUParsing = false;
+            OnPropertyChanged(nameof(HasMinerUData));
             return;
         }
 
@@ -468,6 +469,7 @@ public sealed partial class DocumentViewModel
                 MinerUStatus = MinerUParseStatus.Completed;
                 MinerUProgress = 100;
                 MinerUStatusText = "Parse completed (resumed)";
+                OnPropertyChanged(nameof(HasMinerUData));
                 return;
             }
             catch (OperationCanceledException)
@@ -571,6 +573,7 @@ public sealed partial class DocumentViewModel
             MinerUStatus = MinerUParseStatus.Completed;
             MinerUProgress = 100;
             MinerUStatusText = "Parse completed";
+            OnPropertyChanged(nameof(HasMinerUData));
         }
         catch (OperationCanceledException)
         {
@@ -777,6 +780,7 @@ public sealed partial class DocumentViewModel
 
         // Show the MinerU column when data is loaded
         ShowMinerUColumn = true;
+        OnPropertyChanged(nameof(HasMinerUData));
     }
 
     /// <summary>

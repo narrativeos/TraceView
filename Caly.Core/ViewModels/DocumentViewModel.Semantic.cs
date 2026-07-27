@@ -264,6 +264,7 @@ public sealed partial class DocumentViewModel
             SemanticProgress = 100;
             SemanticStatusText = $"Loaded from cache ({SemanticNodeCount} nodes)";
             ShowSemanticColumn = true;
+            OnPropertyChanged(nameof(HasSemanticData));
             UpdateSemanticVisibility();
             System.Diagnostics.Debug.WriteLine($"[Semantic] Loaded cached results: {SemanticNodeCount} nodes");
             return;
@@ -321,6 +322,7 @@ public sealed partial class DocumentViewModel
             SemanticProgress = 100;
             SemanticStatusText = $"Analysis completed ({SemanticNodeCount} nodes, {SemanticEntityCount} entities, {SemanticRelationCount} relations)";
             System.Diagnostics.Debug.WriteLine($"[Semantic] Completed: {SemanticNodeCount} nodes, {SemanticEntityCount} entities, {SemanticRelationCount} relations");
+            OnPropertyChanged(nameof(HasSemanticData));
 
             UpdateSemanticVisibility();
         }
@@ -375,6 +377,7 @@ public sealed partial class DocumentViewModel
                 SemanticProgress = 100;
                 SemanticStatusText = $"Loaded from cache ({SemanticNodeCount} nodes, {SemanticEntityCount} entities)";
                 ShowSemanticColumn = true;
+                OnPropertyChanged(nameof(HasSemanticData));
                 UpdateSemanticVisibility();
                 System.Diagnostics.Debug.WriteLine($"[Semantic] Auto-loaded cached results: {SemanticNodeCount} nodes, {SemanticEntityCount} entities");
             }
