@@ -322,6 +322,25 @@ public sealed class SemanticAnalysisService : IDisposable
             }
         }
 
+        // Cross-reference events.arguments with entities to populate spatial_role + verb_spatial_class
+        if (content.Events is not null && result.Entities is not null)
+        {
+            var entityById = result.Entities.ToDictionary(e => e.Id, e => e);
+            foreach (var evt in content.Events)
+            {
+                if (evt.Arguments is null) continue;
+                foreach (var arg in evt.Arguments)
+                {
+                    if (string.IsNullOrEmpty(arg.EntityId)) continue;
+                    if (!entityById.TryGetValue(arg.EntityId, out var entity)) continue;
+                    if (!string.IsNullOrEmpty(arg.SpatialRole))
+                        entity.SpatialRole = arg.SpatialRole;
+                    if (!string.IsNullOrEmpty(arg.VerbSpatialClass))
+                        entity.VerbSpatialClass = arg.VerbSpatialClass;
+                }
+            }
+        }
+
         return result;
     }
 

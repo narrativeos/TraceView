@@ -119,6 +119,9 @@ public class GeoChapter
 
     /// <summary>Layer effects to apply when leaving this chapter.</summary>
     public List<GeoLayerEffect> OnChapterExit { get; set; } = new();
+
+    /// <summary>Narrative beats within this chapter, each with its own spatial semantics.</summary>
+    public List<GeoBeat> Beats { get; set; } = new();
 }
 
 /// <summary>
@@ -135,4 +138,36 @@ public class GeoLayerEffect
 
     /// <summary>Transition duration in milliseconds.</summary>
     public int Duration { get; set; } = 500;
+}
+
+/// <summary>
+/// A narrative beat within a chapter, representing a single spatial event
+/// with its own camera position and spatial semantics.
+/// Beats enable fine-grained camera micro-adjustments within a chapter.
+/// </summary>
+public class GeoBeat
+{
+    /// <summary>Location name for this beat.</summary>
+    public string LocationName { get; set; } = "";
+
+    /// <summary>Spatial role: CONTAINER, TARGET, ORIGIN, PATH, ACTOR.</summary>
+    public string SpatialRole { get; set; } = "";
+
+    /// <summary>Verb spatial class for this beat.</summary>
+    public string Verb { get; set; } = "";
+
+    /// <summary>Beat camera longitude.</summary>
+    public double Lng { get; set; }
+
+    /// <summary>Beat camera latitude.</summary>
+    public double Lat { get; set; }
+
+    /// <summary>Beat camera zoom.</summary>
+    public double Zoom { get; set; } = 12;
+
+    /// <summary>Beat camera pitch.</summary>
+    public double Pitch { get; set; }
+
+    /// <summary>Beat camera bearing.</summary>
+    public double Bearing { get; set; }
 }

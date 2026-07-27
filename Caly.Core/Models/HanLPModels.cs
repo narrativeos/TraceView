@@ -128,6 +128,12 @@ public class HanLPContent
     /// </summary>
     [JsonPropertyName("deps")]
     public List<HanLPDepEdge>? Deps { get; set; }
+    
+    /// <summary>
+    /// Extracted events with spatial role annotations on arguments.
+    /// </summary>
+    [JsonPropertyName("events")]
+    public List<HanLPEvent>? Events { get; set; }
 }
 
 /// <summary>
@@ -362,4 +368,51 @@ public class HanLPDepEdge
 
     [JsonPropertyName("rel")]
     public string Rel { get; set; } = "";
+}
+
+/// <summary>
+/// Extracted event from NLP analysis, containing arguments with spatial role annotations.
+/// </summary>
+public class HanLPEvent
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = "";
+
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = "";
+
+    [JsonPropertyName("trigger")]
+    public string Trigger { get; set; } = "";
+
+    [JsonPropertyName("trigger_span")]
+    public List<int> TriggerSpan { get; set; } = new();
+
+    [JsonPropertyName("arguments")]
+    public List<HanLPEventArgument>? Arguments { get; set; }
+
+    [JsonPropertyName("confidence")]
+    public double Confidence { get; set; }
+}
+
+/// <summary>
+/// An argument within an extracted event, linking an entity to its spatial role.
+/// </summary>
+public class HanLPEventArgument
+{
+    [JsonPropertyName("entity_id")]
+    public string EntityId { get; set; } = "";
+
+    [JsonPropertyName("role")]
+    public string Role { get; set; } = "";
+
+    [JsonPropertyName("text")]
+    public string Text { get; set; } = "";
+
+    /// <summary>Spatial role: CONTAINER, TARGET, ORIGIN, PATH, ACTOR, MODIFIER, STATIC.</summary>
+    [JsonPropertyName("spatial_role")]
+    public string? SpatialRole { get; set; }
+
+    /// <summary>Verb spatial class: MOVE_TO, MOVE_FROM, MOVE_ALONG, STATIC_EXIST, STATIC_ACTION, VIEW, NONE.</summary>
+    [JsonPropertyName("verb_spatial_class")]
+    public string? VerbSpatialClass { get; set; }
 }

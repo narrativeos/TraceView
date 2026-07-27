@@ -459,6 +459,8 @@ public sealed class GeoJsonService
                     { "syntactic_role", entity?.SyntacticRole ?? "" },
                     { "syntactic_role_display", entity != null ? LocationSyntacticRole.ToDisplay(entity.SyntacticRole) : "" },
                     { "governing_verb", entity?.GoverningVerb ?? "" },
+                    { "spatial_role", entity?.SpatialRole ?? "" },
+                    { "verb_spatial_class", entity?.VerbSpatialClass ?? "" },
                     { "source_block_ids", sourceBlockIds },
                     { "source_block_content", blockContent },
                     { "is_cached", result.IsCached },
@@ -606,8 +608,16 @@ public sealed class GeoJsonService
                     Longitude = result.Longitude,
                     Latitude = result.Latitude,
                     SyntacticRole = entity?.SyntacticRole ?? "Unknown",
+                    SpatialRole = entity?.SpatialRole ?? "",
+                    VerbSpatialClass = entity?.VerbSpatialClass ?? "",
                     SourceBlockIds = sourceBlockIds ?? new List<string>(),
-                    SourceBlockContent = blockContent ?? ""
+                    SourceBlockContent = blockContent ?? "",
+                    BboxMinLat = result.BoundingBoxMinLat,
+                    BboxMaxLat = result.BoundingBoxMaxLat,
+                    BboxMinLon = result.BoundingBoxMinLon,
+                    BboxMaxLon = result.BoundingBoxMaxLon,
+                    OsmClass = result.Class ?? "",
+                    OsmType = result.Type ?? ""
                 });
             }
 
@@ -622,7 +632,395 @@ public sealed class GeoJsonService
             }
         }
 
+        // Build Knowledge Graph from semantic analysis results
+        var kgData = BuildKnowledgeGraph(semanticResults, geocodingResults, locationByName);
+        if (kgData is not null)
+        {
+            geoLibreJson["knowledgeGraph"] = kgData;
+        }
+
         return BuildJson(geoLibreJson);
+    }
+
+    /// <summary>
+    /// Builds a Knowledge Graph from semantic analysis results according to GeoLibre spec.
+    /// </summary>
+    Dictionary<string, object>? BuildKnowledgeGraph(
+        SemanticResultFile semanticResults,
+        Dictionary<string, List<GeocodingResult>> geocodingResults,
+        Dictionary<string, (SemanticEntity Entity, string BlockContent, List<string> SourceBlockIds)> locationByName)
+    {
+        // 1. Collect all entities, deduplicate by category|normalized
+        // Key: "CATEGORY|normalized", Value: node data
+        var entityMap = new Dictionary<string, Dictionary<string, object>>();
+        // Track mentions per node: key -> list of mention dicts
+        var mentionsMap = new Dictionary<string, List<Dictionary<string, object>>>();
+
+        foreach (var block in semanticResults.Blocks)
+        {
+            var blockId = block.SourceBlockIds.FirstOrDefault() ?? "";
+
+            foreach (var entity in block.Entities)
+            {
+                var key = $"{entity.Category}|{entity.Normalized}";
+                if (!entityMap.ContainsKey(key))
+                {
+                    var newNode = new Dictionary<string, object>
+                    {
+                        { "id", $"node_{entity.Category}_{entity.Normalized}" },
+                        { "label", entity.Text },
+                        { "normalized", entity.Normalized },
+                        { "category", MapToKgCategory(entity.Category) },
+                        { "frequency", 0 },
+                        { "geoRefs", new List<Dictionary<string, object>>() },
+                        { "mentions", new List<Dictionary<string, object>>() }
+                    };
+                    entityMap[key] = newNode;
+                    mentionsMap[key] = new List<Dictionary<string, object>>();
+                }
+
+                var node = entityMap[key];
+                var mentions = mentionsMap[key];
+
+                // Only add mention if this blockId hasn't been added yet
+                if (!mentions.Any(m => (string)m["blockId"] == blockId))
+                {
+                    // Update frequency
+                    node["frequency"] = (int)node["frequency"] + 1;
+
+                    var mention = new Dictionary<string, object>
+                    {
+                        { "blockId", blockId },
+                        { "span", new[] { entity.Span[0], entity.Span[1] } },
+                        { "confidence", entity.Confidence }
+                    };
+                    if (!string.IsNullOrEmpty(entity.SyntacticRole))
+                        mention["syntacticRole"] = entity.SyntacticRole;
+                    if (!string.IsNullOrEmpty(entity.GoverningVerb))
+                        mention["governingVerb"] = entity.GoverningVerb;
+
+                    mentions.Add(mention);
+                }
+            }
+        }
+
+        // Sync mentions from mentionsMap back to nodes
+        foreach (var kvp in mentionsMap)
+        {
+            var node = entityMap[kvp.Key];
+            var mentionsList = (List<Dictionary<string, object>>)node["mentions"];
+            mentionsList.Clear();
+            mentionsList.AddRange(kvp.Value);
+        }
+
+        // 2. Build geoRefs for LOCATION nodes
+        foreach (var kvp in entityMap)
+        {
+            var node = kvp.Value;
+            var category = (string)node["category"];
+            if (category != "LOCATION")
+                continue;
+
+            var normalized = (string)node["normalized"];
+            var geoRefs = (List<Dictionary<string, object>>)node["geoRefs"];
+
+            // Try to find geocoding results for this location
+            if (geocodingResults.TryGetValue(normalized, out var results) ||
+                geocodingResults.TryGetValue((string)node["label"], out results))
+            {
+                var best = results.FirstOrDefault();
+                if (best != null)
+                {
+                    // Collect all source block IDs for this location
+                    var sourceBlockIds = new List<string>();
+                    if (locationByName.TryGetValue(normalized, out var info) ||
+                        locationByName.TryGetValue((string)node["label"], out info))
+                    {
+                        sourceBlockIds = info.SourceBlockIds;
+                    }
+
+                    var geoRef = new Dictionary<string, object>
+                    {
+                        { "sourceBlockIds", sourceBlockIds },
+                        { "location", new Dictionary<string, object>
+                            {
+                                { "lng", best.Longitude },
+                                { "lat", best.Latitude }
+                            }
+                        }
+                    };
+
+                    if (!string.IsNullOrEmpty(best.OsmType))
+                    {
+                        geoRef["osm"] = new Dictionary<string, object>
+                        {
+                            { "osmType", best.OsmType },
+                            { "osmId", best.OsmId },
+                            { "placeId", best.PlaceId },
+                            { "displayName", best.DisplayName },
+                            { "className", best.Class },
+                            { "featureType", best.Type }
+                        };
+                    }
+
+                    geoRefs.Add(geoRef);
+                }
+            }
+        }
+
+        // 3. Build nodes array
+        var nodes = entityMap.Values.ToList();
+
+        // 4. Build a lookup: entity text -> node id (for matching relations)
+        var textToNodeId = new Dictionary<string, string>();
+        foreach (var kvp in entityMap)
+        {
+            var node = kvp.Value;
+            var label = (string)node["label"];
+            var normalized = (string)node["normalized"];
+            var nodeId = (string)node["id"];
+            if (!textToNodeId.ContainsKey(label))
+                textToNodeId[label] = nodeId;
+            if (!textToNodeId.ContainsKey(normalized))
+                textToNodeId[normalized] = nodeId;
+        }
+
+        // 5. Build edges from relations and dependency parsing
+        var edges = new List<Dictionary<string, object>>();
+        int edgeCounter = 1;
+
+        foreach (var block in semanticResults.Blocks)
+        {
+            var blockId = block.SourceBlockIds.FirstOrDefault() ?? "";
+
+            // Process semantic relations
+            foreach (var rel in block.Relations)
+            {
+                // Find nodes for subject and object
+                if (textToNodeId.TryGetValue(rel.Subject, out var subjId) &&
+                    textToNodeId.TryGetValue(rel.ObjectText, out var objId))
+                {
+                    var edgeType = MapPredicateToKgEdgeType(rel.Predicate);
+                    var (src, tgt) = DetermineEdgeDirection(edgeType, subjId, objId);
+
+                    var edge = new Dictionary<string, object>
+                    {
+                        { "id", $"edge_sem_{String.Format("{0:D3}", edgeCounter++)}" },
+                        { "sourceId", src },
+                        { "targetId", tgt },
+                        { "type", edgeType },
+                        { "label", $"{rel.PredicateVerb ?? rel.Predicate} → {rel.ObjectText}" },
+                        { "confidence", rel.Confidence },
+                        { "provenance", new Dictionary<string, object>
+                            {
+                                { "blockId", blockId },
+                                { "evidence", rel.Evidence },
+                                { "source", rel.Source },
+                                { "confidence", rel.Confidence }
+                            }
+                        }
+                    };
+                    if (!string.IsNullOrEmpty(rel.PredicateVerb))
+                        edge["predicateVerb"] = rel.PredicateVerb;
+
+                    edges.Add(edge);
+                }
+            }
+
+            // Process dependency edges
+            if (block.DepTokens.Count > 0 && block.DepEdges.Count > 0)
+            {
+                foreach (var depEdge in block.DepEdges)
+                {
+                    var kgType = MapDepRelToKgEdgeType(depEdge.Rel);
+                    if (kgType == null)
+                        continue;
+                    if (depEdge.Head == -1)
+                        continue; // Skip root
+
+                    if (depEdge.Child < 0 || depEdge.Child >= block.DepTokens.Count)
+                        continue;
+                    if (depEdge.Head < 0 || depEdge.Head >= block.DepTokens.Count)
+                        continue;
+
+                    var childToken = block.DepTokens[depEdge.Child];
+                    var headToken = block.DepTokens[depEdge.Head];
+
+                    // Skip punctuation and particles
+                    if (IsSkipPos(childToken.Pos) || IsSkipPos(headToken.Pos))
+                        continue;
+
+                    if (!textToNodeId.TryGetValue(childToken.Text, out var childId))
+                        continue;
+                    if (!textToNodeId.TryGetValue(headToken.Text, out var headId))
+                        continue;
+
+                    // Skip self-loops
+                    if (childId == headId)
+                        continue;
+
+                    var (src, tgt) = DetermineEdgeDirection(kgType, childId, headId);
+
+                    var edge = new Dictionary<string, object>
+                    {
+                        { "id", $"edge_dep_{String.Format("{0:D3}", edgeCounter++)}" },
+                        { "sourceId", src },
+                        { "targetId", tgt },
+                        { "type", kgType },
+                        { "label", depEdge.Rel },
+                        { "confidence", 0.9 },
+                        { "provenance", new Dictionary<string, object>
+                            {
+                                { "blockId", blockId },
+                                { "evidence", $"{childToken.Text} --[{depEdge.Rel}]--> {headToken.Text}" },
+                                { "source", $"dep/{depEdge.Rel}" },
+                                { "confidence", 0.9 }
+                            }
+                        }
+                    };
+
+                    edges.Add(edge);
+                }
+            }
+        }
+
+        // Deduplicate edges by sourceId+targetId+type
+        var seenEdges = new HashSet<string>();
+        var uniqueEdges = new List<Dictionary<string, object>>();
+        foreach (var edge in edges)
+        {
+            var key = $"{edge["sourceId"]}|{edge["targetId"]}|{edge["type"]}";
+            if (!seenEdges.Contains(key))
+            {
+                seenEdges.Add(key);
+                uniqueEdges.Add(edge);
+            }
+        }
+
+        if (nodes.Count == 0 && uniqueEdges.Count == 0)
+            return null;
+
+        // 6. Build visualization configuration
+        var visualization = new Dictionary<string, object>
+        {
+            { "layout", "force" },
+            { "showGeoNodes", true },
+            { "nodeColors", new Dictionary<string, object>
+                {
+                    { "LOCATION", "#4CAF50" },
+                    { "ORGANIZATION", "#2196F3" },
+                    { "PERSON", "#FF9800" },
+                    { "EVENT", "#9C27B0" },
+                    { "CONCEPT", "#607D8B" },
+                    { "ARTIFACT", "#795548" },
+                    { "TIME", "#00BCD4" }
+                }
+            },
+            { "edgeWidthByConfidence", true },
+            { "poiHighlight", new Dictionary<string, object>
+                {
+                    { "highlightNodes", true },
+                    { "highlightEdges", true },
+                    { "highlightBlocks", false }
+                }
+            }
+        };
+
+        // 7. Assemble the final knowledge graph structure
+        return new Dictionary<string, object>
+        {
+            { "title", "知识图谱" },
+            { "description", "基于叙事文本的实体、句法依存与语义关系知识图谱" },
+            { "source", semanticResults.Source },
+            { "timestamp", semanticResults.Timestamp },
+            { "nodes", nodes },
+            { "edges", uniqueEdges },
+            { "visualization", visualization }
+        };
+    }
+
+    /// <summary>
+    /// Maps HanLP entity categories to GeoLibre KGNodeCategory values.
+    /// </summary>
+    static string MapToKgCategory(string category)
+    {
+        return category switch
+        {
+            "LOCATION" => "LOCATION",
+            "ORGANIZATION" => "ORGANIZATION",
+            "PERSON" => "PERSON",
+            "DATE" => "TIME",
+            "TIME" => "TIME",
+            "FACILITY" => "ARTIFACT",
+            "EVENT" => "EVENT",
+            _ => "CONCEPT"
+        };
+    }
+
+    /// <summary>
+    /// Maps HanLP relation predicates to GeoLibre KGEdgeType values.
+    /// </summary>
+    static string MapPredicateToKgEdgeType(string predicate)
+    {
+        return predicate switch
+        {
+            "LOCATED_AT" => "LOCATION_AT",
+            "TIME_AT" => "TIME_AT",
+            "AGENT" => "AGENT",
+            "PATIENT" => "PATIENT",
+            "SEMANTIC" => "SEMANTIC",
+            _ => "SEMANTIC"
+        };
+    }
+
+    /// <summary>
+    /// Maps dependency parsing relations to GeoLibre KGEdgeType values.
+    /// Returns null if the relation should be skipped.
+    /// </summary>
+    static string? MapDepRelToKgEdgeType(string rel)
+    {
+        return rel switch
+        {
+            "nsubj" => "AGENT",
+            "dobj" => "PATIENT",
+            "iobj" => "PATIENT",
+            "amod" => "MODIFIER",
+            "nn" => "MODIFIER",
+            "rcmod" => "MODIFIER",
+            "assmod" => "MODIFIER",
+            "conj" => "COORDINATION",
+            "loc" => "LOCATION_AT",
+            "lobj" => "LOCATION_AT",
+            "pobj" => "MODIFIER",
+            _ => null
+        };
+    }
+
+    /// <summary>
+    /// Determines edge direction based on edge type.
+    /// Some relations should go child->head, others head->child.
+    /// </summary>
+    static (string source, string target) DetermineEdgeDirection(string edgeType, string childId, string headId)
+    {
+        return edgeType switch
+        {
+            "AGENT" => (childId, headId),        // child is agent of head
+            "PATIENT" => (headId, childId),       // head acts on child (patient)
+            "LOCATION_AT" => (headId, childId),   // head is located at child
+            "TIME_AT" => (headId, childId),       // head happens at child time
+            "MODIFIER" => (childId, headId),      // child modifies head
+            "COORDINATION" => (childId, headId),  // child coordinated with head
+            "SEMANTIC" => (childId, headId),      // default direction
+            _ => (childId, headId)
+        };
+    }
+
+    /// <summary>
+    /// Checks if a POS tag should be skipped for dependency edges.
+    /// </summary>
+    static bool IsSkipPos(string pos)
+    {
+        return pos == "PU" || pos == "DEC" || pos == "P" || pos == "CC" || pos == "WRD";
     }
 
     /// <summary>

@@ -71,8 +71,18 @@ public class GeoStoryBuilder
         public double Longitude { get; set; }
         public double Latitude { get; set; }
         public string SyntacticRole { get; set; } = "Unknown";
+        public string SpatialRole { get; set; } = "";
+        public string VerbSpatialClass { get; set; } = "";
         public List<string> SourceBlockIds { get; set; } = new();
         public string SourceBlockContent { get; set; } = "";
+
+        // OSM spatial metadata for camera enhancement
+        public double? BboxMinLat { get; set; }
+        public double? BboxMaxLat { get; set; }
+        public double? BboxMinLon { get; set; }
+        public double? BboxMaxLon { get; set; }
+        public string OsmClass { get; set; } = "";
+        public string OsmType { get; set; } = "";
     }
 
     /// <summary>
@@ -258,11 +268,12 @@ public class GeoStoryBuilder
 
     /// <summary>
     /// Builds a single GeoChapter from a validated candidate.
+    /// Camera behavior adapts to spatial_role and verb_spatial_class.
     /// </summary>
     static GeoChapter BuildChapter(ChapterCandidate candidate, int index)
     {
         var locs = candidate.Locations;
-        var (lng, lat, zoom) = CalculateCamera(locs);
+        var (lng, lat, zoom, pitch, bearing, mapAnimation) = CalculateSpatialCamera(locs);
 
         // Determine which layers are "active" in this chapter
         var activeLayerIds = locs
@@ -281,10 +292,12 @@ public class GeoStoryBuilder
             Title = candidate.Title,
             Description = description,
             Alignment = index % 2 == 0 ? "right" : "left",
-            MapAnimation = "flyTo",
+            MapAnimation = mapAnimation,
             Lng = lng,
             Lat = lat,
             Zoom = zoom,
+            Pitch = pitch,
+            Bearing = bearing,
             // onChapterEnter: highlight active layers, dim the rest
             OnChapterEnter = AllLayerIds.Select(id => new GeoLayerEffect
             {
@@ -298,20 +311,141 @@ public class GeoStoryBuilder
                 LayerId = id,
                 Opacity = 0.7,
                 Duration = 300
-            }).ToList()
+            }).ToList(),
+
+            Beats = BuildBeats(locs)
         };
     }
 
     /// <summary>
-    /// Calculates camera position and zoom from a list of geocoded locations.
-    /// Single location → zoom=12 (city level).
-    /// Multiple locations → zoom computed from bounding box.
+    /// Builds narrative beats from locations that have meaningful spatial roles.
+    /// Excludes MODIFIER and STATIC — only dynamic spatial roles generate beats.
     /// </summary>
-    static (double Lng, double Lat, double Zoom) CalculateCamera(List<GeoFeature> locations)
+    static List<GeoBeat> BuildBeats(List<GeoFeature> locations)
+    {
+        var beatRoles = new HashSet<string> { "CONTAINER", "TARGET", "ORIGIN", "PATH", "ACTOR" };
+
+        return locations
+            .Where(l => !string.IsNullOrEmpty(l.SpatialRole)
+                     && beatRoles.Contains(l.SpatialRole))
+            .Select(l => new GeoBeat
+            {
+                LocationName = l.Name,
+                SpatialRole = l.SpatialRole!,
+                Verb = l.VerbSpatialClass ?? "",
+                Lng = l.Longitude,
+                Lat = l.Latitude,
+                Zoom = l.SpatialRole == "TARGET" ? 15
+                     : l.SpatialRole == "ACTOR" ? 14 : 13,
+                Pitch = l.SpatialRole switch
+                {
+                    "PATH" => 35,
+                    "ACTOR" => 20,
+                    "CONTAINER" => 10,
+                    _ => 0
+                },
+                Bearing = 0
+            })
+            .ToList();
+    }
+
+    /// <summary>
+    /// Calculates camera position, zoom, pitch, bearing, and animation type
+    /// based on the spatial roles and verb spatial classes of the chapter's locations.
+    /// </summary>
+    static (double Lng, double Lat, double Zoom, double Pitch, double Bearing, string MapAnimation)
+        CalculateSpatialCamera(List<GeoFeature> locations)
     {
         if (locations.Count == 0)
-            return (0, 0, 3);
+            return (0, 0, 3, 0, 0, "flyTo");
 
+        // Determine the dominant spatial role (highest priority first)
+        var rolePriority = new Dictionary<string, int>
+        {
+            { "PATH", 6 }, { "TARGET", 5 }, { "ORIGIN", 4 },
+            { "ACTOR", 3 }, { "CONTAINER", 2 }, { "MODIFIER", 1 }
+        };
+
+        var dominantRole = locations
+            .Where(l => !string.IsNullOrEmpty(l.SpatialRole))
+            .OrderByDescending(l => rolePriority.GetValueOrDefault(l.SpatialRole!, 0))
+            .Select(l => l.SpatialRole)
+            .FirstOrDefault() ?? "STATIC";
+
+        // Base camera from bounding box
+        var (centerLng, centerLat, baseZoom) = ComputeBaseCamera(locations);
+
+        // Apply spatial role adjustments
+        double zoom = baseZoom;
+        double pitch = 0;
+        double bearing = 0;
+        string mapAnimation = "flyTo";
+
+        switch (dominantRole)
+        {
+            case "PATH":
+                zoom = baseZoom;
+                pitch = 35;
+                bearing = ComputePathBearing(locations);
+                mapAnimation = "flyTo";
+                break;
+
+            case "TARGET":
+                zoom = Math.Min(baseZoom + 2, 18);
+                pitch = 0;
+                mapAnimation = "easeTo";
+                break;
+
+            case "ORIGIN":
+                zoom = baseZoom;
+                pitch = 0;
+                mapAnimation = "flyTo";
+                break;
+
+            case "ACTOR":
+                zoom = Math.Min(baseZoom + 1, 18);
+                pitch = 20;
+                mapAnimation = "flyTo";
+                break;
+
+            case "CONTAINER":
+                zoom = baseZoom;
+                pitch = 10;
+                mapAnimation = "flyTo";
+                break;
+
+            case "MODIFIER":
+                zoom = Math.Max(baseZoom - 1, 2);
+                pitch = 0;
+                mapAnimation = "flyTo";
+                break;
+
+            default: // STATIC or unknown
+                zoom = baseZoom;
+                pitch = 0;
+                mapAnimation = "flyTo";
+                break;
+        }
+
+        // Verb class overrides for animation type
+        var dominantVerbClass = locations
+            .Where(l => !string.IsNullOrEmpty(l.VerbSpatialClass))
+            .Select(l => l.VerbSpatialClass)
+            .FirstOrDefault();
+
+        if (dominantVerbClass == "MOVE_TO")
+            mapAnimation = "easeTo";
+        else if (dominantVerbClass == "VIEW")
+            pitch = Math.Max(pitch, 15);
+
+        return (centerLng, centerLat, zoom, pitch, bearing, mapAnimation);
+    }
+
+    /// <summary>
+    /// Computes base camera from bounding box of all locations.
+    /// </summary>
+    static (double Lng, double Lat, double Zoom) ComputeBaseCamera(List<GeoFeature> locations)
+    {
         if (locations.Count == 1)
         {
             var loc = locations[0];
@@ -320,7 +454,6 @@ public class GeoStoryBuilder
 
         var lngs = locations.Select(l => l.Longitude).ToList();
         var lats = locations.Select(l => l.Latitude).ToList();
-
         var centerLng = (lngs.Min() + lngs.Max()) / 2;
         var centerLat = (lats.Min() + lats.Max()) / 2;
 
@@ -335,6 +468,35 @@ public class GeoStoryBuilder
         zoom = Math.Max(1.0, Math.Min(20.0, zoom));
 
         return (centerLng, centerLat, zoom);
+    }
+
+    /// <summary>
+    /// Computes bearing angle from PATH-type locations' OSM bounding boxes.
+    /// Falls back to 0 (north-up) if no bbox data is available.
+    /// </summary>
+    static double ComputePathBearing(List<GeoFeature> locations)
+    {
+        var pathLocs = locations
+            .Where(l => l.SpatialRole == "PATH" && l.BboxMinLat.HasValue)
+            .ToList();
+
+        if (pathLocs.Count == 0)
+            pathLocs = locations.Where(l => l.BboxMinLat.HasValue).ToList();
+
+        if (pathLocs.Count == 0)
+            return 0;
+
+        // Use the first location with bbox data to determine path direction
+        var loc = pathLocs[0];
+        var dLon = (loc.BboxMaxLon!.Value - loc.BboxMinLon!.Value);
+        var dLat = (loc.BboxMaxLat!.Value - loc.BboxMinLat!.Value);
+
+        // atan2(dLon, dLat) → radians → degrees, normalized to [0, 360)
+        var bearingRad = Math.Atan2(dLon, dLat);
+        var bearingDeg = bearingRad * 180.0 / Math.PI;
+        if (bearingDeg < 0) bearingDeg += 360;
+
+        return bearingDeg;
     }
 
     /// <summary>
@@ -427,6 +589,11 @@ public class GeoStoryBuilder
         else
             dict["onChapterExit"] = Array.Empty<object>();
 
+        if (chapter.Beats.Count > 0)
+            dict["beats"] = BeatsToArray(chapter.Beats);
+        else
+            dict["beats"] = Array.Empty<object>();
+
         return dict;
     }
 
@@ -437,6 +604,21 @@ public class GeoStoryBuilder
             { "layerId", e.LayerId },
             { "opacity", e.Opacity },
             { "duration", e.Duration }
+        }).ToArray();
+    }
+
+    static object[] BeatsToArray(List<GeoBeat> beats)
+    {
+        return beats.Select(b => (object)new Dictionary<string, object>
+        {
+            { "locationName", b.LocationName },
+            { "spatialRole", b.SpatialRole },
+            { "verb", b.Verb },
+            { "lng", b.Lng },
+            { "lat", b.Lat },
+            { "zoom", b.Zoom },
+            { "pitch", b.Pitch },
+            { "bearing", b.Bearing }
         }).ToArray();
     }
 }

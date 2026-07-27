@@ -157,6 +157,18 @@ public class SemanticEntity
     public string? GoverningVerb { get; set; }
 
     /// <summary>
+    /// Spatial role from NLP events: CONTAINER, TARGET, ORIGIN, PATH, ACTOR, MODIFIER, STATIC.
+    /// </summary>
+    [JsonPropertyName("spatial_role")]
+    public string? SpatialRole { get; set; }
+
+    /// <summary>
+    /// Verb spatial class: MOVE_TO, MOVE_FROM, MOVE_ALONG, STATIC_EXIST, STATIC_ACTION, VIEW, NONE.
+    /// </summary>
+    [JsonPropertyName("verb_spatial_class")]
+    public string? VerbSpatialClass { get; set; }
+
+    /// <summary>
     /// Chinese display name for the syntactic role (for LOCATION entities).
     /// </summary>
     [System.Text.Json.Serialization.JsonIgnore]
