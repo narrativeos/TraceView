@@ -81,7 +81,7 @@ public class GeoStoryBuilder
         public double? BboxMaxLat { get; set; }
         public double? BboxMinLon { get; set; }
         public double? BboxMaxLon { get; set; }
-        public string OsmClass { get; set; } = "";
+        public string OsmCategory { get; set; } = "";
         public string OsmType { get; set; } = "";
     }
 

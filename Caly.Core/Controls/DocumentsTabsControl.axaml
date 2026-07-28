@@ -1409,62 +1409,77 @@
                                                    <!-- Header row -->
                                                    <Border Margin="0,0,0,4"
                                                            Background="{DynamicResource SystemChromeMediumColor}">
-                                                        <Grid ColumnDefinitions="80,45,*,60,50,50,50,40,35,70,70">
-                                                            <TextBlock Text="地点"
+                                                        <Grid ColumnDefinitions="20,80,45,*,60,50,50,50,40,50,35,35,70,70">
+                                                            <!-- Expand button placeholder -->
+                                                            <TextBlock Text=" "
+                                                                       FontSize="10"
+                                                                       Margin="0,2,0,2"/>
+                                                            <TextBlock Grid.Column="1"
+                                                                       Text="地点"
                                                                        FontSize="10"
                                                                        FontWeight="SemiBold"
                                                                        Margin="4,2,0,2"/>
-                                                            <TextBlock Grid.Column="1"
+                                                            <TextBlock Grid.Column="2"
                                                                        Text="句法角色"
                                                                        FontSize="10"
                                                                        FontWeight="SemiBold"
                                                                        Margin="0,2,0,2"/>
-                                                            <TextBlock Grid.Column="2"
+                                                            <TextBlock Grid.Column="3"
                                                                        Text="标准名"
                                                                        FontSize="10"
                                                                        FontWeight="SemiBold"
                                                                        Margin="0,2,0,2"/>
-                                                           <TextBlock Grid.Column="3"
-                                                                      Text="状态"
-                                                                      FontSize="10"
-                                                                      FontWeight="SemiBold"
-                                                                      Margin="0,2,0,2"/>
-                                                           <TextBlock Grid.Column="4"
-                                                                      Text="匹配类型"
-                                                                      FontSize="10"
-                                                                      FontWeight="SemiBold"
-                                                                      Margin="0,2,0,2"/>
-                                                           <TextBlock Grid.Column="5"
-                                                                      Text="匹配名"
-                                                                      FontSize="10"
-                                                                      FontWeight="SemiBold"
-                                                                      Margin="0,2,0,2"/>
-                                                           <TextBlock Grid.Column="6"
-                                                                      Text="标签"
-                                                                      FontSize="10"
-                                                                      FontWeight="SemiBold"
-                                                                      Margin="0,2,0,2"/>
-                                                           <TextBlock Grid.Column="7"
-                                                                      Text="谐音"
-                                                                      FontSize="10"
-                                                                      FontWeight="SemiBold"
-                                                                      Margin="0,2,0,2"/>
-                                                           <TextBlock Grid.Column="8"
-                                                                      Text="结果数"
-                                                                      FontSize="10"
-                                                                      FontWeight="SemiBold"
-                                                                      Margin="0,2,0,2"/>
-                                                           <TextBlock Grid.Column="9"
-                                                                      Text="纬度"
-                                                                      FontSize="10"
-                                                                      FontWeight="SemiBold"
-                                                                      Margin="0,2,0,2"/>
-                                                           <TextBlock Grid.Column="10"
-                                                                      Text="经度"
-                                                                      FontSize="10"
-                                                                      FontWeight="SemiBold"
-                                                                      Margin="0,2,0,2"/>
-                                                       </Grid>
+                                                            <TextBlock Grid.Column="4"
+                                                                       Text="状态"
+                                                                       FontSize="10"
+                                                                       FontWeight="SemiBold"
+                                                                       Margin="0,2,0,2"/>
+                                                            <TextBlock Grid.Column="5"
+                                                                       Text="匹配类型"
+                                                                       FontSize="10"
+                                                                       FontWeight="SemiBold"
+                                                                       Margin="0,2,0,2"/>
+                                                            <TextBlock Grid.Column="6"
+                                                                       Text="匹配名"
+                                                                       FontSize="10"
+                                                                       FontWeight="SemiBold"
+                                                                       Margin="0,2,0,2"/>
+                                                            <TextBlock Grid.Column="7"
+                                                                       Text="标签"
+                                                                       FontSize="10"
+                                                                       FontWeight="SemiBold"
+                                                                       Margin="0,2,0,2"/>
+                                                            <TextBlock Grid.Column="8"
+                                                                       Text="谐音"
+                                                                       FontSize="10"
+                                                                       FontWeight="SemiBold"
+                                                                       Margin="0,2,0,2"/>
+                                                            <TextBlock Grid.Column="9"
+                                                                       Text="类别"
+                                                                       FontSize="10"
+                                                                       FontWeight="SemiBold"
+                                                                       Margin="0,2,0,2"/>
+                                                            <TextBlock Grid.Column="10"
+                                                                       Text="层级"
+                                                                       FontSize="10"
+                                                                       FontWeight="SemiBold"
+                                                                       Margin="0,2,0,2"/>
+                                                            <TextBlock Grid.Column="11"
+                                                                       Text="结果数"
+                                                                       FontSize="10"
+                                                                       FontWeight="SemiBold"
+                                                                       Margin="0,2,0,2"/>
+                                                            <TextBlock Grid.Column="12"
+                                                                       Text="纬度"
+                                                                       FontSize="10"
+                                                                       FontWeight="SemiBold"
+                                                                       Margin="0,2,0,2"/>
+                                                            <TextBlock Grid.Column="13"
+                                                                       Text="经度"
+                                                                       FontSize="10"
+                                                                       FontWeight="SemiBold"
+                                                                       Margin="0,2,0,2"/>
+                                                        </Grid>
                                                    </Border>
 
                                                 <!-- Location rows -->
@@ -1476,7 +1491,7 @@
                                                                   <Border Margin="0,1"
                                                                           Padding="4,2"
                                                                           Background="#33333308">
-                                                                       <Grid ColumnDefinitions="20,80,45,*,60,50,50,50,40,35,70,70">
+                                                                       <Grid ColumnDefinitions="20,80,45,*,60,50,50,50,40,50,35,35,70,70">
                                                                            <!-- Expand/Collapse button -->
                                                                            <Button Grid.Column="0"
                                                                                    Width="20"
@@ -1556,29 +1571,43 @@
                                                                                       Opacity="0.4"
                                                                                       IsVisible="{Binding !MatchByHomophone}"/>
 
-                                                                           <!-- Result count -->
+                                                                           <!-- Place Type (Category/Type) -->
                                                                            <TextBlock Grid.Column="9"
+                                                                                      Text="{Binding PlaceType}"
+                                                                                      FontSize="9"
+                                                                                      Foreground="#81C784"
+                                                                                      TextTrimming="CharacterEllipsis"/>
+
+                                                                           <!-- Place Rank -->
+                                                                           <TextBlock Grid.Column="10"
+                                                                                      Text="{Binding PlaceRank}"
+                                                                                      FontSize="9"
+                                                                                      Foreground="#FFB74D"
+                                                                                      HorizontalAlignment="Center"/>
+
+                                                                           <!-- Result count -->
+                                                                           <TextBlock Grid.Column="11"
                                                                                       Text="{Binding ResultCount}"
                                                                                       FontSize="9"
                                                                                       HorizontalAlignment="Center"/>
 
                                                                            <!-- Latitude -->
-                                                                           <TextBlock Grid.Column="10"
+                                                                           <TextBlock Grid.Column="12"
                                                                                       Text="{Binding Latitude, StringFormat='{}{0:F4}'}"
                                                                                       FontSize="9"
                                                                                       IsVisible="{Binding HasCoordinates}"/>
-                                                                           <TextBlock Grid.Column="10"
+                                                                           <TextBlock Grid.Column="12"
                                                                                       Text="-"
                                                                                       FontSize="9"
                                                                                       Opacity="0.4"
                                                                                       IsVisible="{Binding !HasCoordinates}"/>
 
                                                                            <!-- Longitude -->
-                                                                           <TextBlock Grid.Column="11"
+                                                                           <TextBlock Grid.Column="13"
                                                                                       Text="{Binding Longitude, StringFormat='{}{0:F4}'}"
                                                                                       FontSize="9"
                                                                                       IsVisible="{Binding HasCoordinates}"/>
-                                                                           <TextBlock Grid.Column="11"
+                                                                           <TextBlock Grid.Column="13"
                                                                                       Text="-"
                                                                                       FontSize="9"
                                                                                       Opacity="0.4"

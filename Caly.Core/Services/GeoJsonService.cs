@@ -125,8 +125,11 @@ public sealed class GeoJsonService
                             { "place_id", r.PlaceId },
                             { "osm_type", r.OsmType },
                             { "osm_id", r.OsmId },
-                            { "class", r.Class },
+                            { "category", r.Category },
                             { "type", r.Type },
+                            { "addresstype", r.Addresstype },
+                            { "place_rank", r.PlaceRank },
+                            { "address_rank", r.AddressRank },
                             { "importance", r.Importance },
                             { "confidence", r.Confidence },
                             { "match_type", r.MatchType },
@@ -158,8 +161,11 @@ public sealed class GeoJsonService
                         { "place_id", bestResult.PlaceId },
                         { "osm_type", bestResult.OsmType },
                         { "osm_id", bestResult.OsmId },
-                        { "class", bestResult.Class },
+                        { "category", bestResult.Category },
                         { "type", bestResult.Type },
+                        { "addresstype", bestResult.Addresstype },
+                        { "place_rank", bestResult.PlaceRank },
+                        { "address_rank", bestResult.AddressRank },
                         { "importance", bestResult.Importance },
                         { "confidence", bestResult.Confidence },
                         { "match_type", bestResult.MatchType },
@@ -467,8 +473,11 @@ public sealed class GeoJsonService
                     { "place_id", result.PlaceId },
                     { "osm_type", result.OsmType },
                     { "osm_id", result.OsmId },
-                    { "class", result.Class },
+                    { "category", result.Category },
                     { "type", result.Type },
+                    { "addresstype", result.Addresstype },
+                    { "place_rank", result.PlaceRank },
+                    { "address_rank", result.AddressRank },
                     { "importance", result.Importance },
                     { "confidence", result.Confidence },
                     { "match_type", result.MatchType },
@@ -616,7 +625,7 @@ public sealed class GeoJsonService
                     BboxMaxLat = result.BoundingBoxMaxLat,
                     BboxMinLon = result.BoundingBoxMinLon,
                     BboxMaxLon = result.BoundingBoxMaxLon,
-                    OsmClass = result.Class ?? "",
+                    OsmCategory = result.Category ?? "",
                     OsmType = result.Type ?? ""
                 });
             }
@@ -758,7 +767,7 @@ public sealed class GeoJsonService
                             { "osmId", best.OsmId },
                             { "placeId", best.PlaceId },
                             { "displayName", best.DisplayName },
-                            { "className", best.Class },
+                            { "categoryName", best.Category },
                             { "featureType", best.Type }
                         };
                     }
@@ -1061,8 +1070,11 @@ public sealed class GeoJsonService
                     string? placeId = null;
                     string? osmType = null;
                     long osmId = 0;
-                    string? cls = null;
+                    string? category = null;
                     string? type = null;
+                    string? addresstype = null;
+                    int placeRank = 0;
+                    int addressRank = 0;
                     double importance = 0;
                     double confidence = 0;
                     string? matchType = null;
@@ -1106,10 +1118,16 @@ public sealed class GeoJsonService
                             osmType = otEl.GetString();
                         if (props.TryGetProperty("osm_id", out System.Text.Json.JsonElement oidEl) && oidEl.ValueKind == System.Text.Json.JsonValueKind.Number)
                             osmId = oidEl.GetInt64();
-                        if (props.TryGetProperty("class", out System.Text.Json.JsonElement cEl) && cEl.ValueKind == System.Text.Json.JsonValueKind.String)
-                            cls = cEl.GetString();
+                        if (props.TryGetProperty("category", out System.Text.Json.JsonElement cEl) && cEl.ValueKind == System.Text.Json.JsonValueKind.String)
+                            category = cEl.GetString();
                         if (props.TryGetProperty("type", out System.Text.Json.JsonElement tEl) && tEl.ValueKind == System.Text.Json.JsonValueKind.String)
                             type = tEl.GetString();
+                        if (props.TryGetProperty("addresstype", out System.Text.Json.JsonElement atEl) && atEl.ValueKind == System.Text.Json.JsonValueKind.String)
+                            addresstype = atEl.GetString();
+                        if (props.TryGetProperty("place_rank", out System.Text.Json.JsonElement prEl) && prEl.ValueKind == System.Text.Json.JsonValueKind.Number)
+                            placeRank = prEl.GetInt32();
+                        if (props.TryGetProperty("address_rank", out System.Text.Json.JsonElement arEl) && arEl.ValueKind == System.Text.Json.JsonValueKind.Number)
+                            addressRank = arEl.GetInt32();
                         if (props.TryGetProperty("importance", out System.Text.Json.JsonElement impEl) && impEl.ValueKind == System.Text.Json.JsonValueKind.Number)
                             importance = impEl.GetDouble();
                         if (props.TryGetProperty("confidence", out System.Text.Json.JsonElement confEl) && confEl.ValueKind == System.Text.Json.JsonValueKind.Number)
@@ -1162,8 +1180,11 @@ public sealed class GeoJsonService
                         PlaceId = placeId ?? "",
                         OsmType = osmType ?? "",
                         OsmId = osmId,
-                        Class = cls ?? "",
+                        Category = category ?? "",
                         Type = type ?? "",
+                        Addresstype = addresstype ?? "",
+                        PlaceRank = placeRank,
+                        AddressRank = addressRank,
                         Importance = importance,
                         Confidence = confidence,
                         MatchType = matchType ?? "",
@@ -1203,8 +1224,11 @@ public sealed class GeoJsonService
                             var rPlaceId = (r.TryGetProperty("place_id", out System.Text.Json.JsonElement rpi) && rpi.ValueKind == System.Text.Json.JsonValueKind.String) ? rpi.GetString() : "";
                             var rOsmType = (r.TryGetProperty("osm_type", out System.Text.Json.JsonElement rot) && rot.ValueKind == System.Text.Json.JsonValueKind.String) ? rot.GetString() : "";
                             var rOsmId = r.TryGetProperty("osm_id", out System.Text.Json.JsonElement roid) && roid.ValueKind == System.Text.Json.JsonValueKind.Number ? roid.GetInt64() : 0L;
-                            var rClass = (r.TryGetProperty("class", out System.Text.Json.JsonElement rc) && rc.ValueKind == System.Text.Json.JsonValueKind.String) ? rc.GetString() : "";
+                            var rCategory = (r.TryGetProperty("category", out System.Text.Json.JsonElement rc) && rc.ValueKind == System.Text.Json.JsonValueKind.String) ? rc.GetString() : "";
                             var rType = (r.TryGetProperty("type", out System.Text.Json.JsonElement rt) && rt.ValueKind == System.Text.Json.JsonValueKind.String) ? rt.GetString() : "";
+                            var rAddresstype = (r.TryGetProperty("addresstype", out System.Text.Json.JsonElement rat) && rat.ValueKind == System.Text.Json.JsonValueKind.String) ? rat.GetString() : "";
+                            var rPlaceRank = r.TryGetProperty("place_rank", out System.Text.Json.JsonElement rpr) && rpr.ValueKind == System.Text.Json.JsonValueKind.Number ? rpr.GetInt32() : 0;
+                            var rAddressRank = r.TryGetProperty("address_rank", out System.Text.Json.JsonElement rar) && rar.ValueKind == System.Text.Json.JsonValueKind.Number ? rar.GetInt32() : 0;
                             var rImportance = r.TryGetProperty("importance", out System.Text.Json.JsonElement ri) && ri.ValueKind == System.Text.Json.JsonValueKind.Number ? ri.GetDouble() : 0.0;
                             var rConfidence = r.TryGetProperty("confidence", out System.Text.Json.JsonElement rcf) && rcf.ValueKind == System.Text.Json.JsonValueKind.Number ? rcf.GetDouble() : 0.0;
                             var rMatchType = (r.TryGetProperty("match_type", out System.Text.Json.JsonElement rmt) && rmt.ValueKind == System.Text.Json.JsonValueKind.String) ? rmt.GetString() : "";
@@ -1226,8 +1250,11 @@ public sealed class GeoJsonService
                                 PlaceId = rPlaceId,
                                 OsmType = rOsmType,
                                 OsmId = rOsmId,
-                                Class = rClass,
+                                Category = rCategory,
                                 Type = rType,
+                                Addresstype = rAddresstype,
+                                PlaceRank = rPlaceRank,
+                                AddressRank = rAddressRank,
                                 Importance = rImportance,
                                 Confidence = rConfidence,
                                 MatchType = rMatchType,

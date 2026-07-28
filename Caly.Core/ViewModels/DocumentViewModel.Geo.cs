@@ -998,8 +998,11 @@ public sealed partial class DocumentViewModel
                                 var rPlaceId = (r.TryGetProperty("place_id", out System.Text.Json.JsonElement rpi) && rpi.ValueKind == System.Text.Json.JsonValueKind.String) ? rpi.GetString() : "";
                                 var rOsmType = (r.TryGetProperty("osm_type", out System.Text.Json.JsonElement rot) && rot.ValueKind == System.Text.Json.JsonValueKind.String) ? rot.GetString() : "";
                                 var rOsmId = r.TryGetProperty("osm_id", out System.Text.Json.JsonElement roid) && roid.ValueKind == System.Text.Json.JsonValueKind.Number ? roid.GetInt64() : 0L;
-                                var rClass = (r.TryGetProperty("class", out System.Text.Json.JsonElement rc) && rc.ValueKind == System.Text.Json.JsonValueKind.String) ? rc.GetString() : "";
+                                var rCategory = (r.TryGetProperty("category", out System.Text.Json.JsonElement rc) && rc.ValueKind == System.Text.Json.JsonValueKind.String) ? rc.GetString() : "";
                                 var rType = (r.TryGetProperty("type", out System.Text.Json.JsonElement rt) && rt.ValueKind == System.Text.Json.JsonValueKind.String) ? rt.GetString() : "";
+                                var rAddresstype = (r.TryGetProperty("addresstype", out System.Text.Json.JsonElement rat) && rat.ValueKind == System.Text.Json.JsonValueKind.String) ? rat.GetString() : "";
+                                var rPlaceRank = r.TryGetProperty("place_rank", out System.Text.Json.JsonElement rpr) && rpr.ValueKind == System.Text.Json.JsonValueKind.Number ? rpr.GetInt32() : 0;
+                                var rAddressRank = r.TryGetProperty("address_rank", out System.Text.Json.JsonElement rar) && rar.ValueKind == System.Text.Json.JsonValueKind.Number ? rar.GetInt32() : 0;
                                 var rImportance = r.TryGetProperty("importance", out System.Text.Json.JsonElement ri) && ri.ValueKind == System.Text.Json.JsonValueKind.Number ? ri.GetDouble() : 0.0;
                                 var rConfidence = r.TryGetProperty("confidence", out System.Text.Json.JsonElement rcf) && rcf.ValueKind == System.Text.Json.JsonValueKind.Number ? rcf.GetDouble() : 0.0;
                                 var rMatchType = (r.TryGetProperty("match_type", out System.Text.Json.JsonElement rmt) && rmt.ValueKind == System.Text.Json.JsonValueKind.String) ? rmt.GetString() : "";
@@ -1021,8 +1024,11 @@ public sealed partial class DocumentViewModel
                                     PlaceId = rPlaceId,
                                     OsmType = rOsmType,
                                     OsmId = rOsmId,
-                                    Class = rClass,
+                                    Category = rCategory,
                                     Type = rType,
+                                    Addresstype = rAddresstype,
+                                    PlaceRank = rPlaceRank,
+                                    AddressRank = rAddressRank,
                                     Importance = rImportance,
                                     Confidence = rConfidence,
                                     MatchType = rMatchType,

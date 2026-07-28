@@ -41,8 +41,11 @@ public class GeocodingResult
     public string PlaceId { get; set; } = string.Empty;
     public string OsmType { get; set; } = string.Empty;      // node, way, relation
     public long OsmId { get; set; }
-    public string Class { get; set; } = string.Empty;        // boundary, place, highway, etc.
+    public string Category { get; set; } = string.Empty;     // boundary, place, highway, etc. (新版 Nominatim category 字段)
     public string Type { get; set; } = string.Empty;         // administrative, city, town, etc.
+    public string Addresstype { get; set; } = string.Empty;  // 新版 Nominatim addresstype（如 city, state, province）
+    public int PlaceRank { get; set; }                       // 行政层级：8=省/州, 12=地级市, 14=区县, 16=城市
+    public int AddressRank { get; set; }                     // 地址层级排名
     public double Importance { get; set; }
     public double Confidence { get; set; }                   // 匹配置信度评分 (0.0 - 1.0)
     // Nominatim withevidence 扩展字段
@@ -117,7 +120,7 @@ public sealed class GeocodingService : IDisposable
         try
         {
             var encoded = System.Net.WebUtility.UrlEncode(locationName);
-            var url = $"http://127.0.0.1:8088/search?q={encoded}&format=json&limit=1&accept-language=zh&withevidence=1";
+            var url = $"http://127.0.0.1:8088/search?q={encoded}&format=json&limit=1&accept-language=zh&withevidence=1&extratags=1";
 
             var response = await _httpClient.GetAsync(url, cancellationToken);
             if (response.IsSuccessStatusCode)
@@ -252,16 +255,26 @@ public sealed class GeocodingService : IDisposable
             ExtractJsonString(json, "osm_id", out var osmId);
             result.OsmId = long.TryParse(osmId, out var oid) ? oid : 0;
 
-            // 解析 category (新) 或 class (旧) 字段
+            // 解析 category 字段（新版 Nominatim，不再兼容旧版 class）
             ExtractJsonString(json, "category", out var category);
-            ExtractJsonString(json, "class", out var cls);
-            result.Class = category ?? cls ?? string.Empty;
+            result.Category = category ?? string.Empty;
 
             ExtractJsonString(json, "type", out var type);
             result.Type = type ?? string.Empty;
 
+            // 解析新版 Nominatim addresstype 字段
+            ExtractJsonString(json, "addresstype", out var addresstype);
+            result.Addresstype = addresstype ?? string.Empty;
+
             ExtractJsonString(json, "importance", out var importance);
             result.Importance = double.TryParse(importance, out var imp) ? imp : 0;
+
+            // 解析 place_rank 字段（Nominatim 标准字段，表示行政级别/搜索排名）
+            ExtractJsonString(json, "place_rank", out var placeRankStr);
+            result.PlaceRank = int.TryParse(placeRankStr, out var placeRank) ? placeRank : 0;
+
+            ExtractJsonString(json, "address_rank", out var addressRankStr);
+            result.AddressRank = int.TryParse(addressRankStr, out var addressRank) ? addressRank : 0;
 
             // 解析 withevidence 扩展字段
             ExtractJsonString(json, "match_type", out var matchType);
@@ -501,7 +514,7 @@ public sealed class GeocodingService : IDisposable
         try
         {
             var encoded = System.Net.WebUtility.UrlEncode(locationName);
-            var url = $"http://127.0.0.1:8088/search?q={encoded}&format=json&limit=5&accept-language=zh&withevidence=1";
+            var url = $"http://127.0.0.1:8088/search?q={encoded}&format=json&limit=5&accept-language=zh&withevidence=1&extratags=1";
 
             var response = await _httpClient.GetAsync(url, cancellationToken);
             if (!response.IsSuccessStatusCode)
@@ -716,16 +729,26 @@ public sealed class GeocodingService : IDisposable
             ExtractJsonString(json, "osm_id", out var osmId);
             result.OsmId = long.TryParse(osmId, out var oid) ? oid : 0;
 
-            // 解析 category (新) 或 class (旧) 字段
+            // 解析 category 字段（新版 Nominatim，不再兼容旧版 class）
             ExtractJsonString(json, "category", out var category);
-            ExtractJsonString(json, "class", out var cls);
-            result.Class = category ?? cls ?? string.Empty;
+            result.Category = category ?? string.Empty;
 
             ExtractJsonString(json, "type", out var type);
             result.Type = type ?? string.Empty;
 
+            // 解析新版 Nominatim addresstype 字段
+            ExtractJsonString(json, "addresstype", out var addresstype);
+            result.Addresstype = addresstype ?? string.Empty;
+
             ExtractJsonString(json, "importance", out var importance);
             result.Importance = double.TryParse(importance, out var imp) ? imp : 0;
+
+            // 解析 place_rank 字段（Nominatim 标准字段）
+            ExtractJsonString(json, "place_rank", out var placeRankStr2);
+            result.PlaceRank = int.TryParse(placeRankStr2, out var placeRank2) ? placeRank2 : 0;
+
+            ExtractJsonString(json, "address_rank", out var addressRankStr);
+            result.AddressRank = int.TryParse(addressRankStr, out var addressRank) ? addressRank : 0;
 
             // 解析 withevidence 扩展字段
             ExtractJsonString(json, "match_type", out var matchType);

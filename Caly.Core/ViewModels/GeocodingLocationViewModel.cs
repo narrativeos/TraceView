@@ -121,6 +121,15 @@ public partial class GeocodingLocationViewModel : ObservableObject
     private double _importance;
 
     [ObservableProperty]
+    private int _placeRank;
+
+    [ObservableProperty]
+    private int _addressRank;
+
+    [ObservableProperty]
+    private string _addresstype = "";
+
+    [ObservableProperty]
     private string _error = "";
 
     [ObservableProperty]
@@ -315,12 +324,15 @@ public partial class GeocodingLocationViewModel : ObservableObject
             Latitude = result.Latitude;
             Longitude = result.Longitude;
             DisplayName = result.DisplayName;
-            PlaceType = string.IsNullOrEmpty(result.Type) ? result.Class : result.Type;
+            PlaceType = string.IsNullOrEmpty(result.Type) ? result.Category : result.Type;
             Importance = result.Importance;
             MatchType = result.MatchType;
             MatchedNameTag = result.MatchedNameTag;
             MatchedName = result.MatchedName;
             MatchByHomophone = result.MatchByHomophone;
+            PlaceRank = result.PlaceRank;
+            AddressRank = result.AddressRank;
+            Addresstype = result.Addresstype;
         }
     }
 
