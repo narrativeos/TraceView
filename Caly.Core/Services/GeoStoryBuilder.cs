@@ -39,7 +39,8 @@ public class GeoStoryBuilder
     const int MinLocations = 1;
 
     // Minimum number of source content blocks for a node to qualify as a chapter.
-    const int MinContentBlocks = 3;
+    // Lowered to 1 to allow more granular chapters (single location with meaningful title).
+    const int MinContentBlocks = 1;
 
     // When a child node has at least this fraction of its parent's locations,
     // the child is preferred over the parent (more granular).
@@ -83,6 +84,7 @@ public class GeoStoryBuilder
         public double? BboxMaxLon { get; set; }
         public string OsmCategory { get; set; } = "";
         public string OsmType { get; set; } = "";
+        public int PlaceRank { get; set; }  // Nominatim place_rank: 3-4=国家, 5-9=省, 10-12=县, 13-16=城市, 17-21=区/镇, 22+=街道
     }
 
     /// <summary>
@@ -335,8 +337,12 @@ public class GeoStoryBuilder
                 Verb = l.VerbSpatialClass ?? "",
                 Lng = l.Longitude,
                 Lat = l.Latitude,
-                Zoom = l.SpatialRole == "TARGET" ? 15
-                     : l.SpatialRole == "ACTOR" ? 14 : 13,
+                // Use place_rank as base zoom, then adjust by spatial role
+                Zoom = Math.Clamp(
+                    GetZoomFromPlaceRank(l.PlaceRank)
+                    + (l.SpatialRole == "TARGET" ? 2 : 0)
+                    + (l.SpatialRole == "ACTOR" ? 1 : 0),
+                    3, 20),
                 Pitch = l.SpatialRole switch
                 {
                     "PATH" => 35,
@@ -449,7 +455,9 @@ public class GeoStoryBuilder
         if (locations.Count == 1)
         {
             var loc = locations[0];
-            return (loc.Longitude, loc.Latitude, 12);
+            // Use place_rank to determine appropriate zoom level
+            double locZoom = GetZoomFromPlaceRank(loc.PlaceRank);
+            return (loc.Longitude, loc.Latitude, locZoom);
         }
 
         var lngs = locations.Select(l => l.Longitude).ToList();
@@ -462,12 +470,40 @@ public class GeoStoryBuilder
         var maxSpan = Math.Max(lonSpan, latSpan);
 
         if (maxSpan < 0.0001)
-            return (centerLng, centerLat, 18);
+        {
+            // All points are the same, use place_rank of the first location
+            double rankZoom = GetZoomFromPlaceRank(locations[0].PlaceRank);
+            return (centerLng, centerLat, rankZoom);
+        }
 
         var zoom = Math.Log(360.0 / maxSpan) / Math.Log(2.0) - 0.5;
         zoom = Math.Max(1.0, Math.Min(20.0, zoom));
 
         return (centerLng, centerLat, zoom);
+    }
+
+    /// <summary>
+    /// Converts Nominatim place_rank to an appropriate map zoom level.
+    /// place_rank ranges: 3-4=国家, 5-9=省/州, 10-12=县, 13-16=城市, 17-21=区/镇, 22-24=社区, 25-27=街道, 28+=建筑
+    /// </summary>
+    static double GetZoomFromPlaceRank(int placeRank)
+    {
+        if (placeRank <= 0)
+            return 12; // Default zoom when place_rank is not available
+
+        return placeRank switch
+        {
+            <= 2  => 3,    // Continent/Sea
+            <= 4  => 5,    // Country
+            <= 6  => 7,    // State/province (high level)
+            <= 9  => 8,    // State/province
+            <= 12 => 10,   // County
+            <= 16 => 12,   // City
+            <= 21 => 14,   // District/town
+            <= 24 => 16,   // Locality/community
+            <= 27 => 17,   // Street
+            _     => 18    // Building/house
+        };
     }
 
     /// <summary>

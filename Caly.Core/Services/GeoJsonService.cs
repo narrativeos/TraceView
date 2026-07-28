@@ -626,7 +626,8 @@ public sealed class GeoJsonService
                     BboxMinLon = result.BoundingBoxMinLon,
                     BboxMaxLon = result.BoundingBoxMaxLon,
                     OsmCategory = result.Category ?? "",
-                    OsmType = result.Type ?? ""
+                    OsmType = result.Type ?? "",
+                    PlaceRank = result.PlaceRank
                 });
             }
 
