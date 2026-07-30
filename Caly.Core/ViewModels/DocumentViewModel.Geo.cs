@@ -38,6 +38,32 @@ namespace Caly.Core.ViewModels;
 
 public sealed partial class DocumentViewModel
 {
+    /// <summary>
+    /// Gets the best available document title for story maps.
+    /// Priority: Popo tree root title > PDF filename > fallback default.
+    /// </summary>
+    string GetBestDocumentTitle()
+    {
+        // 1. Popo tree root node title (most meaningful, from document content)
+        if (!string.IsNullOrEmpty(StructureDocument?.TreeRoot?.Title)
+            && StructureDocument!.TreeRoot!.Title != "Default Title"
+            && StructureDocument.TreeRoot.Title.Trim().Length > 1)
+        {
+            return StructureDocument.TreeRoot.Title.Trim();
+        }
+
+        // 2. PDF filename (without extension)
+        if (!string.IsNullOrEmpty(FileName))
+        {
+            var name = FileName.Replace(".pdf", "");
+            if (name.Trim().Length > 0)
+                return name.Trim();
+        }
+
+        // 3. Fallback default
+        return "Document Story";
+    }
+
     #region Geo Properties
 
     /// <summary>
@@ -607,7 +633,7 @@ public sealed partial class DocumentViewModel
             // Generate GeoLibre JSON string, prioritizing cache
             jsonContent = await geoJsonService.GenerateGeoLibreJsonStringAsync(
                 SemanticResults,
-                geoJsonPath: HasGeoJsonFile ? GeoJsonFilePath : (string)null,
+                geoJsonPath: HasGeoJsonFile ? GeoJsonFilePath : null,
                 onProgress: (status) => {
                     Dispatcher.UIThread.InvokeAsync(() => {
                         GeoStatusText = status;
@@ -615,7 +641,7 @@ public sealed partial class DocumentViewModel
                 },
                 cancellationToken: _geoLibreCts.Token,
                 popoTreeRoot: StructureDocument?.TreeRoot,
-                documentName: FileName ?? "Document Story");
+                documentName: this.GetBestDocumentTitle());
         }
         catch (OperationCanceledException)
         {
@@ -1016,24 +1042,24 @@ public sealed partial class DocumentViewModel
 
                                 var result = new GeocodingResult
                                 {
-                                    Name = rName,
+                                    Name = rName ?? "",
                                     Latitude = rLat ?? 0,
                                     Longitude = rLon ?? 0,
-                                    DisplayName = rDisplayName,
+                                    DisplayName = rDisplayName ?? "",
                                     IsCached = rIsCached,
-                                    PlaceId = rPlaceId,
-                                    OsmType = rOsmType,
+                                    PlaceId = rPlaceId ?? "",
+                                    OsmType = rOsmType ?? "",
                                     OsmId = rOsmId,
-                                    Category = rCategory,
-                                    Type = rType,
-                                    Addresstype = rAddresstype,
+                                    Category = rCategory ?? "",
+                                    Type = rType ?? "",
+                                    Addresstype = rAddresstype ?? "",
                                     PlaceRank = rPlaceRank,
                                     AddressRank = rAddressRank,
                                     Importance = rImportance,
                                     Confidence = rConfidence,
-                                    MatchType = rMatchType,
-                                    MatchedNameTag = rMatchedNameTag,
-                                    MatchedName = rMatchedName,
+                                    MatchType = rMatchType ?? "",
+                                    MatchedNameTag = rMatchedNameTag ?? "",
+                                    MatchedName = rMatchedName ?? "",
                                     MatchByHomophone = rMatchByHomophone
                                 };
 
