@@ -117,6 +117,7 @@ public sealed partial class PageViewModel : ViewModelBase, IDisposable
         PageType.appendix => "附录",
         PageType.glossary => "术语表",
         PageType.reference => "参考文献",
+        PageType.preface => "前言",
         _ => null
     };
 

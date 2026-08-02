@@ -110,7 +110,12 @@ public enum PageType
     /// <summary>
     /// Reference page (参考文献) - Bibliography and references section.
     /// </summary>
-    reference = 15
+    reference = 15,
+
+    /// <summary>
+    /// Preface page (前言/序言) - The preface or foreword of the document.
+    /// </summary>
+    preface = 16
 }
 
 /// <summary>

@@ -19,6 +19,7 @@
 // SOFTWARE.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -53,10 +54,10 @@ public sealed class PopoService : IDisposable
     public static readonly TimeSpan DefaultPollInterval = TimeSpan.FromSeconds(2);
 
     /// <summary>
-    /// Default timeout for Popo task processing. MPS processing can take 60-90 minutes
-    /// for a full document, so we allow 2 hours (120 minutes) to accommodate large documents.
+    /// Default timeout for Popo task processing. MPS processing can take 60-180 minutes
+    /// for a full document, so we allow 10 hours (600 minutes) to accommodate very large documents.
     /// </summary>
-    public static readonly TimeSpan DefaultTimeout = TimeSpan.FromMinutes(120);
+    public static readonly TimeSpan DefaultTimeout = TimeSpan.FromMinutes(600);
 
     /// <summary>
     /// Creates a new PopoService instance.
@@ -70,7 +71,7 @@ public sealed class PopoService : IDisposable
 
         _httpClient = new HttpClient
         {
-            Timeout = TimeSpan.FromMinutes(150)
+            Timeout = TimeSpan.FromMinutes(630)
         };
 
         Directory.CreateDirectory(_cacheDirectory);
@@ -184,11 +185,12 @@ public sealed class PopoService : IDisposable
     /// Polls the task status until it completes or fails.
     /// Uses the actual progress percentage from the API's progress field.
     /// Includes timeout protection and detailed logging.
+    /// Saves processing records to disk for debugging and recovery.
     /// </summary>
     /// <param name="taskId">Task ID to poll.</param>
     /// <param name="onProgress">Simple progress callback (status, percent).</param>
     /// <param name="detailedCallback">Optional callback with progress message details.</param>
-    /// <param name="timeout">Maximum polling timeout. Default 120 minutes (2 hours).</param>
+    /// <param name="timeout">Maximum polling timeout. Default 600 minutes (10 hours).</param>
     /// <param name="ct">Cancellation token.</param>
     public async Task PollUntilCompleteAsync(
         string taskId,
@@ -201,17 +203,33 @@ public sealed class PopoService : IDisposable
         var deadline = DateTime.UtcNow.Add(effectiveTimeout);
         int lastProgress = -1;
         int pollCount = 0;
+        var progressRecords = new List<PopoProgressRecord>();
+
+        // Initialize the first record
+        var currentRecord = new PopoProgressRecord
+        {
+            TaskId = taskId,
+            StartedAt = DateTime.UtcNow,
+            Status = "pending"
+        };
+        progressRecords.Add(currentRecord);
+        SaveProgressRecords(taskId, progressRecords);
 
         while (!ct.IsCancellationRequested)
         {
             // Check timeout
             if (DateTime.UtcNow > deadline)
             {
-                var elapsed = deadline.Subtract(effectiveTimeout);
+                currentRecord.EndedAt = DateTime.UtcNow;
+                currentRecord.Status = "timeout";
+                currentRecord.ErrorMessage = $"Timed out after {effectiveTimeout.TotalMinutes:F1} minutes (poll #{pollCount}, last progress: {lastProgress}%)";
+                SaveProgressRecords(taskId, progressRecords);
+                
                 throw new PopoServiceException(
                     $"Popo task timed out after {effectiveTimeout.TotalMinutes:F1} minutes "
                     + $"(poll #{pollCount}, last progress: {lastProgress}%). "
-                    + $"The server may be stuck processing your document.");
+                    + $"The server may be stuck processing your document. "
+                    + $"Processing record saved to: {GetProgressRecordPath(taskId)}");
             }
 
             var status = await GetTaskStatusAsync(taskId, ct);
@@ -228,6 +246,18 @@ public sealed class PopoService : IDisposable
                 System.Diagnostics.Debug.WriteLine(
                     $"[Popo] Poll #{pollCount}: status={status.Status}, progress={progressMessage ?? "N/A"}");
 
+                // Update progress record
+                currentRecord.Status = status.Status;
+                currentRecord.Progress = apiProgress;
+                currentRecord.ProgressMessage = progressMessage;
+                currentRecord.UpdatedAt = DateTime.UtcNow;
+                
+                // Save progress record periodically (every 5% progress change or every 30 polls)
+                if (apiProgress != lastProgress || pollCount % 30 == 0)
+                {
+                    SaveProgressRecords(taskId, progressRecords);
+                }
+
                 if (apiProgress != lastProgress)
                 {
                     lastProgress = apiProgress;
@@ -238,6 +268,14 @@ public sealed class PopoService : IDisposable
             else if (status.IsCompleted)
             {
                 System.Diagnostics.Debug.WriteLine($"[Popo] Poll #{pollCount}: task completed!");
+                
+                // Finalize progress record
+                currentRecord.Status = status.Status;
+                currentRecord.Progress = 100;
+                currentRecord.ProgressMessage = "Task completed";
+                currentRecord.EndedAt = DateTime.UtcNow;
+                SaveProgressRecords(taskId, progressRecords);
+                
                 onProgress?.Invoke(PopoProcessStatus.Downloading, 70);
                 detailedCallback?.OnProgress(PopoProcessStatus.Downloading, 70, "Task completed, downloading result...");
                 return;
@@ -245,12 +283,55 @@ public sealed class PopoService : IDisposable
             else if (status.IsFailed)
             {
                 System.Diagnostics.Debug.WriteLine($"[Popo] Poll #{pollCount}: task failed!");
+                
+                // Finalize progress record with error
+                currentRecord.Status = status.Status;
+                currentRecord.EndedAt = DateTime.UtcNow;
+                currentRecord.ErrorMessage = status.GetErrorMessage() ?? "Unknown error";
+                SaveProgressRecords(taskId, progressRecords);
+                
                 onProgress?.Invoke(PopoProcessStatus.Failed, -1);
                 var errorMessage = status.GetErrorMessage() ?? "Unknown error";
                 throw new PopoServiceException($"Popo task failed: {errorMessage}");
             }
 
             await Task.Delay(DefaultPollInterval, ct);
+        }
+    }
+
+    /// <summary>
+    /// Gets the file path for progress records for a given task.
+    /// </summary>
+    private string GetProgressRecordPath(string taskId)
+    {
+        var logsDir = Path.Combine(_cacheDirectory, "logs");
+        return Path.Combine(logsDir, $"task_{taskId}_progress.json");
+    }
+
+    /// <summary>
+    /// Saves progress records to disk as JSON.
+    /// </summary>
+    private void SaveProgressRecords(string taskId, List<PopoProgressRecord> records)
+    {
+        try
+        {
+            var logsDir = Path.Combine(_cacheDirectory, "logs");
+            Directory.CreateDirectory(logsDir);
+            
+            var outputPath = GetProgressRecordPath(taskId);
+            var jsonOptions = new JsonSerializerOptions
+            {
+                WriteIndented = true,
+                PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase
+            };
+            var json = JsonSerializer.Serialize(records, jsonOptions);
+            File.WriteAllText(outputPath, json);
+            System.Diagnostics.Debug.WriteLine($"[Popo] Saved progress record to {outputPath}");
+        }
+        catch (Exception ex)
+        {
+            // Log but don't fail the main process
+            System.Diagnostics.Debug.WriteLine($"[Popo] Failed to save progress record: {ex.Message}");
         }
     }
 
@@ -306,7 +387,7 @@ public sealed class PopoService : IDisposable
     /// <param name="model">Model name (e.g., "mineru"). Required by Popo API.</param>
     /// <param name="onProgress">Progress callback (status, percent 0-100).</param>
     /// <param name="detailedCallback">Optional callback with progress message details.</param>
-    /// <param name="timeout">Maximum polling timeout. Default 120 minutes (2 hours).</param>
+    /// <param name="timeout">Maximum polling timeout. Default 600 minutes (10 hours).</param>
     /// <param name="ct">Cancellation token.</param>
     public async Task<PopoProcessResult> ProcessAsync(
         string zipPath,
@@ -606,4 +687,51 @@ public class PopoProcessResultJson
 
     [System.Text.Json.Serialization.JsonPropertyName("tree")]
     public Caly.Core.Models.AnalysisTreeNode? Tree { get; set; }
+}
+
+/// <summary>
+/// Records the progress of a Popo processing task for debugging and recovery.
+/// Saved to disk periodically during long-running tasks.
+/// </summary>
+public class PopoProgressRecord
+{
+    /// <summary>
+    /// The task ID being processed.
+    /// </summary>
+    public string TaskId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Current status of the task (e.g., "pending", "processing", "completed", "failed", "timeout").
+    /// </summary>
+    public string Status { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Progress percentage (0-100).
+    /// </summary>
+    public int Progress { get; set; }
+
+    /// <summary>
+    /// Detailed progress message from the API.
+    /// </summary>
+    public string? ProgressMessage { get; set; }
+
+    /// <summary>
+    /// When the task started processing.
+    /// </summary>
+    public DateTime StartedAt { get; set; }
+
+    /// <summary>
+    /// When the task was last updated.
+    /// </summary>
+    public DateTime? UpdatedAt { get; set; }
+
+    /// <summary>
+    /// When the task completed or failed.
+    /// </summary>
+    public DateTime? EndedAt { get; set; }
+
+    /// <summary>
+    /// Error message if the task failed or timed out.
+    /// </summary>
+    public string? ErrorMessage { get; set; }
 }

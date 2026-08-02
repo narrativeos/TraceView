@@ -56,7 +56,8 @@ public static class PopoJsonService
     {
         PropertyNameCaseInsensitive = true,
         TypeInfoResolver = SourceGenerationContext.Default,
-        Converters = { new RectJsonConverter() }
+        Converters = { new RectJsonConverter() },
+        MaxDepth = 256
     };
 
     private static readonly JsonSerializerOptions s_defaultSerializeOptions = new()
@@ -76,7 +77,8 @@ public static class PopoJsonService
         WriteIndented = true,
         PropertyNameCaseInsensitive = true,
         TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
-        Converters = { new RectJsonConverter() }
+        Converters = { new RectJsonConverter() },
+        MaxDepth = 256
     };
 
     /// <summary>

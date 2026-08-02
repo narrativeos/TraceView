@@ -900,6 +900,7 @@ public static class MinerUJsonService
             "appendix" => PageType.appendix,
             "glossary" => PageType.glossary,
             "reference" => PageType.reference,
+            "preface" => PageType.preface,
             _ => PageType.unknown
         };
     }

@@ -326,11 +326,15 @@ public sealed partial class DocumentViewModel
             return;
 
 
-        // Preserve PreprocBlocks from the existing MinerU data (loaded by TryLoadMinerUData)
-        // PopoJsonService does not parse preproc_blocks, so we need to merge them
+        // Preserve PreprocBlocks and PageTypes from the existing MinerU data (loaded by TryLoadMinerUData)
+        // PopoJsonService does not parse preproc_blocks or page_type, so we need to merge them
         if (StructureDocument?.PreprocBlocks is not null && StructureDocument.PreprocBlocks.Count > 0)
         {
             minerUDoc.PreprocBlocks = StructureDocument.PreprocBlocks;
+        }
+        if (StructureDocument?.PageTypes is not null && StructureDocument.PageTypes.Count > 0)
+        {
+            minerUDoc.PageTypes = StructureDocument.PageTypes;
         }
 
         // Find artifacts directory for image display.
