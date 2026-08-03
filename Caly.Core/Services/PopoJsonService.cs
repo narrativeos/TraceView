@@ -394,6 +394,16 @@ public static class PopoJsonService
     {
         var node = new AnalysisTreeNode();
 
+        // Guard: if the element itself is not an Object (e.g., a plain string in children array),
+        // return an empty node rather than throwing.
+        if (elem.ValueKind != JsonValueKind.Object)
+        {
+            // Store non-object values as content so they aren't silently lost.
+            if (elem.ValueKind == JsonValueKind.String)
+                node.Content = elem.GetString() ?? string.Empty;
+            return node;
+        }
+
         if (elem.TryGetProperty("type", out var typeElem))
             node.Type = typeElem.GetString() ?? string.Empty;
 
@@ -409,11 +419,16 @@ public static class PopoJsonService
         if (elem.TryGetProperty("level", out var levelElem))
             node.Level = levelElem.GetInt32();
 
-        // Parse location
-        if (elem.TryGetProperty("location", out var locElem))
+        // Parse location — guard against non-array values
+        if (elem.TryGetProperty("location", out var locElem) &&
+            locElem.ValueKind == JsonValueKind.Array)
         {
             foreach (var loc in locElem.EnumerateArray())
             {
+                // Guard: skip non-object entries in location array
+                if (loc.ValueKind != JsonValueKind.Object)
+                    continue;
+
                 var entry = new LocationEntry();
 
                 if (loc.TryGetProperty("bbox", out var bboxElem))
@@ -430,8 +445,9 @@ public static class PopoJsonService
         if (elem.TryGetProperty("img_path", out var imgPathElem))
             node.ImgPath = imgPathElem.GetString() ?? string.Empty;
 
-        // Parse block_ids
-        if (elem.TryGetProperty("block_ids", out var idsElem))
+        // Parse block_ids — guard against non-array values
+        if (elem.TryGetProperty("block_ids", out var idsElem) &&
+            idsElem.ValueKind == JsonValueKind.Array)
         {
             foreach (var id in idsElem.EnumerateArray())
             {
@@ -439,8 +455,9 @@ public static class PopoJsonService
             }
         }
 
-        // Parse source_block_ids (UUID strings from MinerU middle.json)
-        if (elem.TryGetProperty("source_block_ids", out var sourceIdsElem))
+        // Parse source_block_ids (UUID strings from MinerU middle.json) — guard against non-array values
+        if (elem.TryGetProperty("source_block_ids", out var sourceIdsElem) &&
+            sourceIdsElem.ValueKind == JsonValueKind.Array)
         {
             foreach (var sourceId in sourceIdsElem.EnumerateArray())
             {
@@ -450,8 +467,9 @@ public static class PopoJsonService
             }
         }
 
-        // Parse children recursively
-        if (elem.TryGetProperty("children", out var childrenElem))
+        // Parse children recursively — guard against non-array values
+        if (elem.TryGetProperty("children", out var childrenElem) &&
+            childrenElem.ValueKind == JsonValueKind.Array)
         {
             foreach (var child in childrenElem.EnumerateArray())
             {
@@ -693,9 +711,8 @@ public static class PopoJsonService
             if (isWrapperFormat)
             {
                 // PopoTaskResultResponse wrapper format (popo_result.json):
-                //   { task_id, status, result: { doc_id, status, message, tree: {...} } }
-                // Use JsonDocument to extract the tree and doc_id, then use ParseTreeNode
-                // to correctly parse img_path (which reflection-based deserialization misses).
+                //   { task_id, status, result: { doc_id, status, message, tree, toc, metadata } }
+                // Newer versions include dedicated toc.entries and metadata dict at the result level.
                 if (root.TryGetProperty("result", out var resultElem) &&
                     resultElem.TryGetProperty("tree", out var treeElem))
                 {
@@ -705,7 +722,58 @@ public static class PopoJsonService
                         var docId = resultElem.TryGetProperty("doc_id", out var docIdElem)
                             ? docIdElem.GetString() ?? string.Empty
                             : string.Empty;
-                        return BuildStructureDocumentFromTree(treeRoot, docId, DefaultModelName);
+                        var doc = BuildStructureDocumentFromTree(treeRoot, docId, DefaultModelName);
+
+                        // Parse result.metadata (book copyright info) — newer format has it as a dict
+                        if (resultElem.TryGetProperty("metadata", out var metaElem) &&
+                            metaElem.ValueKind == JsonValueKind.Object)
+                        {
+                            doc.BookMetadataJson = metaElem.GetRawText();
+                            // Also set on the tree root for backward compatibility
+                            treeRoot.Metadata = metaElem.GetRawText();
+                        }
+
+                        // Parse result.toc.entries (structured table of contents) — newer format
+                        // Guard: toc may be null (JSON null) when the field exists but has no value
+                        if (resultElem.TryGetProperty("toc", out var tocElem) &&
+                            tocElem.ValueKind == JsonValueKind.Object &&
+                            tocElem.TryGetProperty("entries", out var entriesElem) &&
+                            entriesElem.ValueKind == JsonValueKind.Array)
+                        {
+                            var tocEntries = new List<TocEntry>();
+                            foreach (var entry in entriesElem.EnumerateArray())
+                            {
+                                // Guard: skip non-object entries (e.g., plain strings) in toc array
+                                if (entry.ValueKind != JsonValueKind.Object)
+                                    continue;
+
+                                // Prefer linked_body_title (actual body title) over TOC page title
+                                string title = string.Empty;
+                                if (entry.TryGetProperty("linked_body_title", out var linkedTitleElem) &&
+                                    !string.IsNullOrEmpty(linkedTitleElem.GetString()))
+                                {
+                                    title = linkedTitleElem.GetString()!;
+                                }
+                                else if (entry.TryGetProperty("title", out var titleElem))
+                                {
+                                    title = titleElem.GetString() ?? string.Empty;
+                                }
+
+                                if (!string.IsNullOrEmpty(title))
+                                {
+                                    tocEntries.Add(new TocEntry
+                                    {
+                                        Title = title,
+                                        Level = entry.TryGetProperty("level", out var lvlElem) ? lvlElem.GetInt32() : 1,
+                                        Page = entry.TryGetProperty("linked_body_page", out var pageElem) ? pageElem.GetInt32() : 0,
+                                        Type = "toc"
+                                    });
+                                }
+                            }
+                            doc.TocEntries = tocEntries;
+                        }
+
+                        return doc;
                     }
                 }
             }
@@ -1051,20 +1119,108 @@ public static class PopoJsonService
 
     /// <summary>
     /// Builds a flat table of contents list from the Popo analysis tree.
-    /// Extracts text/title nodes that have meaningful content, along with their
-    /// hierarchical level and starting page number.
+    /// Preferred path: uses pre-parsed TocEntries from StructureDocument (popo_result.json's result.toc.entries).
+    /// Falls back to extracting from the "目录" (TOC) subtree within the tree.
+    /// Final fallback: full-tree traversal.
     /// </summary>
     /// <param name="root">The root node of the document tree.</param>
+    /// <param name="doc">Optional StructureDocument with pre-parsed TOC entries.</param>
     /// <returns>A list of TOC entries ordered by their appearance in the tree.</returns>
-    public static List<TocEntry> BuildTableOfContents(AnalysisTreeNode root)
+    public static List<TocEntry> BuildTableOfContents(AnalysisTreeNode root, StructureDocument? doc = null)
     {
-        var entries = new List<TocEntry>();
-        BuildTocRecursive(root, entries);
-        return entries;
+        // Preferred path 1: Use pre-parsed TocEntries from StructureDocument (popo_result.json result.toc.entries)
+        if (doc?.TocEntries is { Count: > 0 })
+            return doc.TocEntries;
+
+        // Preferred path 2: Extract from the dedicated "目录" (TOC) subtree
+        var tocNode = FindTocNode(root);
+        if (tocNode is not null && tocNode.Children.Count > 0)
+        {
+            var entries = new List<TocEntry>();
+
+            // Calculate level offset to normalize the hierarchy.
+            // Find minimum level among the TOC subtree's children (skip the "目录" node itself).
+            int minLevel = int.MaxValue;
+            foreach (var child in tocNode.Children)
+            {
+                FindMinTocLevel(child, ref minLevel);
+            }
+            int levelOffset = minLevel != int.MaxValue ? 1 - minLevel : 0;
+
+            // Extract all text nodes from the TOC subtree (skip the "目录" node itself)
+            foreach (var child in tocNode.Children)
+            {
+                BuildTocFromSubtree(child, entries, levelOffset);
+            }
+
+            return entries;
+        }
+
+        // Fallback: full-tree traversal for documents without a dedicated TOC node
+        var fallbackEntries = new List<TocEntry>();
+        BuildTocRecursive(root, fallbackEntries);
+        return fallbackEntries;
     }
 
     /// <summary>
-    /// Recursively traverses the tree to extract TOC entries.
+    /// Recursively searches the tree for a text node with title "目录" (Table of Contents).
+    /// </summary>
+    private static AnalysisTreeNode? FindTocNode(AnalysisTreeNode node)
+    {
+        if (node.Type == "text" && node.Title == "目录")
+            return node;
+
+        foreach (var child in node.Children)
+        {
+            var found = FindTocNode(child);
+            if (found is not null)
+                return found;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Finds the minimum level among text nodes in a subtree (excluding the root node itself).
+    /// </summary>
+    private static void FindMinTocLevel(AnalysisTreeNode node, ref int minLevel)
+    {
+        if (node.Type == "text" && !string.IsNullOrEmpty(node.Title) && node.Level < minLevel)
+            minLevel = node.Level;
+
+        foreach (var child in node.Children)
+        {
+            FindMinTocLevel(child, ref minLevel);
+        }
+    }
+
+    /// <summary>
+    /// Recursively extracts TOC entries from a subtree, applying a level offset
+    /// to normalize the hierarchy (makes the first level become 1).
+    /// </summary>
+    private static void BuildTocFromSubtree(AnalysisTreeNode node, List<TocEntry> entries, int levelOffset)
+    {
+        if (node.Type == "text" && !string.IsNullOrEmpty(node.Title))
+        {
+            if (node.Location.Count > 0)
+            {
+                entries.Add(new TocEntry
+                {
+                    Title = node.Title.Trim(),
+                    Level = node.Level + levelOffset,
+                    Page = node.Location[0].Page,
+                    Type = node.Type
+                });
+            }
+        }
+
+        foreach (var child in node.Children)
+        {
+            BuildTocFromSubtree(child, entries, levelOffset);
+        }
+    }
+
+    /// <summary>
+    /// Recursively traverses the tree to extract TOC entries (legacy fallback).
     /// Skips root, page_number, header, footer, image-only nodes without meaningful titles.
     /// </summary>
     private static void BuildTocRecursive(AnalysisTreeNode node, List<TocEntry> entries)
@@ -1126,7 +1282,7 @@ public static class PopoJsonService
 
         Directory.CreateDirectory(outputDir);
 
-        var entries = BuildTableOfContents(doc.TreeRoot);
+        var entries = BuildTableOfContents(doc.TreeRoot, doc);
 
         // Save toc.json
         var jsonPath = Path.Combine(outputDir, "toc.json");

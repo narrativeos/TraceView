@@ -254,19 +254,21 @@ public sealed partial class DocumentViewModel
 
         try
         {
-            // Generate TOC entries from the tree
-            var entries = StructureDocument.TreeRoot is not null
-                ? PopoJsonService.BuildTableOfContents(StructureDocument.TreeRoot)
-                : new System.Collections.Generic.List<TocEntry>();
-            TocMarkdownText = PopoJsonService.GenerateTocMarkdown(entries);
-
-            // Save to popo/ directory
+            // Generate and save TOC in one pass (uses popo_result.json's 目录 subtree)
+            System.Collections.Generic.List<TocEntry> entries;
             if (ProjectPath is not null)
             {
                 var popoDir = Path.Combine(ProjectPath, "popo");
-                await PopoJsonService.SaveTocFilesAsync(StructureDocument, popoDir);
+                entries = await PopoJsonService.SaveTocFilesAsync(StructureDocument, popoDir);
+            }
+            else
+            {
+                entries = StructureDocument.TreeRoot is not null
+                    ? PopoJsonService.BuildTableOfContents(StructureDocument.TreeRoot, StructureDocument)
+                    : new System.Collections.Generic.List<TocEntry>();
             }
 
+            TocMarkdownText = PopoJsonService.GenerateTocMarkdown(entries);
             ShowTocPanel = true;
         }
         catch (System.Exception ex)
@@ -292,39 +294,35 @@ public sealed partial class DocumentViewModel
     /// </summary>
     internal void TryLoadPopoData()
     {
-        if (ProjectPath is null && LocalPath is null)
+        if (ProjectPath is null)
             return;
 
         StructureDocument? minerUDoc = null;
 
-        // Phase 1: Check project's popo/popo_result.json directly (Popo service output)
-        if (ProjectPath is not null)
+        // Check project's popo/ directory
+        var popoDir = Path.Combine(ProjectPath, "popo");
+        if (Directory.Exists(popoDir))
         {
-            var popoDir = Path.Combine(ProjectPath, "popo");
-            if (Directory.Exists(popoDir))
+            // Try popo_result.json directly
+            var resultJson = Path.Combine(popoDir, "popo_result.json");
+            if (File.Exists(resultJson))
             {
-                // Try popo_result.json directly in the popo directory
-                var resultJson = Path.Combine(popoDir, "popo_result.json");
-                if (File.Exists(resultJson))
-                {
-                    minerUDoc = PopoJsonService.TryParsePopoResultJson(resultJson);
-                }
+                minerUDoc = PopoJsonService.TryParsePopoResultJson(resultJson);
+            }
 
-                // Fallback: Try extract subdirectory
-                if (minerUDoc is null)
+            // Fallback: Try extract subdirectory
+            if (minerUDoc is null)
+            {
+                var extractDir = Path.Combine(popoDir, "extract");
+                if (Directory.Exists(extractDir))
                 {
-                    var extractDir = Path.Combine(popoDir, "extract");
-                    if (Directory.Exists(extractDir))
-                    {
-                        minerUDoc = PopoJsonService.TryParsePopoResultDir(extractDir);
-                    }
+                    minerUDoc = PopoJsonService.TryParsePopoResultDir(extractDir);
                 }
             }
         }
 
         if (minerUDoc is null)
             return;
-
 
         // Preserve PreprocBlocks and PageTypes from the existing MinerU data (loaded by TryLoadMinerUData)
         // PopoJsonService does not parse preproc_blocks or page_type, so we need to merge them
@@ -343,7 +341,7 @@ public sealed partial class DocumentViewModel
         string? artifactsDir = null;
         if (ProjectPath is not null)
         {
-            // Get docId
+            // Get docId from LocalPath or fallback to ZIP filename
             string? docId = LocalPath is not null
                 ? System.IO.Path.GetFileNameWithoutExtension(LocalPath)
                 : null;
@@ -419,10 +417,10 @@ public sealed partial class DocumentViewModel
             // 3: Try all popo/ subdirectories for images
             if (artifactsDir is null)
             {
-                var popoDir = Path.Combine(ProjectPath, "popo");
-                if (Directory.Exists(popoDir))
+                var popoImageDir = Path.Combine(ProjectPath, "popo");
+                if (Directory.Exists(popoImageDir))
                 {
-                    foreach (var subDir in Directory.GetDirectories(popoDir))
+                    foreach (var subDir in Directory.GetDirectories(popoImageDir))
                     {
                         if (artifactsDir is not null) break;
                         var imageFiles = System.IO.Directory.GetFiles(subDir, "*.*", System.IO.SearchOption.AllDirectories)

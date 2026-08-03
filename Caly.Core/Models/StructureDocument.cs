@@ -88,6 +88,22 @@ public partial class StructureDocument : ObservableObject
     private Dictionary<int, PageType> _pageTypes = new();
 
     /// <summary>
+    /// Pre-parsed table of contents entries from popo_result.json (result.toc.entries).
+    /// When available, these are used directly instead of extracting TOC from the tree.
+    /// Each entry maps to a section in the document with title, level, and verified page.
+    /// </summary>
+    [ObservableProperty]
+    private List<TocEntry> _tocEntries = new();
+
+    /// <summary>
+    /// Book copyright metadata JSON string from popo_result.json (result.metadata).
+    /// Contains publisher, ISBN, authors, edition, and other bibliographic information.
+    /// Serialized from the metadata dict in the Popo API response.
+    /// </summary>
+    [ObservableProperty]
+    private string? _bookMetadataJson;
+
+    /// <summary>
     /// Gets all blocks across all pages as a flat list.
     /// </summary>
     public List<MinerUBlock> GetAllBlocks()
