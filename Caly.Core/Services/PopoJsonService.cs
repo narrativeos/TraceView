@@ -773,6 +773,52 @@ public static class PopoJsonService
                             doc.TocEntries = tocEntries;
                         }
 
+                        // Parse result.reference (bibliographic references) — newer format
+                        // Guard: reference may be null (JSON null) when the field exists but has no value
+                        if (resultElem.TryGetProperty("reference", out var refElem) &&
+                            refElem.ValueKind == JsonValueKind.Object &&
+                            refElem.TryGetProperty("entries", out var refEntriesElem) &&
+                            refEntriesElem.ValueKind == JsonValueKind.Array)
+                        {
+                            var referenceEntries = new List<ReferenceEntry>();
+                            foreach (var entry in refEntriesElem.EnumerateArray())
+                            {
+                                if (entry.ValueKind != JsonValueKind.Object)
+                                    continue;
+
+                                var refEntry = new ReferenceEntry
+                                {
+                                    Id = TryGetNullableInt32(entry, "id") ?? 0,
+                                    RawText = entry.TryGetProperty("raw_text", out var rawTextElem) ? rawTextElem.GetString() ?? string.Empty : string.Empty,
+                                    Authors = TryGetNullableString(entry, "authors"),
+                                    Title = TryGetNullableString(entry, "title"),
+                                    RefType = TryGetNullableString(entry, "ref_type"),
+                                    JournalOrPublisher = TryGetNullableString(entry, "journal_or_publisher"),
+                                    Year = TryGetNullableString(entry, "year"),
+                                    Volume = TryGetNullableString(entry, "volume"),
+                                    Issue = TryGetNullableString(entry, "issue"),
+                                    Pages = TryGetNullableString(entry, "pages"),
+                                    Doi = TryGetNullableString(entry, "doi"),
+                                    Url = TryGetNullableString(entry, "url"),
+                                    Page = TryGetNullableInt32(entry, "page") ?? 0,
+                                };
+
+                                // Parse block_ids array
+                                if (entry.TryGetProperty("block_ids", out var blockIdsElem) &&
+                                    blockIdsElem.ValueKind == JsonValueKind.Array)
+                                {
+                                    foreach (var blockId in blockIdsElem.EnumerateArray())
+                                    {
+                                        if (blockId.ValueKind == JsonValueKind.Number)
+                                            refEntry.BlockIds.Add(blockId.GetInt32());
+                                    }
+                                }
+
+                                referenceEntries.Add(refEntry);
+                            }
+                            doc.ReferenceEntries = referenceEntries;
+                        }
+
                         return doc;
                     }
                 }
@@ -788,8 +834,9 @@ public static class PopoJsonService
 
             return null;
         }
-        catch
+        catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"[PopoJsonService] TryParsePopoResultJson failed for '{jsonPath}': {ex.GetType().Name}: {ex.Message}");
             return null;
         }
     }
@@ -1361,6 +1408,122 @@ public static class PopoJsonService
         }
 
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Generates a formatted Markdown reference list with CJK visual-width-aware alignment.
+    /// Prefers the raw_text field for display; falls back to structured fields.
+    /// </summary>
+    internal static string GenerateReferenceMarkdown(List<ReferenceEntry> entries)
+    {
+        if (entries.Count == 0)
+            return "# 参考文献\n\n(空)\n";
+
+        var sb = new StringBuilder();
+        sb.AppendLine("# 参考文献");
+        sb.AppendLine($"共 {entries.Count} 条");
+        sb.AppendLine();
+
+        foreach (var entry in entries)
+        {
+            // Prefer raw_text (already formatted by the Popo API)
+            if (!string.IsNullOrEmpty(entry.RawText))
+            {
+                sb.AppendLine(entry.RawText);
+                sb.AppendLine();
+            }
+            else
+            {
+                // Fallback: construct citation from structured fields
+                var parts = new List<string>();
+                if (!string.IsNullOrEmpty(entry.Authors))
+                    parts.Add(entry.Authors);
+                if (!string.IsNullOrEmpty(entry.Title))
+                {
+                    var titlePart = entry.Title;
+                    if (!string.IsNullOrEmpty(entry.RefType))
+                        titlePart += $" [{entry.RefType}]";
+                    parts.Add(titlePart);
+                }
+                if (!string.IsNullOrEmpty(entry.JournalOrPublisher))
+                    parts.Add(entry.JournalOrPublisher);
+                if (!string.IsNullOrEmpty(entry.Year))
+                    parts.Add(entry.Year);
+                if (!string.IsNullOrEmpty(entry.Pages))
+                    parts.Add($"pp.{entry.Pages}");
+
+                var citation = $"[{entry.Id}] {string.Join(". ", parts)}.";
+                if (entry.Page > 0)
+                    citation += $"  (p.{entry.Page})";
+
+                sb.AppendLine(citation);
+                sb.AppendLine();
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Saves the reference list to both JSON and Markdown files in the specified output directory.
+    /// Creates the directory if it doesn't exist.
+    /// </summary>
+    /// <param name="doc">The structure document containing reference entries.</param>
+    /// <param name="outputDir">Directory where reference.json and reference.md will be written.</param>
+    /// <returns>The list of reference entries that were saved.</returns>
+    public static async Task<List<ReferenceEntry>> SaveReferenceFilesAsync(StructureDocument doc, string outputDir)
+    {
+        var entries = doc.ReferenceEntries ?? new List<ReferenceEntry>();
+        if (entries.Count == 0)
+            return entries;
+
+        Directory.CreateDirectory(outputDir);
+
+        // Save reference.json
+        var jsonPath = Path.Combine(outputDir, "reference.json");
+        var jsonOptions = new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            TypeInfoResolver = SourceGenerationContext.Default
+        };
+        var json = JsonSerializer.Serialize(entries, jsonOptions);
+        await File.WriteAllTextAsync(jsonPath, json);
+
+        // Save reference.md
+        var mdPath = Path.Combine(outputDir, "reference.md");
+        var md = GenerateReferenceMarkdown(entries);
+        await File.WriteAllTextAsync(mdPath, md);
+
+        return entries;
+    }
+
+    /// <summary>
+    /// Helper to safely get a nullable string from a JSON property.
+    /// Returns null if the property is missing, null, or empty.
+    /// </summary>
+    private static string? TryGetNullableString(System.Text.Json.JsonElement element, string propertyName)
+    {
+        if (element.TryGetProperty(propertyName, out var prop) &&
+            prop.ValueKind == System.Text.Json.JsonValueKind.String)
+        {
+            var value = prop.GetString();
+            return string.IsNullOrEmpty(value) ? null : value;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Helper to safely get a nullable int from a JSON property.
+    /// Returns null if the property is missing, null, or not a number.
+    /// </summary>
+    private static int? TryGetNullableInt32(System.Text.Json.JsonElement element, string propertyName)
+    {
+        if (element.TryGetProperty(propertyName, out var prop) &&
+            prop.ValueKind == System.Text.Json.JsonValueKind.Number)
+        {
+            return prop.GetInt32();
+        }
+        return null;
     }
 
     #endregion

@@ -311,6 +311,18 @@ public sealed partial class DocumentViewModel : PopoService.IPopoProgressCallbac
                     System.Diagnostics.Debug.WriteLine($"[PopoProcess] TOC generation failed: {ex.Message}");
                     // Non-fatal: don't fail the Popo process just because TOC generation failed
                 }
+
+                // Auto-generate reference files (reference.json + reference.md) in popo/ directory
+                try
+                {
+                    var popoDir = System.IO.Path.Combine(ProjectPath, "popo");
+                    await PopoJsonService.SaveReferenceFilesAsync(result.StructureDocument, popoDir);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[PopoProcess] Reference generation failed: {ex.Message}");
+                    // Non-fatal: don't fail the Popo process just because reference generation failed
+                }
             }
 
             PopoStatus = PopoProcessStatus.Completed;

@@ -536,4 +536,89 @@ public class PopoJsonServiceTests
     }
 
     #endregion
+
+    #region Reference Parsing Tests
+
+    [Fact]
+    public void GenerateReferenceMarkdown_WithEntries_ReturnsFormattedMarkdown()
+    {
+        var entries = new System.Collections.Generic.List<Caly.Core.Models.ReferenceEntry>
+        {
+            new()
+            {
+                Id = 1,
+                RawText = "[1]盛敬超.液压流体力学 [M].北京：机械工业出版社，1980.",
+                Authors = "盛敬超",
+                Title = "液压流体力学",
+                RefType = "M",
+                JournalOrPublisher = "机械工业出版社",
+                Year = "1980",
+                Page = 208,
+                BlockIds = new System.Collections.Generic.List<int> { 1 }
+            },
+            new()
+            {
+                Id = 2,
+                RawText = "[2]李成功.液压系统设计与分析 [J].液压与气动，2005(3):15-20.",
+                Authors = "李成功",
+                Title = "液压系统设计与分析",
+                RefType = "J",
+                JournalOrPublisher = "液压与气动",
+                Year = "2005",
+                Pages = "15-20",
+                Page = 209,
+                BlockIds = new System.Collections.Generic.List<int> { 2 }
+            }
+        };
+
+        var markdown = PopoJsonService.GenerateReferenceMarkdown(entries);
+
+        Assert.False(string.IsNullOrEmpty(markdown));
+        Assert.Contains("# 参考文献", markdown);
+        Assert.Contains("共 2 条", markdown);
+        Assert.Contains("[1]盛敬超.液压流体力学 [M].北京：机械工业出版社，1980.", markdown);
+        Assert.Contains("[2]李成功.液压系统设计与分析 [J].液压与气动，2005(3):15-20.", markdown);
+    }
+
+    [Fact]
+    public void GenerateReferenceMarkdown_EmptyList_ReturnsEmptyMessage()
+    {
+        var entries = new System.Collections.Generic.List<Caly.Core.Models.ReferenceEntry>();
+        var markdown = PopoJsonService.GenerateReferenceMarkdown(entries);
+
+        Assert.False(string.IsNullOrEmpty(markdown));
+        Assert.Contains("(空)", markdown);
+    }
+
+    [Fact]
+    public void GenerateReferenceMarkdown_FallbackToStructuredFields()
+    {
+        var entries = new System.Collections.Generic.List<Caly.Core.Models.ReferenceEntry>
+        {
+            new()
+            {
+                Id = 1,
+                RawText = "",  // No raw text, should fall back to structured
+                Authors = "张三",
+                Title = "测试文献",
+                RefType = "J",
+                JournalOrPublisher = "测试出版社",
+                Year = "2024",
+                Pages = "100-120",
+                Page = 50
+            }
+        };
+
+        var markdown = PopoJsonService.GenerateReferenceMarkdown(entries);
+
+        Assert.Contains("[1]", markdown);
+        Assert.Contains("张三", markdown);
+        Assert.Contains("测试文献 [J]", markdown);
+        Assert.Contains("测试出版社", markdown);
+        Assert.Contains("2024", markdown);
+        Assert.Contains("pp.100-120", markdown);
+        Assert.Contains("p.50", markdown);
+    }
+
+    #endregion
 }

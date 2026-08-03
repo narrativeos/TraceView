@@ -61,6 +61,9 @@ namespace Caly.Core.Services;
 // Table of Contents models
 [JsonSerializable(typeof(TocEntry), GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(List<TocEntry>), GenerationMode = JsonSourceGenerationMode.Metadata)]
+// Reference (bibliography) models
+[JsonSerializable(typeof(ReferenceEntry), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(List<ReferenceEntry>), GenerationMode = JsonSourceGenerationMode.Metadata)]
 internal partial class SourceGenerationContext : JsonSerializerContext;
 
 internal sealed class JsonSettingsService : ISettingsService

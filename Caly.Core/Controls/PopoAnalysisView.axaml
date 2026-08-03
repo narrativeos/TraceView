@@ -27,6 +27,10 @@
                         Command="{Binding GenerateTocCommand}"
                         IsEnabled="{Binding CanGenerateToc}"
                         MinWidth="80"/>
+                <Button Content="参考文献"
+                        Command="{Binding GenerateReferencesCommand}"
+                        IsEnabled="{Binding CanGenerateReferences}"
+                        MinWidth="80"/>
                 <TextBox PlaceholderText="搜索 Block..."
                          Text="{Binding BlockSearchText}"
                          MinWidth="150"/>
@@ -132,6 +136,44 @@
                     <ScrollViewer VerticalScrollBarVisibility="Auto"
                                   MaxHeight="500">
                         <TextBlock Text="{Binding TocMarkdownText}"
+                                   TextWrapping="Wrap"
+                                   FontFamily="Consolas, Menlo, monospace"
+                                   FontSize="12"/>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+        </Panel>
+
+        <!-- Reference Overlay -->
+        <Panel IsVisible="{Binding ShowReferencePanel}">
+            <Rectangle Fill="Gray"
+                       Opacity="0.3"/>
+            <Border Background="White"
+                    BorderBrush="Gray"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    Padding="16"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    MaxWidth="800"
+                    MaxHeight="600">
+                <DockPanel>
+                    <StackPanel Orientation="Horizontal"
+                                DockPanel.Dock="Top"
+                                HorizontalAlignment="Right"
+                                Margin="0,0,0,8">
+                        <TextBlock Text="参考文献"
+                                   FontWeight="Bold"
+                                   FontSize="16"
+                                   VerticalAlignment="Center"/>
+                        <Button Content="✕"
+                                Command="{Binding CloseReferencePanelCommand}"
+                                Margin="12,0,0,0"
+                                Padding="8,4"/>
+                    </StackPanel>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                  MaxHeight="500">
+                        <TextBlock Text="{Binding ReferenceMarkdownText}"
                                    TextWrapping="Wrap"
                                    FontFamily="Consolas, Menlo, monospace"
                                    FontSize="12"/>

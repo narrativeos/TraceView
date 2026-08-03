@@ -96,6 +96,14 @@ public partial class StructureDocument : ObservableObject
     private List<TocEntry> _tocEntries = new();
 
     /// <summary>
+    /// Pre-parsed bibliographic reference entries from popo_result.json (result.reference.entries).
+    /// Each entry represents a cited work with extracted metadata (authors, title, year, etc.)
+    /// and the page number where it appears in the document.
+    /// </summary>
+    [ObservableProperty]
+    private List<ReferenceEntry> _referenceEntries = new();
+
+    /// <summary>
     /// Book copyright metadata JSON string from popo_result.json (result.metadata).
     /// Contains publisher, ISBN, authors, edition, and other bibliographic information.
     /// Serialized from the metadata dict in the Popo API response.

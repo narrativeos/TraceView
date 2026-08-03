@@ -39,6 +39,7 @@ public sealed partial class DocumentViewModel
     {
         OnPropertyChanged(nameof(HasStructureDocument));
         OnPropertyChanged(nameof(HasMinerUZip));
+        OnPropertyChanged(nameof(CanGenerateReferences));
 
         // Defensively ensure newly added pages get blocks assigned
         if (value is not null)
@@ -191,6 +192,7 @@ public sealed partial class DocumentViewModel
         OnPropertyChanged(nameof(VisiblePopoNodes));
         OnPropertyChanged(nameof(HasPopoTree));
         OnPropertyChanged(nameof(CanGenerateToc));
+        OnPropertyChanged(nameof(CanGenerateReferences));
     }
 
     [RelayCommand]
@@ -285,6 +287,60 @@ public sealed partial class DocumentViewModel
     private void CloseTocPanel()
     {
         ShowTocPanel = false;
+    }
+
+    // === References (参考文献) ===
+    [ObservableProperty]
+    private string _referenceMarkdownText = string.Empty;
+
+    [ObservableProperty]
+    private bool _showReferencePanel;
+
+    /// <summary>
+    /// Can generate references when there are pre-parsed reference entries available.
+    /// </summary>
+    public bool CanGenerateReferences => StructureDocument?.ReferenceEntries is { Count: > 0 };
+
+    /// <summary>
+    /// Generates a formatted reference list and displays it in an overlay.
+    /// Also saves reference.json and reference.md to the project's popo/ directory.
+    /// </summary>
+    [RelayCommand]
+    private async System.Threading.Tasks.Task GenerateReferences()
+    {
+        if (StructureDocument is null)
+            return;
+
+        try
+        {
+            System.Collections.Generic.List<ReferenceEntry> entries;
+            if (ProjectPath is not null)
+            {
+                var popoDir = Path.Combine(ProjectPath, "popo");
+                entries = await PopoJsonService.SaveReferenceFilesAsync(StructureDocument, popoDir);
+            }
+            else
+            {
+                entries = StructureDocument.ReferenceEntries;
+            }
+
+            ReferenceMarkdownText = PopoJsonService.GenerateReferenceMarkdown(entries);
+            ShowReferencePanel = true;
+        }
+        catch (System.Exception ex)
+        {
+            ReferenceMarkdownText = $"# 参考文献\n\n生成失败: {ex.Message}";
+            ShowReferencePanel = true;
+        }
+    }
+
+    /// <summary>
+    /// Closes the reference overlay panel.
+    /// </summary>
+    [RelayCommand]
+    private void CloseReferencePanel()
+    {
+        ShowReferencePanel = false;
     }
 
     /// <summary>

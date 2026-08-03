@@ -457,4 +457,53 @@ public partial class AnalysisViewModel : ViewModelBase
     }
 
     #endregion
+
+    #region References
+
+    [ObservableProperty]
+    private string _referenceMarkdownText = string.Empty;
+
+    [ObservableProperty]
+    private bool _showReferencePanel;
+
+    [ObservableProperty]
+    private bool _isReferenceGenerating;
+
+    /// <summary>
+    /// Gets whether the reference list can be generated (pre-parsed data available).
+    /// </summary>
+    public bool CanGenerateReferences => _structureDocument.ReferenceEntries is { Count: > 0 };
+
+    /// <summary>
+    /// Generates the formatted reference list and saves reference.json + reference.md
+    /// files to the project's popo/ directory. Also populates ReferenceMarkdownText for inline preview.
+    /// </summary>
+    [RelayCommand]
+    private async System.Threading.Tasks.Task GenerateReferencesAsync()
+    {
+        if (_projectPath is null)
+            return;
+
+        IsReferenceGenerating = true;
+
+        try
+        {
+            var popoDir = System.IO.Path.Combine(_projectPath, "popo");
+            var entries = await PopoJsonService.SaveReferenceFilesAsync(_structureDocument, popoDir);
+            ReferenceMarkdownText = PopoJsonService.GenerateReferenceMarkdown(entries);
+            ShowReferencePanel = true;
+        }
+        finally
+        {
+            IsReferenceGenerating = false;
+        }
+    }
+
+    [RelayCommand]
+    private void CloseReferencePanel()
+    {
+        ShowReferencePanel = false;
+    }
+
+    #endregion
 }

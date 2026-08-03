@@ -612,13 +612,22 @@
                                                         Opacity="0.6"
                                                         IsVisible="{Binding !IsPopoProcessing}"/>
                                          </StackPanel>
-                                         <Button Grid.Column="1"
-                                                 Content="目录"
-                                                 Command="{Binding GenerateTocCommand}"
-                                                 IsEnabled="{Binding CanGenerateToc}"
-                                                 IsVisible="{Binding !IsPopoProcessing}"
-                                                 MinWidth="60"
-                                                 FontSize="11"/>
+                                         <StackPanel Grid.Column="1"
+                                                     Orientation="Horizontal"
+                                                     Spacing="4">
+                                             <Button Content="目录"
+                                                     Command="{Binding GenerateTocCommand}"
+                                                     IsEnabled="{Binding CanGenerateToc}"
+                                                     IsVisible="{Binding !IsPopoProcessing}"
+                                                     MinWidth="60"
+                                                     FontSize="11"/>
+                                             <Button Content="参考文献"
+                                                     Command="{Binding GenerateReferencesCommand}"
+                                                     IsEnabled="{Binding CanGenerateReferences}"
+                                                     IsVisible="{Binding !IsPopoProcessing}"
+                                                     MinWidth="60"
+                                                     FontSize="11"/>
+                                         </StackPanel>
                                      </Grid>
 
                                      <!-- Progress State: shown during Popo processing -->
@@ -1754,6 +1763,48 @@
                                          <ScrollViewer VerticalScrollBarVisibility="Auto"
                                                        MaxHeight="500">
                                              <TextBlock Text="{Binding TocMarkdownText}"
+                                                        TextWrapping="Wrap"
+                                                        FontFamily="Consolas, Menlo, monospace"
+                                                        FontSize="12"
+                                                        Foreground="#333333"/>
+                                         </ScrollViewer>
+                                     </DockPanel>
+                                 </Border>
+                             </Panel>
+
+                             <!-- Reference Overlay (covers all columns) -->
+                             <Panel Grid.Column="0"
+                                    Grid.ColumnSpan="5"
+                                    IsVisible="{Binding ShowReferencePanel}">
+                                 <Rectangle Fill="Gray"
+                                            Opacity="0.3"/>
+                                 <Border Background="White"
+                                         BorderBrush="Gray"
+                                         BorderThickness="1"
+                                         CornerRadius="4"
+                                         Padding="16"
+                                         HorizontalAlignment="Center"
+                                         VerticalAlignment="Center"
+                                         MaxWidth="800"
+                                         MaxHeight="600">
+                                     <DockPanel>
+                                         <StackPanel Orientation="Horizontal"
+                                                     DockPanel.Dock="Top"
+                                                     HorizontalAlignment="Right"
+                                                     Margin="0,0,0,8">
+                                              <TextBlock Text="参考文献"
+                                                         FontWeight="Bold"
+                                                         FontSize="16"
+                                                         Foreground="#333333"
+                                                         VerticalAlignment="Center"/>
+                                             <Button Content="✕"
+                                                     Command="{Binding CloseReferencePanelCommand}"
+                                                     Margin="12,0,0,0"
+                                                     Padding="8,4"/>
+                                         </StackPanel>
+                                         <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                                       MaxHeight="500">
+                                             <TextBlock Text="{Binding ReferenceMarkdownText}"
                                                         TextWrapping="Wrap"
                                                         FontFamily="Consolas, Menlo, monospace"
                                                         FontSize="12"
