@@ -766,6 +766,10 @@ public sealed class GeoJsonService
 
             foreach (var entity in block.Entities)
             {
+                // Skip LOCATION entities — they are built separately from optimized locations.geojson data
+                if (entity.Category == "LOCATION")
+                    continue;
+
                 var key = $"{entity.Category}|{entity.Normalized}";
                 if (!entityMap.ContainsKey(key))
                 {
@@ -817,6 +821,68 @@ public sealed class GeoJsonService
             mentionsList.AddRange(kvp.Value);
         }
 
+        // 1.5. Build LOCATION nodes from optimized locations (geocodingResults keys),
+        // with mentions back-referenced from semantic entities for span-level detail.
+        foreach (var locName in geocodingResults.Keys)
+        {
+            var locKey = $"LOCATION|{locName}";
+            if (entityMap.ContainsKey(locKey))
+                continue;
+
+            var bestResult = geocodingResults[locName].FirstOrDefault();
+            var label = bestResult?.DisplayName ?? locName;
+            var normalized = locName;
+
+            var locNode = new Dictionary<string, object>
+            {
+                { "id", $"node_LOCATION_{normalized}" },
+                { "label", label },
+                { "normalized", normalized },
+                { "category", "LOCATION" },
+                { "frequency", 0 },
+                { "geoRefs", new List<Dictionary<string, object>>() },
+                { "mentions", new List<Dictionary<string, object>>() }
+            };
+            entityMap[locKey] = locNode;
+            var locMentions = new List<Dictionary<string, object>>();
+            mentionsMap[locKey] = locMentions;
+
+            // Back-reference semantic entities (Category == LOCATION) across all blocks
+            // to collect mentions with span, confidence, and syntactic role detail.
+            foreach (var block in semanticResults.Blocks)
+            {
+                var blockId = block.SourceBlockIds.FirstOrDefault() ?? "";
+
+                foreach (var entity in block.Entities)
+                {
+                    if (entity.Category != "LOCATION")
+                        continue;
+
+                    // Match by text or normalized name
+                    if (entity.Text == locName || entity.Normalized == locName)
+                    {
+                        if (!locMentions.Any(m => (string)m["blockId"] == blockId))
+                        {
+                            locNode["frequency"] = (int)locNode["frequency"] + 1;
+
+                            var mention = new Dictionary<string, object>
+                            {
+                                { "blockId", blockId },
+                                { "span", new[] { entity.Span[0], entity.Span[1] } },
+                                { "confidence", entity.Confidence }
+                            };
+                            if (!string.IsNullOrEmpty(entity.SyntacticRole))
+                                mention["syntacticRole"] = entity.SyntacticRole;
+                            if (!string.IsNullOrEmpty(entity.GoverningVerb))
+                                mention["governingVerb"] = entity.GoverningVerb;
+
+                            locMentions.Add(mention);
+                        }
+                    }
+                }
+            }
+        }
+
         // 2. Build geoRefs for LOCATION nodes
         foreach (var kvp in entityMap)
         {
@@ -835,13 +901,13 @@ public sealed class GeoJsonService
                 var best = results.FirstOrDefault();
                 if (best != null)
                 {
-                    // Collect all source block IDs for this location
-                    var sourceBlockIds = new List<string>();
-                    if (locationByName.TryGetValue(normalized, out var info) ||
-                        locationByName.TryGetValue((string)node["label"], out info))
-                    {
-                        sourceBlockIds = info.SourceBlockIds;
-                    }
+                    // Derive source block IDs from the node's own mentions
+                    // (mentions were built by back-referencing semantic entities)
+                    var mentions = (List<Dictionary<string, object>>)node["mentions"];
+                    var sourceBlockIds = mentions
+                        .Select(m => (string)m["blockId"])
+                        .Distinct()
+                        .ToList();
 
                     var geoRef = new Dictionary<string, object>
                     {
