@@ -84,6 +84,12 @@ public sealed partial class DocumentViewModel
     /// </summary>
     public bool HasGeoJsonFile => !string.IsNullOrEmpty(GeoJsonFilePath) && File.Exists(GeoJsonFilePath);
 
+    partial void OnGeoJsonFilePathChanged(string? value)
+    {
+        OnPropertyChanged(nameof(HasGeoJsonFile));
+        OnPropertyChanged(nameof(CanEnrich));
+    }
+
     /// <summary>
     /// Path to the generated GeoLibre JSON file for this document.
     /// </summary>
@@ -511,6 +517,9 @@ public sealed partial class DocumentViewModel
                 GeoStatus = GeoProcessStatus.Completed;
                 GeoStatusText = GeocodingProgressText;
                 ShowGeoColumn = true;
+
+                // Auto-trigger re-enrichment now that fresh Geo data is available
+                _ = ReEnrichAsync();
             }
             else
             {

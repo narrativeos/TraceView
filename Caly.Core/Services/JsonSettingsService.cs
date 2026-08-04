@@ -64,6 +64,11 @@ namespace Caly.Core.Services;
 // Reference (bibliography) models
 [JsonSerializable(typeof(ReferenceEntry), GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(List<ReferenceEntry>), GenerationMode = JsonSourceGenerationMode.Metadata)]
+// Enriched result models
+[JsonSerializable(typeof(Caly.Core.Models.EnrichedResultFile), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(Caly.Core.Models.EnrichedBlockResult), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(Caly.Core.Models.EnrichedEntityEntry), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(Caly.Core.Models.EnrichedRelation), GenerationMode = JsonSourceGenerationMode.Metadata)]
 internal partial class SourceGenerationContext : JsonSerializerContext;
 
 internal sealed class JsonSettingsService : ISettingsService

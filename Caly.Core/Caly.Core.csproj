@@ -44,4 +44,11 @@
 			<SubType>Designer</SubType>
 		</AvaloniaResource>
 	</ItemGroup>
+  <!-- Temporal processor: era data files (embedded for cross-platform access) -->
+  <ItemGroup>
+    <EmbeddedResource Include="Services\EntityProcessors\Temporal\Data\era.json" />
+    <EmbeddedResource Include="Services\EntityProcessors\Temporal\Data\dynasty.json" />
+    <EmbeddedResource Include="Services\EntityProcessors\Temporal\Data\era_lookup.json" />
+  </ItemGroup>
+
 </Project>

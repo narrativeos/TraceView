@@ -1,0 +1,18 @@
+[
+  { "id": "western_han",   "name_zh": "西汉",     "name_en": "Western Han",    "sort_order":  1, "period": "前206–8" },
+  { "id": "xin",           "name_zh": "新",       "name_en": "Xin",            "sort_order":  2, "period": "9–23" },
+  { "id": "eastern_han",   "name_zh": "东汉",     "name_en": "Eastern Han",    "sort_order":  3, "period": "25–220" },
+  { "id": "three_kingdoms","name_zh": "三国",     "name_en": "Three Kingdoms", "sort_order":  4, "period": "220–280" },
+  { "id": "western_jin",   "name_zh": "西晋",     "name_en": "Western Jin",    "sort_order":  5, "period": "265–316" },
+  { "id": "eastern_jin",   "name_zh": "东晋",     "name_en": "Eastern Jin",    "sort_order":  6, "period": "317–420" },
+  { "id": "northern_south","name_zh": "南北朝",   "name_en": "Northern and Southern", "sort_order": 7, "period": "420–589" },
+  { "id": "sui",           "name_zh": "隋",       "name_en": "Sui",            "sort_order":  8, "period": "581–618" },
+  { "id": "tang",          "name_zh": "唐",       "name_en": "Tang",           "sort_order":  9, "period": "618–907" },
+  { "id": "five_dynasties","name_zh": "五代十国", "name_en": "Five Dynasties", "sort_order": 10, "period": "907–960" },
+  { "id": "northern_song", "name_zh": "北宋",     "name_en": "Northern Song",  "sort_order": 11, "period": "960–1127" },
+  { "id": "southern_song", "name_zh": "南宋",     "name_en": "Southern Song",  "sort_order": 12, "period": "1127–1279" },
+  { "id": "yuan",          "name_zh": "元",       "name_en": "Yuan",           "sort_order": 13, "period": "1271–1368" },
+  { "id": "ming",          "name_zh": "明",       "name_en": "Ming",           "sort_order": 14, "period": "1368–1644" },
+  { "id": "qing",          "name_zh": "清",       "name_en": "Qing",           "sort_order": 15, "period": "1644–1911" },
+  { "id": "republic",      "name_zh": "民国",     "name_en": "Republic of China", "sort_order": 16, "period": "1912–1949" }
+]

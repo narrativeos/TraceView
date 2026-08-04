@@ -82,6 +82,200 @@
 			"type": "shell",
 			"command": "dotnet build /Users/futuremeng/github/narrativeos/TraceView/Caly.Desktop/Caly.Desktop.csproj -c Debug -f net10.0 && dotnet test /Users/futuremeng/github/narrativeos/TraceView/Caly.Tests/Caly.Tests.csproj --filter \"FullyQualifiedName~PopoJsonService\" -f net10.0",
 			"group": "build"
+		},
+		{
+			"label": "run-location-tests",
+			"type": "shell",
+			"command": "dotnet test /Users/futuremeng/github/narrativeos/TraceView/Caly.Tests/Caly.Tests.csproj --filter \"FullyQualifiedName~LocationValidator|FullyQualifiedName~LocationRelation|FullyQualifiedName~Geocoding\" -f net10.0",
+			"group": "test"
+		},
+		{
+			"label": "apply-enrichment-patch",
+			"type": "shell",
+			"command": "python3",
+			"args": [
+				"-c",
+				"import shutil; path='Caly.Core/Models/SemanticModels.cs'; bak=path+'.bak'; shutil.copy(path,bak); content=open(bak).read(); old='''    public Dictionary<string, object> EnrichedMetadata { get; set; } = new();\\n}'''; new='''    public Dictionary<string, object> EnrichedMetadata { get; set; } = new();\\n\\n    [System.Text.Json.Serialization.JsonIgnore]\\n    public string EnrichedDisplayText => GetEnrichmentString(\\\"enriched_text\\\") is { Length: > 0 } s ? s : Text;\\n\\n    [System.Text.Json.Serialization.JsonIgnore]\\n    public double EnrichedConfidence { get { var e = GetEnrichmentDict(); return e != null && e.TryGetValue(\\\"confidence\\\", out var c) && c is double d ? d : -1; } }\\n\\n    [System.Text.Json.Serialization.JsonIgnore]\\n    public bool IsValidated { get { var v = GetValidationDict(); return v != null && v.TryGetValue(\\\"is_valid\\\", out var iv) && iv is bool b && b; } }\\n\\n    [System.Text.Json.Serialization.JsonIgnore]\\n    public string ValidationStatus { get { var v = GetValidationDict(); if (v == null) return \\\"unknown\\\"; if (v.TryGetValue(\\\"is_valid\\\", out var iv) && iv is bool bv && !bv) return \\\"invalid\\\"; if (v.TryGetValue(\\\"severity\\\", out var sv) && sv is string s && s == \\\"Warning\\\") return \\\"ambiguous\\\"; return \\\"valid\\\"; } }\\n\\n    [System.Text.Json.Serialization.JsonIgnore]\\n    public string EnrichmentSource => GetEnrichmentString(\\\"source\\\") ?? \\\"\\\";\\n\\n    [System.Text.Json.Serialization.JsonIgnore]\\n    public string ExternalId => GetEnrichmentString(\\\"external_id\\\") ?? \\\"\\\";\\n\\n    [System.Text.Json.Serialization.JsonIgnore]\\n    public string EnrichmentSummary { get { var parts = new System.Collections.Generic.List<string>(); if (EnrichmentSource is { Length: > 0 } s) parts.Add(s); if (EnrichedConfidence >= 0) parts.Add($\\\"{(EnrichedConfidence * 100):F0}%\\\"); if (ExternalId is { Length: > 0 } eid) parts.Add(eid); return parts.Count > 0 ? string.Join(\\\" · \\\", parts) : Text; } }\\n\\n    private Dictionary<string, object>? GetValidationDict() { var key = $\\\"{Category}:validation\\\"; return EnrichedMetadata.TryGetValue(key, out var v) && v is Dictionary<string, object> d ? d : null; }\\n\\n    private Dictionary<string, object>? GetEnrichmentDict() { var key = $\\\"{Category}:enrichment\\\"; return EnrichedMetadata.TryGetValue(key, out var v) && v is Dictionary<string, object> d ? d : null; }\\n\\n    private string? GetEnrichmentString(string field) { var e = GetEnrichmentDict(); return e != null && e.TryGetValue(field, out var v) && v is string s ? s : null; }\\n}'''; content=content.replace(old,new); open(path,'w').write(content); print('Done')"
+			]
+		},
+		{
+			"label": "run-enrichment-patch",
+			"type": "shell",
+			"command": "python3",
+			"args": [
+				"scripts/apply_enrichment.py"
+			]
+		},
+		{
+			"label": "run-pipeline-update",
+			"type": "shell",
+			"command": "python3",
+			"args": [
+				"scripts/update_pipeline.py"
+			]
+		},
+		{
+			"label": "register-aot-types",
+			"type": "shell",
+			"command": "python3",
+			"args": [
+				"scripts/register_aot.py"
+			]
+		},
+		{
+			"label": "fix-pipeline-brace",
+			"type": "shell",
+			"command": "python3",
+			"args": [
+				"scripts/fix_pipeline.py"
+			]
+		},
+		{
+			"label": "check-semantic-data",
+			"type": "shell",
+			"command": "python3",
+			"args": [
+				"scripts/check_semantic.py"
+			]
+		},
+		{
+			"label": "run-enriched-test",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"test",
+				"/Users/futuremeng/github/narrativeos/TraceView/Caly.Tests/Caly.Tests.csproj",
+				"--filter",
+				"FullyQualifiedName~EnrichedPipelineIntegrationTests",
+				"-f",
+				"net10.0",
+				"-v",
+				"detailed"
+			]
+		},
+		{
+			"label": "fix-test-and-run",
+			"type": "shell",
+			"command": "python3 scripts/fix_test_format.py && dotnet test /Users/futuremeng/github/narrativeos/TraceView/Caly.Tests/Caly.Tests.csproj --filter FullyQualifiedName~EnrichedPipelineIntegrationTests -f net10.0 -v detailed 2>&1 | tail -80",
+			"args": []
+		},
+		{
+			"label": "run-enriched-test-2",
+			"type": "shell",
+			"command": "python3 scripts/fix_format2.py && dotnet test /Users/futuremeng/github/narrativeos/TraceView/Caly.Tests/Caly.Tests.csproj --filter FullyQualifiedName~EnrichedPipelineIntegrationTests -f net10.0 -v detailed 2>&1 | grep -E '(PASS|FAIL|SKIP|Error|error|Saved|Pipeline|Loading|Loaded|Running|Enrichment|Category|Breakdown|Sample|Total|Cross-block)' | head -60",
+			"args": []
+		},
+		{
+			"label": "run-enriched-test-final",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"test",
+				"/Users/futuremeng/github/narrativeos/TraceView/Caly.Tests/Caly.Tests.csproj",
+				"--filter",
+				"FullyQualifiedName~EnrichedPipelineIntegrationTests",
+				"-f",
+				"net10.0",
+				"-v",
+				"normal"
+			]
+		},
+		{
+			"label": "check-enriched-output",
+			"type": "shell",
+			"command": "ls",
+			"args": [
+				"-la",
+				"/Users/futuremeng/.TraceView/978-7-111-74324-8_1-1_2/semantic/enriched_result.json",
+				"2>/dev/null",
+				"&&",
+				"wc",
+				"-c",
+				"/Users/futuremeng/.TraceView/978-7-111-74324-8_1-1_2/semantic/enriched_result.json",
+				"||",
+				"echo",
+				"Not yet generated"
+			]
+		},
+		{
+			"label": "check-test-results",
+			"type": "shell",
+			"command": "ls -la /Users/futuremeng/.TraceView/978-7-111-74324-8_1-1_2/semantic/enriched_result.json 2>/dev/null && echo '---' && wc -c /Users/futuremeng/.TraceView/978-7-111-74324-8_1-1_2/semantic/enriched_result.json && echo '---' && python3 -c \"\nimport json\nwith open('/Users/futuremeng/.TraceView/978-7-111-74324-8_1-1_2/semantic/enriched_result.json') as f:\n    d = json.load(f)\nblocks = d.get('blocks',[])\ntotal_e = sum(len(b['entities']) for b in blocks)\ntotal_r = sum(len(b['relations']) for b in blocks)\nprint(f'Blocks: {len(blocks)}')\nprint(f'Total entities: {total_e}')\nprint(f'Total relations: {total_r}')\nprint(f'Cross-block relations: {len(d.get(\\\"cross_block_relations\\\",[]))}')\n# Category breakdown\ncats = {}\nfor b in blocks:\n    for e in b['entities']:\n        c = e['category']\n        cats[c] = cats.get(c,0)+1\nfor c,n in sorted(cats.items(), key=lambda x:-x[1]):\n    print(f'  {c}: {n}')\n# Sample enriched\nprint('---Sample enriched---')\nfor b in blocks:\n    for e in b['entities']:\n        if e.get('enrichment_source'):\n            print(f\\\"[{e['category']}] {e['text']} -> {e['enriched_text']} ({e['enrichment_source']}, {e['enrichment_confidence']:.0%})\\\")\n\" 2>&1 | head -40 || echo 'File not found'"
+		},
+		{
+			"label": "check-geolibre",
+			"type": "shell",
+			"command": "python3 -c \"\nimport json, os\npath = '/Users/futuremeng/.TraceView/978-7-111-74324-8_1-1_2/semantic/locations.geolibre.json'\nif os.path.exists(path):\n    with open(path) as f:\n        d = json.load(f)\n    size = os.path.getsize(path)\n    print(f'File: {size/1024:.0f} KB')\n    print(f'Top keys: {list(d.keys())}')\n    ch = d.get('chapters',[])\n    print(f'Chapters: {len(ch)}')\n    locs = set()\n    for c in ch:\n        for b in c.get('beats',[]):\n            n = b.get('locationName','')\n            if n: locs.add(n)\n    print(f'Unique locations: {len(locs)}')\n    # Sample first chapter\n    if ch:\n        c0 = ch[0]\n        print(f'First chapter: {c0.get(\\\"title\\\",\\\"?\\\")} ({len(c0.get(\\\"beats\\\",[]))} beats)')\n        for b in c0.get('beats',[])[:3]:\n            print(f'  beat: {json.dumps(b, ensure_ascii=False)[:200]}')\nelse:\n    print('File not found')\n\""
+		},
+		{
+			"label": "check-kg",
+			"type": "shell",
+			"command": "python3 -c \"\nimport json\npath = '/Users/futuremeng/.TraceView/978-7-111-74324-8_1-1_2/semantic/locations.geolibre.json'\nwith open(path) as f:\n    d = json.load(f)\nkg = d.get('knowledgeGraph',{})\nprint('KnowledgeGraph keys:', list(kg.keys()))\nnodes = kg.get('nodes',[])\nedges = kg.get('edges',[])\nprint(f'Nodes: {len(nodes)}')\nprint(f'Edges: {len(edges)}')\n# Category breakdown\ncats = {}\nfor n in nodes:\n    c = n.get('category','?')\n    cats[c] = cats.get(c,0)+1\nprint('Node categories:')\nfor c,n in sorted(cats.items(), key=lambda x:-x[1]):\n    print(f'  {c}: {n}')\n# Sample nodes per category\nprint('---Sample nodes---')\nfor n in nodes[:5]:\n    print(f'  [{n.get(\\\"category\\\",\\\"?\\\")}] {n.get(\\\"label\\\",n.get(\\\"id\\\",\\\"?\\\"))}')\n# Sample edges\nprint('---Sample edges---')\nfor e in edges[:5]:\n    print(f'  {e.get(\\\"source\\\",\\\"?\\\")} --({e.get(\\\"label\\\",\\\"?\\\")})--> {e.get(\\\"target\\\",\\\"?\\\")}')\n# Check if enriched data is in nodes\nhas_qid = any('qid' in n or 'Q' in str(n.get('id','')) for n in nodes)\nhas_enrich = any(n.get('enrichment') for n in nodes)\nprint(f'Nodes with Q-ID: {has_qid}')\nprint(f'Nodes with enrichment: {has_enrich}')\n\""
+		},
+		{
+			"label": "upgrade-kg",
+			"type": "shell",
+			"command": "python3 scripts/upgrade_kg.py"
+		},
+		{
+			"label": "fix-and-build",
+			"type": "shell",
+			"command": "python3 scripts/fix_kg.py && dotnet build /Users/futuremeng/github/narrativeos/TraceView/Caly.Desktop/Caly.Desktop.csproj -c Debug -f net10.0 2>&1 | grep -E '(error|Error|成功|已成功|失败)'"
+		},
+		{
+			"label": "simulate-new-kg",
+			"type": "shell",
+			"command": "python3 -c \"\nimport json\n\n# Load enriched data\nwith open('/Users/futuremeng/.TraceView/978-7-111-74324-8_1-1_2/semantic/enriched_result.json') as f:\n    er = json.load(f)\n\nblocks = er.get('blocks',[])\ncross = er.get('cross_block_relations',[])\n\n# Simulate what BuildEnrichedKnowledgeGraph would produce\nnodes = {}  # id -> node\nfor b in blocks:\n    for e in b.get('entities',[]):\n        if e.get('validation_status') == 'invalid':\n            continue\n        nid = f\\\"node_{e['category']}_{e['normalized']}\\\"\n        if nid not in nodes:\n            n = {\n                'id': nid,\n                'label': e.get('enriched_text') or e['text'],\n                'category': e['category'],\n                'freq': 1,\n                'extId': e.get('external_id',''),\n                'src': e.get('enrichment_source',''),\n                'status': e.get('validation_status',''),\n            }\n            # LOCATION coords from metadata\n            if e['category'] == 'LOCATION':\n                for m in e.get('metadata',[]):\n                    if '=' in m:\n                        k,v = m.split('=',1)\n                        if k in ('latitude','longitude'):\n                            n[k] = v\n            nodes[nid] = n\n        else:\n            nodes[nid]['freq'] += 1\n\nedges = set()\nfor b in blocks:\n    for r in b.get('relations',[]):\n        edges.add((r['source_entity_id'], r['target_entity_id'], r['relation_type']))\n\n# Summary\ncats = {}\nfor n in nodes.values():\n    c = n['category']\n    cats[c] = cats.get(c,0)+1\n\nwith_qid = sum(1 for n in nodes.values() if n['extId'])\nwith_enrich = sum(1 for n in nodes.values() if n['src'])\nwith_coords = sum(1 for n in nodes.values() if 'latitude' in n)\n\nprint('=== Upgraded Knowledge Graph (simulated) ===')\nprint(f'Nodes: {len(nodes)} (down from 5008, filtered invalid)')\nprint(f'Edges (typed): {len(edges)}')\nprint(f'Cross-block relations: {len(cross)}')\nprint()\nprint('Node categories:')\nfor c,n in sorted(cats.items(), key=lambda x:-x[1]):\n    print(f'  {c}: {n}')\nprint()\nprint(f'Nodes with Wikidata Q-ID: {with_qid}')\nprint(f'Nodes with enrichment source: {with_enrich}')\nprint(f'Location nodes with coordinates: {with_coords}')\nprint()\nprint('Sample enriched nodes:')\nfor n in list(nodes.values())[:8]:\n    extra = ''\n    if n['extId']: extra += f' QID={n[\\\"extId\\\"]}'\n    if n['src']: extra += f' src={n[\\\"src\\\"]}'\n    if 'latitude' in n: extra += f' ({n[\\\"latitude\\\"]},{n[\\\"longitude\\\"]})'\n    print(f'  [{n[\\\"category\\\"]}] {n[\\\"label\\\"]}{extra}')\n\""
+		},
+		{
+			"label": "fix-and-build",
+			"type": "shell",
+			"command": "python3 scripts/fix_reenrich.py && dotnet build /Users/futuremeng/github/narrativeos/TraceView/Caly.Desktop/Caly.Desktop.csproj -c Debug -f net10.0 2>&1 | grep -E '(error|Error|成功|已成功)'"
+		},
+		{
+			"label": "apply-reenrich",
+			"type": "shell",
+			"command": "python3 scripts/fix_reenrich.py"
+		},
+		{
+			"label": "cleanup-and-build",
+			"type": "shell",
+			"command": "python3 scripts/cleanup_reenrich.py && dotnet build /Users/futuremeng/github/narrativeos/TraceView/Caly.Desktop/Caly.Desktop.csproj -c Debug -f net10.0 2>&1 | tail -3"
+		},
+		{
+			"label": "apply-enriched-vm",
+			"type": "shell",
+			"command": "python3 -c \"\nimport os\nos.chdir('/Users/futuremeng/github/narrativeos/TraceView')\npath='Caly.Core/ViewModels/DocumentViewModel.Semantic.cs'\nwith open(path) as f:\n    c=f.read()\n\n# 1. Add ShowEnrichedColumn after ShowSemanticColumn\nold='''    [ObservableProperty]\n    private bool _showSemanticColumn = false;\n\n    /// <summary>\n    /// Cached semantic analysis results loaded from disk.\n    /// </summary>'''\nnew='''    [ObservableProperty]\n    private bool _showSemanticColumn = false;\n\n    /// <summary>Whether the Enriched column is visible.</summary>\n    [ObservableProperty]\n    private bool _showEnrichedColumn = false;\n\n    /// <summary>\n    /// Cached semantic analysis results loaded from disk.\n    /// </summary>'''\nc=c.replace(old,new,1)\n\n# 2. Replace HasSemanticData with helper-based version + HasEnrichedData\nold2='''    public bool HasSemanticData\n    {\n        get\n        {\n            if (ProjectPath is null)\n                return false;\n\n            var semanticDir = Path.Combine(ProjectPath, \\\"semantic\\\");\n            var filePath = Path.Combine(semanticDir, \\\"semantic_result.json\\\");\n            return File.Exists(filePath);\n        }\n    }'''\nnew2='''    public bool HasSemanticData => ExistsInSemanticDir(\\\"semantic_result.json\\\");\n\n    /// <summary>Whether enriched result exists on disk.</summary>\n    public bool HasEnrichedData => ExistsInSemanticDir(\\\"enriched_result.json\\\");\n\n    private bool ExistsInSemanticDir(string fileName)\n    {\n        if (ProjectPath is null) return false;\n        return File.Exists(Path.Combine(ProjectPath, \\\"semantic\\\", fileName));\n    }'''\nc=c.replace(old2,new2,1)\n\n# 3. Add ToggleEnrichedColumn after ToggleSemanticColumn\nold3='''    [RelayCommand]\n    private void ToggleSemanticColumn()\n    {\n        ShowSemanticColumn = !ShowSemanticColumn;\n    }'''\nnew3='''    [RelayCommand]\n    private void ToggleSemanticColumn()\n    {\n        ShowSemanticColumn = !ShowSemanticColumn;\n    }\n\n    [RelayCommand]\n    private void ToggleEnrichedColumn()\n    {\n        ShowEnrichedColumn = !ShowEnrichedColumn;\n        if (ShowEnrichedColumn && EnrichedResults == null)\n            TryLoadEnrichedData();\n    }'''\nc=c.replace(old3,new3,1)\n\nwith open(path,'w') as f:\n    f.write(c)\nprint('3 changes applied')\n\""
+		},
+		{
+			"label": "add-enriched-results",
+			"type": "shell",
+			"command": "python3 -c \"\nimport os\nos.chdir('/Users/futuremeng/github/narrativeos/TraceView')\npath='Caly.Core/ViewModels/DocumentViewModel.Semantic.cs'\nwith open(path) as f:\n    c=f.read()\n\n# Insert EnrichedResults + EnrichedBlockViewModels before OnSemanticResultsChanged\nold='''    /// <summary>\n    /// Overrides SemanticResults setter to reset cached ViewModels.\n    /// </summary>\n    partial void OnSemanticResultsChanged(SemanticResultFile? value)'''\n\nnew='''    /// <summary>Enriched entity results loaded from enriched_result.json.</summary>\n    [ObservableProperty]\n    private EnrichedResultFile? _enrichedResults;\n\n    private ObservableCollection<EnrichedBlockViewModel>? _enrichedBlockViewModels;\n\n    public ObservableCollection<EnrichedBlockViewModel> EnrichedBlockViewModels\n    {\n        get\n        {\n            if (_enrichedBlockViewModels is not null) return _enrichedBlockViewModels;\n            if (EnrichedResults?.Blocks is null)\n            {\n                _enrichedBlockViewModels = new();\n                return _enrichedBlockViewModels;\n            }\n            _enrichedBlockViewModels = new(EnrichedResults.Blocks.Select(b => new EnrichedBlockViewModel(b)));\n            return _enrichedBlockViewModels;\n        }\n    }\n\n    partial void OnEnrichedResultsChanged(EnrichedResultFile? value)\n    {\n        _enrichedBlockViewModels = null;\n        OnPropertyChanged(nameof(EnrichedBlockViewModels));\n        OnPropertyChanged(nameof(HasEnrichedData));\n    }\n\n    public int EnrichedEntityCount => EnrichedResults?.Blocks.Sum(b => b.Entities.Count) ?? 0;\n    public int EnrichedWithSourceCount => EnrichedResults?.Blocks.Sum(b => b.Entities.Count(e => !string.IsNullOrEmpty(e.EnrichmentSource))) ?? 0;\n\n    /// <summary>Load enriched_result.json from disk.</summary>\n    internal void TryLoadEnrichedData()\n    {\n        if (ProjectPath is null) return;\n        var enrichedPath = Path.Combine(ProjectPath, \\\"semantic\\\", \\\"enriched_result.json\\\");\n        if (!File.Exists(enrichedPath)) return;\n        try\n        {\n            var json = File.ReadAllText(enrichedPath);\n            EnrichedResults = System.Text.Json.JsonSerializer.Deserialize<EnrichedResultFile>(\n                json, Caly.Core.Services.SourceGenerationContext.Default.EnrichedResultFile);\n        }\n        catch (Exception ex)\n        {\n            System.Diagnostics.Debug.WriteLine(\\$\\\"[Semantic] Failed to load enriched_result.json: {ex.Message}\\\");\n        }\n    }\n\n    /// <summary>\n    /// Overrides SemanticResults setter to reset cached ViewModels.\n    /// </summary>\n    partial void OnSemanticResultsChanged(SemanticResultFile? value)'''\n\nc=c.replace(old,new,1)\nwith open(path,'w') as f:\n    f.write(c)\nprint('Added EnrichedResults section')\n\""
+		},
+		{
+			"label": "auto-load-enriched",
+			"type": "shell",
+			"command": "python3 -c \"\nimport os\nos.chdir('/Users/futuremeng/github/narrativeos/TraceView')\npath='Caly.Core/ViewModels/DocumentViewModel.Semantic.cs'\nwith open(path) as f:\n    c=f.read()\n\n# Add TryLoadEnrichedData() call after HasSemanticData notification\nold='''                OnPropertyChanged(nameof(HasSemanticData));\n                UpdateSemanticVisibility();'''\n\nnew='''                OnPropertyChanged(nameof(HasSemanticData));\n                TryLoadEnrichedData();\n                UpdateSemanticVisibility();'''\n\nc=c.replace(old,new,1)\nwith open(path,'w') as f:\n    f.write(c)\nprint('Added TryLoadEnrichedData call')\n\""
+		},
+		{
+			"label": "add-enriched-xaml",
+			"type": "shell",
+			"command": "python3 -c \"\nimport os\nos.chdir('/Users/futuremeng/github/narrativeos/TraceView')\npath='Caly.Core/Controls/DocumentsTabsControl.axaml'\nwith open(path) as f:\n    c=f.read()\n\n# 1. Toggle button\nold='''IsChecked=\\\"{Binding ShowGeoColumn}\\\">\n                                <PathIcon Width=\\\"17\\\"\n                                          Height=\\\"17\\\"\n                                          Data=\\\"{StaticResource map_regular}\\\">'''\nnew='''IsChecked=\\\"{Binding ShowEnrichedColumn}\\\">\n                                <PathIcon Width=\\\"17\\\"\n                                          Height=\\\"17\\\"\n                                          Data=\\\"{StaticResource semantic_analysis_regular}\\\">\n                                    <ToolTip.Tip>Toggle Enriched Entities</ToolTip.Tip>\n                                </PathIcon>\n                            </ToggleButton>\n                            <ToggleButton DockPanel.Dock=\\\"Left\\\" Margin=\\\"0,0,0,0\\\" HorizontalAlignment=\\\"Center\\\" VerticalAlignment=\\\"Stretch\\\" Background=\\\"Transparent\\\"\n                                       IsChecked=\\\"{Binding ShowGeoColumn}\\\">\n                                <PathIcon Width=\\\"17\\\" Height=\\\"17\\\" Data=\\\"{StaticResource map_regular}\\\">'''\nc=c.replace(old,new,1)\nprint('1')\n\n# 2. ColumnDefinition\nold2='''<ColumnDefinition Width=\\\"{Binding ShowGeoColumn, Converter={StaticResource BoolToGridLengthConverter}}\\\"/>\n                             </Grid.ColumnDefinitions>'''\nnew2='''<ColumnDefinition Width=\\\"{Binding ShowGeoColumn, Converter={StaticResource BoolToGridLengthConverter}}\\\"/>\n                                 <ColumnDefinition Width=\\\"{Binding ShowEnrichedColumn, Converter={StaticResource BoolToGridLengthConverter}}\\\"/>\n                             </Grid.ColumnDefinitions>'''\nc=c.replace(old2,new2,1)\nprint('2')\nwith open(path,'w') as f:\n    f.write(c)\nprint('saved')\n\""
+		},
+		{
+			"label": "add-enriched-content",
+			"type": "shell",
+			"command": "python3 -c \"\nimport os\nos.chdir('/Users/futuremeng/github/narrativeos/TraceView')\npath='Caly.Core/Controls/DocumentsTabsControl.axaml'\nwith open(path) as f:\n    c=f.read()\n\n# 3. Add Enriched column before ConnectionLines\nold3='''                             <!-- Connection Lines overlay between all five columns -->\n                             <controls:ConnectionLinesControl '''\n\nnew3='''                             <!-- Column 6: Enriched Entity View -->\n                              <Border Grid.Column=\\\"5\\\" Padding=\\\"8\\\" Background=\\\"{DynamicResource SystemChromeLowColor}\\\" BorderBrush=\\\"{DynamicResource SystemControlForegroundBaseMediumLowBrush}\\\" BorderThickness=\\\"1\\\" IsVisible=\\\"{Binding ShowEnrichedColumn}\\\">\n                                   <DockPanel>\n                                        <Grid DockPanel.Dock=\\\"Top\\\" Margin=\\\"0,0,0,6\\\">\n                                           <TextBlock Text=\\\"Enriched\\\" FontWeight=\\\"Bold\\\" FontSize=\\\"12\\\"/>\n                                        </Grid>\n                                        <ScrollViewer HorizontalScrollBarVisibility=\\\"Disabled\\\">\n                                            <ItemsControl ItemsSource=\\\"{Binding EnrichedBlockViewModels}\\\">\n                                                <ItemsControl.ItemTemplate>\n                                                    <DataTemplate x:DataType=\\\"vm:EnrichedBlockViewModel\\\">\n                                                        <Border Margin=\\\"0,2\\\" Padding=\\\"6,4\\\" Background=\\\"#33333308\\\" CornerRadius=\\\"4\\\">\n                                                            <StackPanel Spacing=\\\"2\\\">\n                                                                <TextBlock Text=\\\"{Binding BlockLabel}\\\" FontSize=\\\"10\\\" FontWeight=\\\"SemiBold\\\"/>\n                                                                <TextBlock Text=\\\"{Binding Summary}\\\" FontSize=\\\"9\\\" Opacity=\\\"0.6\\\"/>\n                                                                <ItemsControl ItemsSource=\\\"{Binding EnrichedEntities}\\\" IsVisible=\\\"{Binding HasEnriched}\\\">\n                                                                    <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>\n                                                                    <ItemsControl.ItemTemplate>\n                                                                        <DataTemplate x:DataType=\\\"models:EnrichedEntityEntry\\\">\n                                                                            <Border Margin=\\\"2\\\" Padding=\\\"4,1\\\" CornerRadius=\\\"3\\\" Background=\\\"{DynamicResource SystemChromeMediumLowColor}\\\">\n                                                                                <StackPanel Spacing=\\\"0\\\">\n                                                                                    <TextBlock FontSize=\\\"10\\\" FontWeight=\\\"SemiBold\\\" Text=\\\"{Binding EnrichedText}\\\"/>\n                                                                                    <TextBlock FontSize=\\\"8\\\" Opacity=\\\"0.6\\\" Text=\\\"{Binding EnrichmentSource}\\\"/>\n                                                                                </StackPanel>\n                                                                            </Border>\n                                                                        </DataTemplate>\n                                                                    </ItemsControl.ItemTemplate>\n                                                                </ItemsControl>\n                                                                <ItemsControl ItemsSource=\\\"{Binding InvalidEntities}\\\" IsVisible=\\\"{Binding HasInvalid}\\\">\n                                                                    <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>\n                                                                    <ItemsControl.ItemTemplate>\n                                                                        <DataTemplate x:DataType=\\\"models:EnrichedEntityEntry\\\">\n                                                                            <Border Margin=\\\"2\\\" Padding=\\\"4,1\\\" CornerRadius=\\\"3\\\" Opacity=\\\"0.5\\\" BorderBrush=\\\"#F44336\\\" BorderThickness=\\\"1\\\">\n                                                                                <TextBlock FontSize=\\\"9\\\" Text=\\\"{Binding Text}\\\" TextDecorations=\\\"Strikethrough\\\"/>\n                                                                            </Border>\n                                                                        </DataTemplate>\n                                                                    </ItemsControl.ItemTemplate>\n                                                                </ItemsControl>\n                                                            </StackPanel>\n                                                        </Border>\n                                                    </DataTemplate>\n                                                </ItemsControl.ItemTemplate>\n                                            </ItemsControl>\n                                        </ScrollViewer>\n                                   </DockPanel>\n                              </Border>\n\n                             <!-- Connection Lines overlay between all six columns -->\n                             <controls:ConnectionLinesControl '''\n\nc=c.replace(old3,new3,1)\nprint('3 done')\n\n# 4. Fix remaining Grid.ColumnSpan=5 to 6\nc=c.replace('Grid.ColumnSpan=\\\"5\\\"', 'Grid.ColumnSpan=\\\"6\\\"')\nprint('4 done')\n\nwith open(path,'w') as f:\n    f.write(c)\nprint('saved')\n\""
+		},
+		{
+			"label": "run-link-geo",
+			"type": "shell",
+			"command": "python3 scripts/link_geo.py"
+		},
+		{
+			"label": "add-enrich-btn",
+			"type": "shell",
+			"command": "python3 scripts/add_enrich_btn.py && dotnet build /Users/futuremeng/github/narrativeos/TraceView/Caly.Desktop/Caly.Desktop.csproj -c Debug -f net10.0 2>&1 | grep -E '(error|Error|成功|已成功)'"
 		}
 	]
 }

@@ -467,3 +467,9 @@ $RECYCLE.BIN/
 /.claude/settings.local.json
 docs/*
 Library/Application Support/Microsoft/DeveloperTools/deviceid
+
+# Backup files
+*.bak
+
+# Development scripts (one-off fix scripts)
+scripts/

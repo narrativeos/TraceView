@@ -173,6 +173,100 @@ public class SemanticEntity
     /// </summary>
     [System.Text.Json.Serialization.JsonIgnore]
     public string SyntacticRoleDisplay => LocationSyntacticRole.ToDisplay(SyntacticRole);
+
+    /// <summary>
+    /// Enriched metadata from entity processors (Location, Person, Organization, Temporal).
+    /// Stored as a nested dictionary for JSON serialization compatibility.
+    /// Key format: "{EntityType}:{stage}" (e.g., "LOCATION:enrichment", "PERSON:validation").
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public Dictionary<string, object> EnrichedMetadata { get; set; } = new();
+
+    // ── Enrichment computed properties (binding-friendly for UI) ───
+
+    /// <summary>Best display text: enriched name if available, otherwise raw text.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string EnrichedDisplayText =>
+        GetEnrichmentString("enriched_text") is { Length: > 0 } s ? s : Text;
+
+    /// <summary>Confidence from the enrichment stage (0.0–1.0), or -1 if not enriched.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public double EnrichedConfidence
+    {
+        get
+        {
+            var e = GetEnrichmentDict();
+            return e != null && e.TryGetValue("confidence", out var c) && c is double d ? d : -1;
+        }
+    }
+
+    /// <summary>Whether the entity passed pattern validation.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsValidated
+    {
+        get
+        {
+            var v = GetValidationDict();
+            return v != null && v.TryGetValue("is_valid", out var iv) && iv is bool b && b;
+        }
+    }
+
+    /// <summary>Validation status: "valid", "ambiguous", "invalid", or "unknown".</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string ValidationStatus
+    {
+        get
+        {
+            var v = GetValidationDict();
+            if (v == null) return "unknown";
+            if (v.TryGetValue("is_valid", out var iv) && iv is bool bv && !bv) return "invalid";
+            if (v.TryGetValue("severity", out var sv) && sv is string s && s == "Warning") return "ambiguous";
+            return "valid";
+        }
+    }
+
+    /// <summary>Source of enrichment (e.g., "Nominatim", "Wikidata", "EraTable").</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string EnrichmentSource => GetEnrichmentString("source") ?? "";
+
+    /// <summary>External ID from enrichment (Wikidata Q-ID, OSM node/way ID).</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string ExternalId => GetEnrichmentString("external_id") ?? "";
+
+    /// <summary>One-line enrichment summary for tooltip display.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string EnrichmentSummary
+    {
+        get
+        {
+            var parts = new System.Collections.Generic.List<string>();
+            if (EnrichmentSource is { Length: > 0 } s) parts.Add(s);
+            if (EnrichedConfidence >= 0) parts.Add($"{(EnrichedConfidence * 100):F0}%");
+            if (ExternalId is { Length: > 0 } eid) parts.Add(eid);
+            if (ValidationStatus == "ambiguous") parts.Add("\u26a0");
+            return parts.Count > 0 ? string.Join(" \u00b7 ", parts) : Text;
+        }
+    }
+
+    // ── Private enrichment helpers ─────────────────────────────────
+
+    private Dictionary<string, object>? GetValidationDict()
+    {
+        var key = $"{Category}:validation";
+        return EnrichedMetadata.TryGetValue(key, out var v) && v is Dictionary<string, object> d ? d : null;
+    }
+
+    private Dictionary<string, object>? GetEnrichmentDict()
+    {
+        var key = $"{Category}:enrichment";
+        return EnrichedMetadata.TryGetValue(key, out var v) && v is Dictionary<string, object> d ? d : null;
+    }
+
+    private string? GetEnrichmentString(string field)
+    {
+        var e = GetEnrichmentDict();
+        return e != null && e.TryGetValue(field, out var v) && v is string s ? s : null;
+    }
 }
 
 /// <summary>
@@ -254,6 +348,13 @@ public class SemanticBlockResult
     /// </summary>
     [JsonPropertyName("location_relations")]
     public List<LocationRelation> LocationRelations { get; set; } = new();
+
+    /// <summary>
+    /// Block-level enriched metadata from entity processors.
+    /// Key format: "{EntityType}:relations" → list of relation dicts for non-LOCATION types.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public Dictionary<string, object> EnrichedMetadata { get; set; } = new();
 
     /// <summary>
     /// Temporary storage for HanLP coreference chains from a single block's NLP response.

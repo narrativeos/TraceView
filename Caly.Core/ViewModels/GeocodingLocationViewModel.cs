@@ -307,8 +307,8 @@ public partial class GeocodingLocationViewModel : ObservableObject
     /// <summary>
     /// Formatted coordinate string for display.
     /// </summary>
-    public string CoordinateText => HasCoordinates 
-        ? $"({Latitude:F4}, {Longitude:F4})" 
+    public string CoordinateText => HasCoordinates
+        ? $"({Latitude:F4}, {Longitude:F4})"
         : "-";
 
     /// <summary>

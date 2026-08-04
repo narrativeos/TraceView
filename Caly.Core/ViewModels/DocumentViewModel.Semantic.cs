@@ -21,6 +21,11 @@
 using Avalonia.Threading;
 using Caly.Core.Models;
 using Caly.Core.Services;
+using Caly.Core.Services.EntityProcessors;
+using Caly.Core.Services.EntityProcessors.Location;
+using Caly.Core.Services.EntityProcessors.Temporal;
+using Caly.Core.Services.EntityProcessors.Person;
+using Caly.Core.Services.EntityProcessors.Organization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System;
@@ -43,6 +48,10 @@ public sealed partial class DocumentViewModel
     [ObservableProperty]
     private bool _showSemanticColumn = false;
 
+    /// <summary>Whether the Enriched column is visible.</summary>
+    [ObservableProperty]
+    private bool _showEnrichedColumn = false;
+
     /// <summary>
     /// Cached semantic analysis results loaded from disk.
     /// </summary>
@@ -58,17 +67,40 @@ public sealed partial class DocumentViewModel
     /// Whether semantic analysis output files exist on disk (semantic/semantic_result.json).
     /// Used to determine button visibility based on actual artifacts rather than in-memory state.
     /// </summary>
-    public bool HasSemanticData
+    public bool HasSemanticData => ExistsInSemanticDir("semantic_result.json");
+
+    /// <summary>Whether enriched result exists on disk.</summary>
+    public bool HasEnrichedData => ExistsInSemanticDir("enriched_result.json");
+
+    /// <summary>
+    /// Whether enrichment can run: requires both semantic results (in-memory)
+    /// and GeoJSON file to exist on disk.
+    /// </summary>
+    public bool CanEnrich => HasSemanticResults && HasGeoJsonFile;
+
+    /// <summary>
+    /// Dynamic tooltip for the Enrich button reflecting current state.
+    /// </summary>
+    public string EnrichButtonTooltip
     {
         get
         {
-            if (ProjectPath is null)
-                return false;
-
-            var semanticDir = Path.Combine(ProjectPath, "semantic");
-            var filePath = Path.Combine(semanticDir, "semantic_result.json");
-            return File.Exists(filePath);
+            if (IsSemanticProcessing)
+                return $"Enrich 处理中...";
+            if (HasEnrichedData)
+                return "Enrich 已完成 · 点击重新处理";
+            if (!HasSemanticResults)
+                return "需要先完成 NLP 语义分析";
+            if (!HasGeoJsonFile)
+                return "需要先生成地理数据 (GeoJSON)";
+            return "运行实体富化处理";
         }
+    }
+
+    private bool ExistsInSemanticDir(string fileName)
+    {
+        if (ProjectPath is null) return false;
+        return File.Exists(Path.Combine(ProjectPath, "semantic", fileName));
     }
 
     /// <summary>
@@ -92,6 +124,54 @@ public sealed partial class DocumentViewModel
 
     [ObservableProperty]
     private bool _isSemanticProcessing;
+
+    partial void OnIsSemanticProcessingChanged(bool value)
+    {
+        OnPropertyChanged(nameof(EnrichButtonTooltip));
+    }
+
+    /// <summary>
+    /// Whether entity enrichment is currently running.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isEnrichProcessing;
+
+    partial void OnIsEnrichProcessingChanged(bool value)
+    {
+        OnPropertyChanged(nameof(EnrichButtonTooltip));
+        OnPropertyChanged(nameof(EnrichStatusText));
+    }
+
+    /// <summary>
+    /// Status text for the Enriched column during processing.
+    /// </summary>
+    public string EnrichStatusText
+    {
+        get
+        {
+            if (_enrichStatusText is not null)
+                return _enrichStatusText;
+            if (HasEnrichedData)
+            {
+                var count = EnrichedEntityCount;
+                var enriched = EnrichedWithSourceCount;
+                return $"Enrichment complete: {count} entities ({enriched} enriched)";
+            }
+            if (!HasSemanticResults)
+                return "Run Semantic Analysis first";
+            if (!HasGeoJsonFile)
+                return "Generate GeoJSON first";
+            return "Click Enrich to process entities";
+        }
+    }
+
+    private string? _enrichStatusText;
+
+    private void SetEnrichStatus(string text)
+    {
+        _enrichStatusText = text;
+        OnPropertyChanged(nameof(EnrichStatusText));
+    }
 
     private CancellationTokenSource? _semanticCts;
 
@@ -206,6 +286,101 @@ public sealed partial class DocumentViewModel
         }
     }
 
+    /// <summary>Enriched entity results loaded from enriched_result.json.</summary>
+    [ObservableProperty]
+    private EnrichedResultFile? _enrichedResults;
+
+    private ObservableCollection<EnrichedBlockViewModel>? _enrichedBlockViewModels;
+
+    public ObservableCollection<EnrichedBlockViewModel> EnrichedBlockViewModels
+    {
+        get
+        {
+            if (_enrichedBlockViewModels is not null) return _enrichedBlockViewModels;
+            if (EnrichedResults?.Blocks is null)
+            {
+                _enrichedBlockViewModels = new();
+                return _enrichedBlockViewModels;
+            }
+            _enrichedBlockViewModels = new(
+                EnrichedResults.Blocks.Select(b => new EnrichedBlockViewModel(b)));
+            return _enrichedBlockViewModels;
+        }
+    }
+
+    partial void OnEnrichedResultsChanged(EnrichedResultFile? value)
+    {
+        _enrichedBlockViewModels = null;
+        OnPropertyChanged(nameof(EnrichedBlockViewModels));
+        OnPropertyChanged(nameof(HasEnrichedData));
+        OnPropertyChanged(nameof(EnrichButtonTooltip));
+    }
+
+    public int EnrichedEntityCount => EnrichedResults?.Blocks.Sum(b => b.Entities.Count) ?? 0;
+    public int EnrichedWithSourceCount => EnrichedResults?.Blocks.Sum(b => b.Entities.Count(e => !string.IsNullOrEmpty(e.EnrichmentSource))) ?? 0;
+
+    /// <summary>Load enriched_result.json from disk. Auto-regenerate if stale (empty BlockIds).</summary>
+    internal void TryLoadEnrichedData()
+    {
+        if (ProjectPath is null) return;
+        var enrichedPath = Path.Combine(ProjectPath, "semantic", "enriched_result.json");
+        if (!File.Exists(enrichedPath)) return;
+        try
+        {
+            var json = File.ReadAllText(enrichedPath);
+            var loaded = System.Text.Json.JsonSerializer.Deserialize<EnrichedResultFile>(
+                json, Caly.Core.Services.SourceGenerationContext.Default.EnrichedResultFile);
+
+            if (loaded is null) return;
+
+            // Check for stale data: blocks with empty BlockIds (old format before SourceBlockIds fix)
+            bool hasStaleBlocks = loaded.Blocks.Any(b => b.BlockIds.Count == 0);
+            if (hasStaleBlocks)
+            {
+                System.Diagnostics.Debug.WriteLine("[Semantic] Enriched data is stale (empty BlockIds). Auto-regenerating...");
+                // Delete stale file and trigger re-enrichment
+                File.Delete(enrichedPath);
+                if (HasSemanticResults && HasGeoJsonFile)
+                {
+                    // Trigger async re-enrichment
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            var pipeline = CreateDefaultPipeline();
+                            var enrichedResult = await pipeline.ProcessAsync(SemanticResults!, CancellationToken.None);
+                            if (enrichedResult != null)
+                            {
+                                var outPath = Path.Combine(GetSemanticOutputDir(), "enriched_result.json");
+                                var outJson = System.Text.Json.JsonSerializer.Serialize(
+                                    enrichedResult, SourceGenerationContext.Default.EnrichedResultFile);
+                                await File.WriteAllTextAsync(outPath, outJson);
+                                Dispatcher.UIThread.Invoke(() =>
+                                {
+                                    EnrichedResults = enrichedResult;
+                                    ShowEnrichedColumn = true;
+                                    System.Diagnostics.Debug.WriteLine("[Semantic] Auto-regeneration complete");
+                                });
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"[Semantic] Auto-regeneration failed: {ex.Message}");
+                        }
+                    });
+                }
+                return;
+            }
+
+            EnrichedResults = loaded;
+            ShowEnrichedColumn = true;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Semantic] Failed to load enriched_result.json: {ex.Message}");
+        }
+    }
+
     /// <summary>
     /// Overrides SemanticResults setter to reset cached ViewModels.
     /// </summary>
@@ -217,6 +392,7 @@ public sealed partial class DocumentViewModel
         OnPropertyChanged(nameof(SemanticEntityCount));
         OnPropertyChanged(nameof(SemanticRelationCount));
         OnPropertyChanged(nameof(HasSemanticResults));
+        OnPropertyChanged(nameof(CanEnrich));
         // Critical: notify that SemanticBlockViewModels has changed so the ItemsControl re-reads the property
         OnPropertyChanged(nameof(SemanticBlockViewModels));
     }
@@ -229,6 +405,14 @@ public sealed partial class DocumentViewModel
     private void ToggleSemanticColumn()
     {
         ShowSemanticColumn = !ShowSemanticColumn;
+    }
+
+    [RelayCommand]
+    private void ToggleEnrichedColumn()
+    {
+        ShowEnrichedColumn = !ShowEnrichedColumn;
+        if (ShowEnrichedColumn && EnrichedResults == null)
+            TryLoadEnrichedData();
     }
 
     [RelayCommand]
@@ -320,7 +504,27 @@ public sealed partial class DocumentViewModel
             SemanticResults = result;
             SemanticStatus = SemanticProcessStatus.Completed;
             SemanticProgress = 100;
-            SemanticStatusText = $"Analysis completed ({SemanticNodeCount} nodes, {SemanticEntityCount} entities, {SemanticRelationCount} relations)";
+            SemanticStatusText = $"Analysis completed ({SemanticNodeCount} nodes, {SemanticEntityCount} entities, {SemanticRelationCount} relations). Enriching entities...";
+            SemanticProgress = 95;  // Reserve 95-100 for pipeline
+
+            // Phase A: Run entity processors pipeline to enrich entities
+            try
+            {
+                var enrichedResult = await RunEnrichmentPipelineAsync(result, outputDir, _semanticCts.Token);
+                if (enrichedResult != null)
+                {
+                    SemanticProgress = 100;
+                    SemanticStatusText = $"Analysis + enrichment complete ({SemanticNodeCount} nodes, {SemanticEntityCount} entities)";
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                System.Diagnostics.Debug.WriteLine("[Semantic] Entity processors pipeline cancelled");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[Semantic] Entity processors pipeline error: {ex.Message}");
+            }
             System.Diagnostics.Debug.WriteLine($"[Semantic] Completed: {SemanticNodeCount} nodes, {SemanticEntityCount} entities, {SemanticRelationCount} relations");
             OnPropertyChanged(nameof(HasSemanticData));
 
@@ -350,6 +554,83 @@ public sealed partial class DocumentViewModel
         }
     }
 
+    /// <summary>
+    /// Re-run entity enrichment on already-loaded semantic results.
+    /// Useful after entity processors have been updated, or when external APIs
+    /// (Nominatim, Wikidata) are available and you want fresh enrichment data.
+    /// </summary>
+    [RelayCommand]
+    private async Task ReEnrichAsync()
+    {
+        if (SemanticResults == null || SemanticResults.Blocks.Count == 0)
+        {
+            SetEnrichStatus("No semantic results to enrich. Run Semantic Analysis first.");
+            return;
+        }
+
+        if (IsEnrichProcessing)
+        {
+            _semanticCts?.Cancel();
+            SetEnrichStatus("Cancelling...");
+            return;
+        }
+
+        _semanticCts = new CancellationTokenSource();
+        IsEnrichProcessing = true;
+        ShowEnrichedColumn = true;
+        SetEnrichStatus("Starting entity enrichment...");
+
+        try
+        {
+            var enrichedResult = await RunEnrichmentPipelineAsync(SemanticResults, GetSemanticOutputDir(), _semanticCts.Token);
+            if (enrichedResult != null)
+            {
+                TryLoadEnrichedData();
+                var count = enrichedResult.Blocks.Sum(b => b.Entities.Count);
+                var enrichedCount = enrichedResult.Blocks.Sum(b =>
+                    b.Entities.Count(e => !string.IsNullOrEmpty(e.EnrichmentSource)));
+                SetEnrichStatus($"Enrichment complete: {count} entities ({enrichedCount} enriched)");
+                System.Diagnostics.Debug.WriteLine($"[Semantic] Re-enrichment saved enriched_result.json ({count} entities, {enrichedCount} enriched)");
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            SetEnrichStatus("Enrichment cancelled");
+        }
+        catch (Exception ex)
+        {
+            SetEnrichStatus($"Enrichment error: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"[Semantic] Re-enrichment error: {ex.Message}");
+        }
+        finally
+        {
+            IsEnrichProcessing = false;
+            _semanticCts?.Dispose();
+            _semanticCts = null;
+        }
+    }
+
+    /// <summary>
+    /// Runs the entity enrichment pipeline and saves results.
+    /// Extracted to avoid code duplication between ProcessWithSemanticAsync and ReEnrichAsync.
+    /// </summary>
+    async Task<EnrichedResultFile?> RunEnrichmentPipelineAsync(
+        SemanticResultFile result, string outputDir, CancellationToken ct)
+    {
+        var pipeline = CreateDefaultPipeline();
+        var enrichedResult = await pipeline.ProcessAsync(result, ct);
+        if (enrichedResult != null)
+        {
+            var enrichedPath = Path.Combine(outputDir, "enriched_result.json");
+            var json = System.Text.Json.JsonSerializer.Serialize(
+                enrichedResult,
+                SourceGenerationContext.Default.EnrichedResultFile);
+            await File.WriteAllTextAsync(enrichedPath, json);
+            System.Diagnostics.Debug.WriteLine($"[Semantic] Saved enriched_result.json ({enrichedResult.Blocks.Count} blocks)");
+        }
+        return enrichedResult;
+    }
+
     [RelayCommand]
     private void CancelSemanticProcess()
     {
@@ -357,6 +638,20 @@ public sealed partial class DocumentViewModel
     }
 
     #endregion
+
+    /// <summary>
+    /// Creates a pipeline with all default entity processors registered.
+    /// Extracted as a factory method so processor registration is in one place.
+    /// </summary>
+    static EntityProcessorPipeline CreateDefaultPipeline()
+    {
+        var pipeline = new EntityProcessorPipeline();
+        pipeline.AddProcessor(new LocationProcessor());
+        pipeline.AddProcessor(new TemporalProcessor());
+        pipeline.AddProcessor(new PersonProcessor());
+        pipeline.AddProcessor(new OrganizationProcessor());
+        return pipeline;
+    }
 
     #region Semantic Data Loading
 
@@ -378,6 +673,7 @@ public sealed partial class DocumentViewModel
                 SemanticStatusText = $"Loaded from cache ({SemanticNodeCount} nodes, {SemanticEntityCount} entities)";
                 ShowSemanticColumn = true;
                 OnPropertyChanged(nameof(HasSemanticData));
+                TryLoadEnrichedData();
                 UpdateSemanticVisibility();
                 System.Diagnostics.Debug.WriteLine($"[Semantic] Auto-loaded cached results: {SemanticNodeCount} nodes, {SemanticEntityCount} entities");
             }

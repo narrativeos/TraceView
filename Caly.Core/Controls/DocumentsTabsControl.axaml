@@ -248,7 +248,7 @@
                                 </PathIcon>
                             </ToggleButton>
 
-                            <!-- Toggle Map Column -->
+                            <!-- Toggle Geo Column -->
                             <ToggleButton DockPanel.Dock="Left"
                                         Margin="0,0,0,0"
                                        HorizontalAlignment="Center"
@@ -259,6 +259,20 @@
                                           Height="17"
                                           Data="{StaticResource map_regular}">
                                     <ToolTip.Tip>Toggle Geo View</ToolTip.Tip>
+                                </PathIcon>
+                            </ToggleButton>
+
+                            <!-- Toggle Enriched Column -->
+                            <ToggleButton DockPanel.Dock="Left"
+                                        Margin="0,0,0,0"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Stretch"
+                                       Background="Transparent"
+                                       IsChecked="{Binding ShowEnrichedColumn}">
+                                <PathIcon Width="17"
+                                          Height="17"
+                                          Data="{StaticResource star_add_regular}">
+                                    <ToolTip.Tip>Toggle Enriched Entities</ToolTip.Tip>
                                 </PathIcon>
                             </ToggleButton>
 
@@ -293,6 +307,25 @@
 									  Opacity="{Binding HasGeoLibreFile, Converter={StaticResource CompletedToOpacityConverter}}">
 								<ToolTip.Tip>
 									<TextBlock Text="{Binding ExportGeoLibreButtonTooltip}"/>
+								</ToolTip.Tip>
+							</PathIcon>
+						</Button>
+
+						<!-- Enrich Entities (visible when semantic data exists) -->
+						<Button DockPanel.Dock="Right"
+                                Margin="0,0,5,0"
+								HorizontalAlignment="Center"
+								VerticalAlignment="Stretch"
+								Background="Transparent"
+                                Command="{Binding ReEnrichCommand}"
+                                IsEnabled="{Binding CanEnrich}"
+                                IsVisible="{Binding HasSemanticData}">
+							<PathIcon Width="17"
+									  Height="17"
+									  Data="{StaticResource arrow_sync_regular}"
+									  Opacity="{Binding HasEnrichedData, Converter={StaticResource CompletedToOpacityConverter}}">
+								<ToolTip.Tip>
+									<TextBlock Text="{Binding EnrichButtonTooltip}"/>
 								</ToolTip.Tip>
 							</PathIcon>
 						</Button>
@@ -404,6 +437,7 @@
                                  <ColumnDefinition Width="{Binding ShowAnalysisColumn, Converter={StaticResource BoolToGridLengthConverter}}"/>
                                  <ColumnDefinition Width="{Binding ShowSemanticColumn, Converter={StaticResource BoolToGridLengthConverter}}"/>
                                  <ColumnDefinition Width="{Binding ShowGeoColumn, Converter={StaticResource BoolToGridLengthConverter}}"/>
+                                 <ColumnDefinition Width="{Binding ShowEnrichedColumn, Converter={StaticResource BoolToGridLengthConverter}}"/>
                              </Grid.ColumnDefinitions>
 
                             <!-- Column 1: PDF Document -->
@@ -1722,17 +1756,452 @@
                                    </DockPanel>
                               </Border>
 
-                             <!-- Connection Lines overlay between all five columns -->
+                             <!-- GridSplitter between Geo and Enriched -->
+                             <GridSplitter Grid.Column="4"
+                                           HorizontalAlignment="Right"
+                                           Width="4"
+                                           Background="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                                           IsVisible="{Binding ShowEnrichedColumn}"/>
+
+                              <!-- Column 6: Enriched Entity View -->
+                              <Border Grid.Column="5"
+                                      Padding="8"
+                                      Background="{DynamicResource SystemChromeLowColor}"
+                                      BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                                      BorderThickness="1"
+                                      IsVisible="{Binding ShowEnrichedColumn}">
+                                  <DockPanel>
+                                      <!-- Header -->
+                                      <Grid DockPanel.Dock="Top"
+                                            Margin="0,0,0,6"
+                                            ColumnDefinitions="*,Auto">
+                                          <StackPanel Grid.Column="0"
+                                                      Spacing="2">
+                                              <TextBlock Text="Enriched"
+                                                         FontWeight="Bold"
+                                                         FontSize="12"/>
+                                              <TextBlock Text="{Binding EnrichStatusText}"
+                                                         FontSize="10"
+                                                         Opacity="0.5"
+                                                         IsVisible="{Binding !IsEnrichProcessing}"/>
+                                              <TextBlock Text="{Binding EnrichStatusText}"
+                                                         FontSize="10"
+                                                         Opacity="0.7"
+                                                         IsVisible="{Binding IsEnrichProcessing}"/>
+                                          </StackPanel>
+                                      </Grid>
+
+                                      <!-- Progress State -->
+                                      <Border IsVisible="{Binding IsEnrichProcessing}"
+                                              VerticalAlignment="Center"
+                                              HorizontalAlignment="Stretch">
+                                          <StackPanel VerticalAlignment="Center"
+                                                      HorizontalAlignment="Center"
+                                                      Spacing="12">
+                                              <PathIcon Width="32"
+                                                        Height="32"
+                                                        Data="{StaticResource spinner_regular}"
+                                                        Foreground="{DynamicResource SystemAccentColor}"
+                                                        HorizontalAlignment="Center"/>
+                                              <TextBlock Text="Enriching entities..."
+                                                         FontSize="13"
+                                                         HorizontalAlignment="Center"
+                                                         TextAlignment="Center"/>
+                                          </StackPanel>
+                                      </Border>
+
+                                      <!-- Enriched Results List -->
+                                      <ScrollViewer IsVisible="{Binding !IsEnrichProcessing}"
+                                                    HorizontalScrollBarVisibility="Disabled">
+                                          <ItemsControl ItemsSource="{Binding EnrichedBlockViewModels}">
+                                              <ItemsControl.ItemTemplate>
+                                                  <DataTemplate x:DataType="vm:EnrichedBlockViewModel">
+                                                      <Border Margin="0,4"
+                                                              Padding="8"
+                                                              Background="#33333308"
+                                                              CornerRadius="4"
+                                                              BorderThickness="1"
+                                                              BorderBrush="#44444444">
+                                                          <StackPanel Spacing="6">
+                                                              <!-- Block Header -->
+                                                              <Grid ColumnDefinitions="Auto,*">
+                                                                  <TextBlock Grid.Column="0"
+                                                                             Text="{Binding BlockLabel}"
+                                                                             FontSize="10"
+                                                                             FontWeight="SemiBold"/>
+                                                                  <TextBlock Grid.Column="1"
+                                                                             Text="{Binding Summary}"
+                                                                             FontSize="9"
+                                                                             Opacity="0.5"
+                                                                             HorizontalAlignment="Right"/>
+                                                              </Grid>
+
+                                                              <!-- LOCATION entities -->
+                                                              <StackPanel Spacing="3"
+                                                                          IsVisible="{Binding LocationCount}">
+                                                                  <TextBlock Text="地点"
+                                                                             FontSize="9"
+                                                                             FontWeight="SemiBold"
+                                                                             Foreground="#81C784"
+                                                                             Opacity="0.8"/>
+                                                                  <ItemsControl ItemsSource="{Binding LocationEntities}">
+                                                                      <ItemsControl.ItemsPanel>
+                                                                          <ItemsPanelTemplate>
+                                                                              <WrapPanel/>
+                                                                          </ItemsPanelTemplate>
+                                                                      </ItemsControl.ItemsPanel>
+                                                                      <ItemsControl.ItemTemplate>
+                                                                          <DataTemplate x:DataType="models:EnrichedEntityEntry">
+                                                                              <Border Padding="6,4"
+                                                                                      Margin="0,0,2,2"
+                                                                                      CornerRadius="3"
+                                                                                      Background="{Binding CategoryBackground}"
+                                                                                      BorderThickness="1"
+                                                                                      BorderBrush="{Binding CategoryBorder}">
+                                                                                  <StackPanel Spacing="2">
+                                                                                          <!-- Entity display: uses ArrowDisplayText for "original → enriched" -->
+                                                                                          <TextBlock FontSize="10"
+                                                                                                     Foreground="{Binding CategoryTextColor}"
+                                                                                                     Text="{Binding ArrowDisplayText}"
+                                                                                                     FontWeight="SemiBold"/>
+                                                                                          <StackPanel Orientation="Horizontal"
+                                                                                                    Spacing="6">
+                                                                                              <TextBlock Text="{Binding StatusIcon}"
+                                                                                                         FontSize="8"
+                                                                                                         Foreground="{Binding StatusColor}"/>
+                                                                                              <TextBlock Text="{Binding QuickSummary}"
+                                                                                                         FontSize="8"
+                                                                                                         Opacity="0.6"
+                                                                                                         IsVisible="{Binding IsEnriched}"/>
+                                                                                          </StackPanel>
+                                                                                          <TextBlock FontSize="8"
+                                                                                                     Foreground="#F44336"
+                                                                                                     IsVisible="{Binding ValidationStatus, Converter={StaticResource EqualsConverter}, ConverterParameter=invalid}"
+                                                                                                     TextWrapping="Wrap"
+                                                                                                     Text="{Binding ValidationReason, StringFormat='✗ {0}'}"/>
+                                                                                  </StackPanel>
+                                                                              </Border>
+                                                                          </DataTemplate>
+                                                                      </ItemsControl.ItemTemplate>
+                                                                  </ItemsControl>
+                                                              </StackPanel>
+
+                                                              <!-- PERSON entities -->
+                                                              <StackPanel Spacing="3"
+                                                                          IsVisible="{Binding PersonCount}">
+                                                                  <TextBlock Text="人物"
+                                                                             FontSize="9"
+                                                                             FontWeight="SemiBold"
+                                                                             Foreground="#64B5F6"
+                                                                             Opacity="0.8"/>
+                                                                  <ItemsControl ItemsSource="{Binding PersonEntities}">
+                                                                      <ItemsControl.ItemsPanel>
+                                                                          <ItemsPanelTemplate>
+                                                                              <WrapPanel/>
+                                                                          </ItemsPanelTemplate>
+                                                                      </ItemsControl.ItemsPanel>
+                                                                      <ItemsControl.ItemTemplate>
+                                                                          <DataTemplate x:DataType="models:EnrichedEntityEntry">
+                                                                              <Border Padding="6,4"
+                                                                                      Margin="0,0,2,2"
+                                                                                      CornerRadius="3"
+                                                                                      Background="{Binding CategoryBackground}"
+                                                                                      BorderThickness="1"
+                                                                                      BorderBrush="{Binding CategoryBorder}">
+                                                                                  <StackPanel Spacing="2">
+                                                                                          <TextBlock FontSize="10"
+                                                                                                     Foreground="{Binding CategoryTextColor}"
+                                                                                                     Text="{Binding ArrowDisplayText}"
+                                                                                                     FontWeight="SemiBold"/>
+                                                                                          <StackPanel Orientation="Horizontal"
+                                                                                                    Spacing="6">
+                                                                                              <TextBlock Text="{Binding StatusIcon}"
+                                                                                                         FontSize="8"
+                                                                                                         Foreground="{Binding StatusColor}"/>
+                                                                                              <TextBlock Text="{Binding QuickSummary}"
+                                                                                                         FontSize="8"
+                                                                                                         Opacity="0.6"
+                                                                                                         IsVisible="{Binding IsEnriched}"/>
+                                                                                          </StackPanel>
+                                                                                          <TextBlock FontSize="8"
+                                                                                                     Foreground="#F44336"
+                                                                                                     IsVisible="{Binding ValidationStatus, Converter={StaticResource EqualsConverter}, ConverterParameter=invalid}"
+                                                                                                     TextWrapping="Wrap"
+                                                                                                     Text="{Binding ValidationReason, StringFormat='✗ {0}'}"/>
+                                                                                  </StackPanel>
+                                                                              </Border>
+                                                                          </DataTemplate>
+                                                                      </ItemsControl.ItemTemplate>
+                                                                  </ItemsControl>
+                                                              </StackPanel>
+
+                                                              <!-- ORGANIZATION entities -->
+                                                              <StackPanel Spacing="3"
+                                                                          IsVisible="{Binding OrganizationCount}">
+                                                                  <TextBlock Text="组织"
+                                                                             FontSize="9"
+                                                                             FontWeight="SemiBold"
+                                                                             Foreground="#F48FB1"
+                                                                             Opacity="0.8"/>
+                                                                  <ItemsControl ItemsSource="{Binding OrganizationEntities}">
+                                                                      <ItemsControl.ItemsPanel>
+                                                                          <ItemsPanelTemplate>
+                                                                              <WrapPanel/>
+                                                                          </ItemsPanelTemplate>
+                                                                      </ItemsControl.ItemsPanel>
+                                                                      <ItemsControl.ItemTemplate>
+                                                                          <DataTemplate x:DataType="models:EnrichedEntityEntry">
+                                                                              <Border Padding="6,4"
+                                                                                      Margin="0,0,2,2"
+                                                                                      CornerRadius="3"
+                                                                                      Background="{Binding CategoryBackground}"
+                                                                                      BorderThickness="1"
+                                                                                      BorderBrush="{Binding CategoryBorder}">
+                                                                                  <StackPanel Spacing="2">
+                                                                                          <TextBlock FontSize="10"
+                                                                                                     Foreground="{Binding CategoryTextColor}"
+                                                                                                     Text="{Binding ArrowDisplayText}"
+                                                                                                     FontWeight="SemiBold"
+                                                                                                     MaxWidth="200"
+                                                                                                     TextTrimming="CharacterEllipsis"/>
+                                                                                          <StackPanel Orientation="Horizontal"
+                                                                                                    Spacing="6">
+                                                                                              <TextBlock Text="{Binding StatusIcon}"
+                                                                                                         FontSize="8"
+                                                                                                         Foreground="{Binding StatusColor}"/>
+                                                                                              <TextBlock Text="{Binding QuickSummary}"
+                                                                                                         FontSize="8"
+                                                                                                         Opacity="0.6"
+                                                                                                         IsVisible="{Binding IsEnriched}"/>
+                                                                                          </StackPanel>
+                                                                                          <TextBlock FontSize="8"
+                                                                                                     Foreground="#F44336"
+                                                                                                     IsVisible="{Binding ValidationStatus, Converter={StaticResource EqualsConverter}, ConverterParameter=invalid}"
+                                                                                                     TextWrapping="Wrap"
+                                                                                                     Text="{Binding ValidationReason, StringFormat='✗ {0}'}"/>
+                                                                                  </StackPanel>
+                                                                              </Border>
+                                                                          </DataTemplate>
+                                                                      </ItemsControl.ItemTemplate>
+                                                                  </ItemsControl>
+                                                              </StackPanel>
+
+                                                              <!-- DATE entities -->
+                                                              <StackPanel Spacing="3"
+                                                                          IsVisible="{Binding DateCount}">
+                                                                  <TextBlock Text="时间"
+                                                                             FontSize="9"
+                                                                             FontWeight="SemiBold"
+                                                                             Foreground="#FFB74D"
+                                                                             Opacity="0.8"/>
+                                                                  <ItemsControl ItemsSource="{Binding DateEntities}">
+                                                                      <ItemsControl.ItemsPanel>
+                                                                          <ItemsPanelTemplate>
+                                                                              <WrapPanel/>
+                                                                          </ItemsPanelTemplate>
+                                                                      </ItemsControl.ItemsPanel>
+                                                                      <ItemsControl.ItemTemplate>
+                                                                          <DataTemplate x:DataType="models:EnrichedEntityEntry">
+                                                                              <Border Padding="6,4"
+                                                                                      Margin="0,0,2,2"
+                                                                                      CornerRadius="3"
+                                                                                      Background="{Binding CategoryBackground}"
+                                                                                      BorderThickness="1"
+                                                                                      BorderBrush="{Binding CategoryBorder}">
+                                                                                  <StackPanel Spacing="2">
+                                                                                          <TextBlock FontSize="10"
+                                                                                                     Foreground="{Binding CategoryTextColor}"
+                                                                                                     Text="{Binding ArrowDisplayText}"
+                                                                                                     FontWeight="SemiBold"/>
+                                                                                          <StackPanel Orientation="Horizontal"
+                                                                                                    Spacing="6">
+                                                                                              <TextBlock Text="{Binding StatusIcon}"
+                                                                                                         FontSize="8"
+                                                                                                         Foreground="{Binding StatusColor}"/>
+                                                                                              <TextBlock Text="{Binding QuickSummary}"
+                                                                                                         FontSize="8"
+                                                                                                         Opacity="0.6"
+                                                                                                         IsVisible="{Binding IsEnriched}"/>
+                                                                                          </StackPanel>
+                                                                                          <TextBlock FontSize="8"
+                                                                                                     Foreground="#F44336"
+                                                                                                     IsVisible="{Binding ValidationStatus, Converter={StaticResource EqualsConverter}, ConverterParameter=invalid}"
+                                                                                                     TextWrapping="Wrap"
+                                                                                                     Text="{Binding ValidationReason, StringFormat='✗ {0}'}"/>
+                                                                                  </StackPanel>
+                                                                              </Border>
+                                                                          </DataTemplate>
+                                                                      </ItemsControl.ItemTemplate>
+                                                                  </ItemsControl>
+                                                              </StackPanel>
+
+                                                              <!-- NUMBER entities -->
+                                                              <StackPanel Spacing="3"
+                                                                          IsVisible="{Binding NumberCount}">
+                                                                  <TextBlock Text="数值"
+                                                                             FontSize="9"
+                                                                             FontWeight="SemiBold"
+                                                                             Foreground="#CE93D8"
+                                                                             Opacity="0.8"/>
+                                                                  <ItemsControl ItemsSource="{Binding NumberEntities}">
+                                                                      <ItemsControl.ItemsPanel>
+                                                                          <ItemsPanelTemplate>
+                                                                              <WrapPanel/>
+                                                                          </ItemsPanelTemplate>
+                                                                      </ItemsControl.ItemsPanel>
+                                                                      <ItemsControl.ItemTemplate>
+                                                                          <DataTemplate x:DataType="models:EnrichedEntityEntry">
+                                                                              <Border Padding="6,4"
+                                                                                      Margin="0,0,2,2"
+                                                                                      CornerRadius="3"
+                                                                                      Background="{Binding CategoryBackground}"
+                                                                                      BorderThickness="1"
+                                                                                      BorderBrush="{Binding CategoryBorder}">
+                                                                                  <StackPanel Spacing="2">
+                                                                                          <TextBlock FontSize="10"
+                                                                                                     Foreground="{Binding CategoryTextColor}"
+                                                                                                     Text="{Binding ArrowDisplayText}"
+                                                                                                     FontWeight="SemiBold"/>
+                                                                                          <StackPanel Orientation="Horizontal"
+                                                                                                    Spacing="6">
+                                                                                              <TextBlock Text="{Binding StatusIcon}"
+                                                                                                         FontSize="8"
+                                                                                                         Foreground="{Binding StatusColor}"/>
+                                                                                              <TextBlock Text="{Binding QuickSummary}"
+                                                                                                         FontSize="8"
+                                                                                                         Opacity="0.6"
+                                                                                                         IsVisible="{Binding IsEnriched}"/>
+                                                                                          </StackPanel>
+                                                                                          <TextBlock FontSize="8"
+                                                                                                     Foreground="#F44336"
+                                                                                                     IsVisible="{Binding ValidationStatus, Converter={StaticResource EqualsConverter}, ConverterParameter=invalid}"
+                                                                                                     TextWrapping="Wrap"
+                                                                                                     Text="{Binding ValidationReason, StringFormat='✗ {0}'}"/>
+                                                                                  </StackPanel>
+                                                                              </Border>
+                                                                          </DataTemplate>
+                                                                      </ItemsControl.ItemTemplate>
+                                                                  </ItemsControl>
+                                                              </StackPanel>
+
+                                                              <!-- FACILITY entities -->
+                                                              <StackPanel Spacing="3"
+                                                                          IsVisible="{Binding FacilityCount}">
+                                                                  <TextBlock Text="设施"
+                                                                             FontSize="9"
+                                                                             FontWeight="SemiBold"
+                                                                             Foreground="#90A4AE"
+                                                                             Opacity="0.8"/>
+                                                                  <ItemsControl ItemsSource="{Binding FacilityEntities}">
+                                                                      <ItemsControl.ItemsPanel>
+                                                                          <ItemsPanelTemplate>
+                                                                              <WrapPanel/>
+                                                                          </ItemsPanelTemplate>
+                                                                      </ItemsControl.ItemsPanel>
+                                                                      <ItemsControl.ItemTemplate>
+                                                                          <DataTemplate x:DataType="models:EnrichedEntityEntry">
+                                                                              <Border Padding="6,4"
+                                                                                      Margin="0,0,2,2"
+                                                                                      CornerRadius="3"
+                                                                                      Background="{Binding CategoryBackground}"
+                                                                                      BorderThickness="1"
+                                                                                      BorderBrush="{Binding CategoryBorder}">
+                                                                                  <StackPanel Spacing="2">
+                                                                                          <TextBlock FontSize="10"
+                                                                                                     Foreground="{Binding CategoryTextColor}"
+                                                                                                     Text="{Binding ArrowDisplayText}"
+                                                                                                     FontWeight="SemiBold"/>
+                                                                                          <StackPanel Orientation="Horizontal"
+                                                                                                    Spacing="6">
+                                                                                              <TextBlock Text="{Binding StatusIcon}"
+                                                                                                         FontSize="8"
+                                                                                                         Foreground="{Binding StatusColor}"/>
+                                                                                              <TextBlock Text="{Binding QuickSummary}"
+                                                                                                         FontSize="8"
+                                                                                                         Opacity="0.6"
+                                                                                                         IsVisible="{Binding IsEnriched}"/>
+                                                                                          </StackPanel>
+                                                                                          <TextBlock FontSize="8"
+                                                                                                     Foreground="#F44336"
+                                                                                                     IsVisible="{Binding ValidationStatus, Converter={StaticResource EqualsConverter}, ConverterParameter=invalid}"
+                                                                                                     TextWrapping="Wrap"
+                                                                                                     Text="{Binding ValidationReason, StringFormat='✗ {0}'}"/>
+                                                                                  </StackPanel>
+                                                                              </Border>
+                                                                          </DataTemplate>
+                                                                      </ItemsControl.ItemTemplate>
+                                                                  </ItemsControl>
+                                                              </StackPanel>
+
+                                                              <!-- OTHER entities -->
+                                                              <StackPanel Spacing="3"
+                                                                          IsVisible="{Binding OtherCount}">
+                                                                  <TextBlock Text="其他"
+                                                                             FontSize="9"
+                                                                             FontWeight="SemiBold"
+                                                                             Foreground="#78909C"
+                                                                             Opacity="0.7"/>
+                                                                  <ItemsControl ItemsSource="{Binding OtherEntities}">
+                                                                      <ItemsControl.ItemsPanel>
+                                                                          <ItemsPanelTemplate>
+                                                                              <WrapPanel/>
+                                                                          </ItemsPanelTemplate>
+                                                                      </ItemsControl.ItemsPanel>
+                                                                      <ItemsControl.ItemTemplate>
+                                                                          <DataTemplate x:DataType="models:EnrichedEntityEntry">
+                                                                              <Border Padding="6,4"
+                                                                                      Margin="0,0,2,2"
+                                                                                      CornerRadius="3"
+                                                                                      Background="#546E7A18"
+                                                                                      BorderThickness="1"
+                                                                                      BorderBrush="#546E7A44"
+                                                                                      Opacity="0.7">
+                                                                                  <StackPanel Spacing="2">
+                                                                                          <TextBlock FontSize="10"
+                                                                                                     Foreground="#90A4AE"
+                                                                                                     Text="{Binding ArrowDisplayText}"
+                                                                                                     FontWeight="SemiBold"/>
+                                                                                          <StackPanel Orientation="Horizontal"
+                                                                                                    Spacing="6">
+                                                                                              <TextBlock Text="{Binding StatusIcon}"
+                                                                                                         FontSize="8"
+                                                                                                         Foreground="{Binding StatusColor}"/>
+                                                                                              <TextBlock Text="{Binding QuickSummary}"
+                                                                                                         FontSize="8"
+                                                                                                         Opacity="0.6"
+                                                                                                         IsVisible="{Binding IsEnriched}"/>
+                                                                                          </StackPanel>
+                                                                                          <TextBlock FontSize="8"
+                                                                                                     Foreground="#F44336"
+                                                                                                     IsVisible="{Binding ValidationStatus, Converter={StaticResource EqualsConverter}, ConverterParameter=invalid}"
+                                                                                                     TextWrapping="Wrap"
+                                                                                                     Text="{Binding ValidationReason, StringFormat='✗ {0}'}"/>
+                                                                                  </StackPanel>
+                                                                              </Border>
+                                                                          </DataTemplate>
+                                                                      </ItemsControl.ItemTemplate>
+                                                                  </ItemsControl>
+                                                              </StackPanel>
+                                                          </StackPanel>
+                                                      </Border>
+                                                  </DataTemplate>
+                                              </ItemsControl.ItemTemplate>
+                                          </ItemsControl>
+                                      </ScrollViewer>
+                                  </DockPanel>
+                              </Border>
+
+                             <!-- Connection Lines overlay between all six columns -->
                              <controls:ConnectionLinesControl 
                                  Grid.Column="0"
-                                 Grid.ColumnSpan="5"
+                                 Grid.ColumnSpan="6"
                                  Name="PART_ConnectionLinesControl"
                                  IsVisible="True"
                                  IsHitTestVisible="False"/>
 
                              <!-- TOC Overlay (covers all columns) -->
                              <Panel Grid.Column="0"
-                                    Grid.ColumnSpan="5"
+                                    Grid.ColumnSpan="6"
                                     IsVisible="{Binding ShowTocPanel}">
                                  <Rectangle Fill="Gray"
                                             Opacity="0.3"/>
@@ -1774,7 +2243,7 @@
 
                              <!-- Reference Overlay (covers all columns) -->
                              <Panel Grid.Column="0"
-                                    Grid.ColumnSpan="5"
+                                    Grid.ColumnSpan="6"
                                     IsVisible="{Binding ShowReferencePanel}">
                                  <Rectangle Fill="Gray"
                                             Opacity="0.3"/>

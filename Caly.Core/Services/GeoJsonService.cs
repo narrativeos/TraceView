@@ -702,8 +702,38 @@ public sealed class GeoJsonService
             }
         }
 
-        // Build Knowledge Graph from semantic analysis results
-        var kgData = BuildKnowledgeGraph(semanticResults, geocodingResults, locationByName);
+        // Build Knowledge Graph — prefer enriched data if available
+        Dictionary<string, object>? kgData = null;
+
+        var semanticDir = System.IO.Path.GetDirectoryName(geoJsonPath) ?? "";
+        var enrichedPath = System.IO.Path.Combine(semanticDir ?? "", "enriched_result.json");
+
+        if (System.IO.File.Exists(enrichedPath))
+        {
+            try
+            {
+                var enrichedJson = await System.IO.File.ReadAllTextAsync(enrichedPath);
+                var enrichedResult = System.Text.Json.JsonSerializer.Deserialize<Caly.Core.Models.EnrichedResultFile>(
+                    enrichedJson,
+                    Caly.Core.Services.SourceGenerationContext.Default.EnrichedResultFile);
+                if (enrichedResult != null)
+                {
+                    kgData = BuildEnrichedKnowledgeGraph(enrichedResult, geocodingResults);
+                    System.Diagnostics.Debug.WriteLine($"[GeoJsonService] Built KG from enriched_result.json ({enrichedResult.Blocks.Count} blocks)");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[GeoJsonService] Failed to read enriched_result.json: {ex.Message}, falling back");
+            }
+        }
+
+        // Fallback: use original semantic results
+        if (kgData == null)
+        {
+            kgData = BuildKnowledgeGraph(semanticResults, geocodingResults, locationByName);
+        }
+
         if (kgData is not null)
         {
             geoLibreJson["knowledgeGraph"] = kgData;
@@ -1109,6 +1139,297 @@ public sealed class GeoJsonService
         };
     }
 
+
+    /// <summary>
+    /// Builds a Knowledge Graph from enriched entity data (enriched_result.json).
+    /// Nodes include enrichment metadata (external IDs, validation status, confidence).
+    /// Edges include type-specific relations (Alias, Before, Subsidiary, etc.).
+    /// </summary>
+    Dictionary<string, object>? BuildEnrichedKnowledgeGraph(
+        Caly.Core.Models.EnrichedResultFile enrichedResult,
+        Dictionary<string, List<GeocodingResult>> geocodingResults)
+    {
+        var nodes = new List<Dictionary<string, object>>();
+        var edges = new List<Dictionary<string, object>>();
+        var nodeIndex = new Dictionary<string, Dictionary<string, object>>(); // id -> node
+        int edgeCounter = 1;
+
+        // ── Phase 1: Build nodes from enriched entities ──
+        foreach (var block in enrichedResult.Blocks)
+        {
+            foreach (var entry in block.Entities)
+            {
+                // Skip invalid entities
+                if (entry.ValidationStatus == "invalid")
+                    continue;
+
+                var nodeId = $"node_{entry.Category}_{entry.Normalized}";
+                if (!nodeIndex.ContainsKey(nodeId))
+                {
+                    var node = new Dictionary<string, object>
+                    {
+                        { "id", nodeId },
+                        { "label", !string.IsNullOrEmpty(entry.EnrichedText) ? entry.EnrichedText : entry.Text },
+                        { "normalized", entry.Normalized },
+                        { "category", MapToKgCategory(entry.Category) },
+                        { "frequency", 1 },
+                        { "mentions", new List<Dictionary<string, object>>
+                            {
+                                new Dictionary<string, object>
+                                {
+                                    { "blockIds", block.BlockIds },
+                                    { "text", entry.Text },
+                                    { "confidence", entry.EnrichmentConfidence > 0 ? entry.EnrichmentConfidence : 0.5 }
+                                }
+                            }
+                        }
+                    };
+
+                    // Enrichment metadata
+                    if (!string.IsNullOrEmpty(entry.ExternalId))
+                        node["externalId"] = entry.ExternalId;
+                    if (!string.IsNullOrEmpty(entry.EnrichmentSource))
+                        node["enrichmentSource"] = entry.EnrichmentSource;
+                    if (entry.EnrichmentConfidence > 0)
+                        node["enrichmentConfidence"] = entry.EnrichmentConfidence;
+                    node["validationStatus"] = entry.ValidationStatus;
+                    if (!string.IsNullOrEmpty(entry.ValidationReason))
+                        node["validationReason"] = entry.ValidationReason;
+
+                    // Type-specific metadata
+                    if (entry.Metadata.Count > 0)
+                    {
+                        var meta = new Dictionary<string, object>();
+                        foreach (var m in entry.Metadata)
+                        {
+                            var parts = m.Split('=', 2);
+                            if (parts.Length == 2)
+                                meta[parts[0]] = parts[1];
+                        }
+                        node["metadata"] = meta;
+                    }
+
+                    // LOCATION-specific: coordinates from metadata
+                    if (entry.Category == "LOCATION" && node.ContainsKey("metadata"))
+                    {
+                        var meta = (Dictionary<string, object>)node["metadata"];
+                        if (meta.TryGetValue("latitude", out var latObj) && meta.TryGetValue("longitude", out var lonObj))
+                        {
+                            node["geoRefs"] = new List<Dictionary<string, object>>
+                            {
+                                new Dictionary<string, object>
+                                {
+                                    { "sourceBlockIds", block.BlockIds },
+                                    { "location", new Dictionary<string, object>
+                                        {
+                                            { "lat", double.Parse(latObj.ToString()!, System.Globalization.CultureInfo.InvariantCulture) },
+                                            { "lng", double.Parse(lonObj.ToString()!, System.Globalization.CultureInfo.InvariantCulture) }
+                                        }
+                                    }
+                                }
+                            };
+                        }
+                    }
+
+                    nodes.Add(node);
+                    nodeIndex[nodeId] = node;
+                }
+                else
+                {
+                    // Update existing node frequency
+                    var existing = nodeIndex[nodeId];
+                    existing["frequency"] = (int)existing["frequency"] + 1;
+                    // Merge mentions
+                    var mentions = (List<Dictionary<string, object>>)existing["mentions"];
+                    if (!mentions.Any(m => m.TryGetValue("blockIds", out var b) && b is List<int> bl && bl.SequenceEqual(block.BlockIds)))
+                    {
+                        mentions.Add(new Dictionary<string, object>
+                        {
+                            { "blockIds", block.BlockIds },
+                            { "text", entry.Text }
+                        });
+                    }
+                }
+            }
+        }
+
+        // ── Phase 2: Build edges from enriched relations ──
+        foreach (var block in enrichedResult.Blocks)
+        {
+            foreach (var rel in block.Relations)
+            {
+                var srcId = FindNodeId(nodeIndex, rel.SourceEntityId);
+                var tgtId = FindNodeId(nodeIndex, rel.TargetEntityId);
+
+                if (srcId == null || tgtId == null || srcId == tgtId)
+                    continue;
+
+                var edgeType = MapEnrichedRelationToKgType(rel.RelationType, rel.EntityCategory);
+                var edge = new Dictionary<string, object>
+                {
+                    { "id", $"edge_enr_{edgeCounter:D3}" },
+                    { "sourceId", srcId },
+                    { "targetId", tgtId },
+                    { "type", edgeType },
+                    { "label", $"{rel.EntityCategory}:{rel.RelationType}" },
+                    { "confidence", rel.Confidence },
+                    { "provenance", new Dictionary<string, object>
+                        {
+                            { "blockIds", block.BlockIds },
+                            { "evidence", rel.Evidence },
+                            { "source", $"enriched/{rel.EntityCategory}" },
+                            { "confidence", rel.Confidence }
+                        }
+                    }
+                };
+                edges.Add(edge);
+                edgeCounter++;
+            }
+        }
+
+        // ── Phase 3: Add cross-block relations ──
+        foreach (var rel in enrichedResult.CrossBlockRelations)
+        {
+            var srcId = FindNodeId(nodeIndex, rel.SourceEntityId);
+            var tgtId = FindNodeId(nodeIndex, rel.TargetEntityId);
+
+            if (srcId == null || tgtId == null || srcId == tgtId)
+                continue;
+
+            var edgeType = MapEnrichedRelationToKgType(rel.RelationType, rel.EntityCategory);
+            var edge = new Dictionary<string, object>
+            {
+                { "id", $"edge_xblk_{edgeCounter:D3}" },
+                { "sourceId", srcId },
+                { "targetId", tgtId },
+                { "type", edgeType },
+                { "label", $"cross:{rel.RelationType}" },
+                { "confidence", rel.Confidence },
+                { "provenance", new Dictionary<string, object>
+                    {
+                        { "evidence", rel.Evidence },
+                        { "source", "cross_block_coreference" },
+                        { "confidence", rel.Confidence }
+                    }
+                }
+            };
+            edges.Add(edge);
+            edgeCounter++;
+        }
+
+        // ── Phase 4: Deduplicate edges ──
+        var seenEdges = new HashSet<string>();
+        var uniqueEdges = new List<Dictionary<string, object>>();
+        foreach (var edge in edges)
+        {
+            var key = $"{edge["sourceId"]}|{edge["targetId"]}|{edge["type"]}";
+            if (!seenEdges.Contains(key))
+            {
+                seenEdges.Add(key);
+                uniqueEdges.Add(edge);
+            }
+        }
+
+        if (nodes.Count == 0)
+            return null;
+
+        // ── Phase 5: Assemble ──
+        return new Dictionary<string, object>
+        {
+            { "title", "知识图谱（富化）" },
+            { "description", "基于实体处理器验证和富化的知识图谱，含 Wikidata、Nominatim、年号表等外部数据" },
+            { "source", $"enriched_result.json v{enrichedResult.Version}" },
+            { "timestamp", enrichedResult.Timestamp },
+            { "nodes", nodes },
+            { "edges", uniqueEdges },
+            { "visualization", new Dictionary<string, object>
+                {
+                    { "layout", "force" },
+                    { "showGeoNodes", true },
+                    { "nodeColors", new Dictionary<string, object>
+                        {
+                            { "LOCATION", "#4CAF50" },
+                            { "ORGANIZATION", "#2196F3" },
+                            { "PERSON", "#FF9800" },
+                            { "EVENT", "#9C27B0" },
+                            { "CONCEPT", "#607D8B" },
+                            { "ARTIFACT", "#795548" },
+                            { "TIME", "#00BCD4" }
+                        }
+                    },
+                    { "edgeWidthByConfidence", true },
+                    { "poiHighlight", new Dictionary<string, object>
+                        {
+                            { "highlightNodes", true },
+                            { "highlightEdges", true },
+                            { "highlightBlocks", false }
+                        }
+                    }
+                }
+            }
+        };
+    }
+
+    /// <summary>
+    /// Maps enriched relation types to knowledge graph edge types.
+    /// </summary>
+    static string MapEnrichedRelationToKgType(string relationType, string entityCategory)
+    {
+        return relationType switch
+        {
+            "ParentChild" => "PARENT_CHILD",
+            "Ownership" => "OWNERSHIP",
+            "Parallel" => "PARALLEL",
+            "Coreference" => "COREFERENCE",
+            "Alias" => "ALIAS",
+            "Family" => "FAMILY",
+            "Colleague" => "COLLEAGUE",
+            "Title" => "TITLE",
+            "FullName" => "FULL_NAME",
+            "Abbreviation" => "ABBREVIATION",
+            "Subsidiary" => "SUBSIDIARY",
+            "Sibling" => "SIBLING",
+            "Before" => "BEFORE",
+            "After" => "AFTER",
+            "Contains" => "CONTAINS",
+            "ContainedBy" => "CONTAINED_BY",
+            "Equivalent" => "EQUIVALENT",
+            "Overlaps" => "OVERLAPS",
+            _ => $"ENRICHED_{entityCategory}"
+        };
+    }
+
+    /// <summary>
+    /// Find a node by matching text against node label, normalized, or externalId.
+    /// </summary>
+    static string? FindNodeId(Dictionary<string, Dictionary<string, object>> nodeIndex, string text)
+    {
+        if (string.IsNullOrEmpty(text)) return null;
+
+        // Direct match by label
+        foreach (var kvp in nodeIndex)
+        {
+            if (string.Equals((string)kvp.Value["label"], text, StringComparison.OrdinalIgnoreCase))
+                return kvp.Key;
+        }
+
+        // Match by normalized
+        foreach (var kvp in nodeIndex)
+        {
+            if (string.Equals((string)kvp.Value["normalized"], text, StringComparison.OrdinalIgnoreCase))
+                return kvp.Key;
+        }
+
+        // Match by externalId
+        foreach (var kvp in nodeIndex)
+        {
+            if (kvp.Value.TryGetValue("externalId", out var eid) &&
+                string.Equals((string)eid, text, StringComparison.OrdinalIgnoreCase))
+                return kvp.Key;
+        }
+
+        return null;
+    }
     /// <summary>
     /// Maps HanLP entity categories to GeoLibre KGNodeCategory values.
     /// </summary>
