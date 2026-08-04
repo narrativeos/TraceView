@@ -129,11 +129,19 @@ public sealed class SemanticAnalysisService : IDisposable
 
             // Annotate LOCATION entities with syntactic roles
             AnnotateLocationSyntacticRolesFromContent(content_obj.Tokens, content_obj.Deps, result.LocationEntities);
+
+            // Extract intra-block location relationships (nn, assmod/assm, conj)
+            var relations = ExtractLocationRelations(
+                content_obj.Tokens, content_obj.Deps, result.Entities, node.Content);
+            result.LocationRelations = relations;
         }
         else if (content_obj?.Deps is null)
         {
             System.Diagnostics.Debug.WriteLine("[SemanticAnalysisService] No deps in /analyze response");
         }
+
+        // Save coreference chains for cross-block resolution (Phase 2 Step 6)
+        result.CorefChains = content_obj?.Coreferences;
 
         return result;
     }
@@ -179,6 +187,9 @@ public sealed class SemanticAnalysisService : IDisposable
             Source = "hanlp_v2",
             Blocks = blocks
         };
+
+        // Phase 2 Step 6: Resolve cross-block coreference relations for LOCATION entities
+        fileResult.CrossBlockRelations = ResolveCrossBlockCoreferences(blocks);
 
         // Save to disk
         Directory.CreateDirectory(outputDir);
@@ -662,5 +673,351 @@ public sealed class SemanticAnalysisService : IDisposable
             return LocationSyntacticRole.Predicative;
 
         return LocationSyntacticRole.Object;
+    }
+
+    /// <summary>
+    /// Extracts relationships between location entities based on dependency parsing edges.
+    /// Handles three relationship types:
+    /// - ParentChild: nn (noun-noun modifier) edges between two separate LOCATION entities,
+    ///   or internal nn edges within a multi-token LOCATION entity.
+    /// - Ownership: assmod/assm (associative modifier) edges between LOCATION entities.
+    /// - Parallel: conj (conjunction) edges between LOCATION entities.
+    /// </summary>
+    /// <param name="tokens">HanLP tokens for this block.</param>
+    /// <param name="deps">Dependency edges.</param>
+    /// <param name="allEntities">All entities in this block (not just LOCATION).</param>
+    /// <param name="fullText">The full original text for extracting evidence spans.</param>
+    private static List<LocationRelation> ExtractLocationRelations(
+        List<HanLPToken> tokens,
+        List<HanLPDepEdge> deps,
+        List<SemanticEntity> allEntities,
+        string fullText)
+    {
+        var relations = new List<LocationRelation>();
+        var locationEntities = allEntities.Where(e => e.Category == "LOCATION").ToList();
+
+        if (locationEntities.Count < 2 && !HasMultiTokenLocationEntity(locationEntities, tokens))
+            return relations;
+
+        // Build lookup: tokenId → entities that contain this token
+        var tokenIdToEntities = new Dictionary<int, List<SemanticEntity>>();
+        foreach (var entity in allEntities)
+        {
+            int entityStart = entity.Span.Length >= 1 ? entity.Span[0] : 0;
+            int entityEnd = entity.Span.Length >= 2 ? entity.Span[1] : entityStart;
+
+            foreach (var token in tokens)
+            {
+                if (token.Span.Count < 2) continue;
+                int tokenStart = token.Span[0];
+                int tokenEnd = token.Span[1];
+                if (tokenStart < entityEnd && tokenEnd > entityStart)
+                {
+                    if (!tokenIdToEntities.ContainsKey(token.Id))
+                        tokenIdToEntities[token.Id] = new List<SemanticEntity>();
+                    if (!tokenIdToEntities[token.Id].Contains(entity))
+                        tokenIdToEntities[token.Id].Add(entity);
+                }
+            }
+        }
+
+        // Build lookup: tokenId → HanLPToken
+        var tokenById = tokens.ToDictionary(t => t.Id, t => t);
+
+        // Track processed entity pairs to avoid duplicates
+        var processedPairs = new HashSet<string>();
+
+        // Process each LOCATION entity's tokens for external relations
+        foreach (var entity in locationEntities)
+        {
+            int entityStart = entity.Span.Length >= 1 ? entity.Span[0] : 0;
+            int entityEnd = entity.Span.Length >= 2 ? entity.Span[1] : entityStart;
+
+            // Find tokens belonging to this entity
+            var entityTokens = tokens.Where(t =>
+            {
+                if (t.Span.Count < 2) return false;
+                return t.Span[0] < entityEnd && t.Span[1] > entityStart;
+            }).ToList();
+
+            var entityTokenIds = new HashSet<int>(entityTokens.Select(t => t.Id));
+
+            foreach (var token in entityTokens)
+            {
+                // Find the dep edge where this token is the child
+                var edge = deps.FirstOrDefault(d => d.Child == token.Id);
+                if (edge == null) continue;
+
+                int headId = edge.Head;
+                if (headId < 0) continue;
+
+                // Skip self-loops
+                if (headId == token.Id) continue;
+
+                // Check if head token belongs to another entity
+                if (!tokenIdToEntities.TryGetValue(headId, out var headEntities))
+                    continue;
+
+                foreach (var headEntity in headEntities)
+                {
+                    // Skip if head is in the same entity
+                    if (headEntity.Id == entity.Id) continue;
+
+                    var pairKey = GetPairKey(entity.Text, headEntity.Text);
+                    if (processedPairs.Contains(pairKey)) continue;
+
+                    LocationRelation? relation = null;
+
+                    switch (edge.Rel)
+                    {
+                        case "nn":
+                            // Noun-noun modifier: headEntity is parent of (or context for) entity
+                            // Only create if headEntity is also LOCATION
+                            if (headEntity.Category == "LOCATION")
+                            {
+                                relation = new LocationRelation
+                                {
+                                    RelationType = LocationRelationType.ParentChild,
+                                    SourceLocation = headEntity.Text,  // parent
+                                    TargetLocation = entity.Text,      // child
+                                    DepRel = edge.Rel,
+                                    Confidence = entity.Confidence,
+                                    Evidence = ExtractEvidence(fullText, entityStart, entityEnd)
+                                };
+                            }
+                            break;
+
+                        case "assmod":
+                        case "assm":
+                            // Associative modifier: headEntity is owner of entity
+                            if (headEntity.Category == "LOCATION")
+                            {
+                                relation = new LocationRelation
+                                {
+                                    RelationType = LocationRelationType.Ownership,
+                                    SourceLocation = headEntity.Text,  // owner
+                                    TargetLocation = entity.Text,      // owned
+                                    DepRel = edge.Rel,
+                                    Confidence = entity.Confidence,
+                                    Evidence = ExtractEvidence(fullText, entityStart, entityEnd)
+                                };
+                            }
+                            break;
+
+                        case "conj":
+                            // Conjunction: two parallel locations
+                            if (headEntity.Category == "LOCATION")
+                            {
+                                relation = new LocationRelation
+                                {
+                                    RelationType = LocationRelationType.Parallel,
+                                    SourceLocation = headEntity.Text,
+                                    TargetLocation = entity.Text,
+                                    DepRel = edge.Rel,
+                                    Confidence = entity.Confidence,
+                                    Evidence = ExtractEvidence(fullText,
+                                        Math.Min(entityStart, headEntity.Span.Length >= 1 ? headEntity.Span[0] : entityStart),
+                                        Math.Max(entityEnd, headEntity.Span.Length >= 2 ? headEntity.Span[1] : entityEnd))
+                                };
+                            }
+                            break;
+                    }
+
+                    if (relation != null)
+                    {
+                        processedPairs.Add(pairKey);
+                        relations.Add(relation);
+                        System.Diagnostics.Debug.WriteLine(
+                            $"[SemanticAnalysisService] Relation: {relation.SourceLocation} --({relation.DepRel})--> {relation.TargetLocation} [{relation.RelationType}]");
+                    }
+                }
+            }
+
+            // Handle multi-token entity internal nn edges
+            // e.g., entity "北京北三环" spans tokens "北京"(id=1) and "北三环"(id=2) with 2-(nn)->1
+            if (entityTokens.Count >= 2)
+            {
+                foreach (var token in entityTokens)
+                {
+                    var edge = deps.FirstOrDefault(d => d.Child == token.Id);
+                    if (edge == null || edge.Rel != "nn") continue;
+
+                    int headId = edge.Head;
+                    if (!entityTokenIds.Contains(headId)) continue;
+                    if (!tokenById.TryGetValue(headId, out var headToken)) continue;
+
+                    // Internal nn: headToken is the parent context for this token within the entity
+                    var internalPairKey = $"{headToken.Text}|{token.Text}|internal";
+                    if (processedPairs.Contains(internalPairKey)) continue;
+
+                    // Only create if both parts look like independent location names
+                    if (IsLikelyIndependentLocation(headToken.Text) && IsLikelyIndependentLocation(token.Text))
+                    {
+                        relations.Add(new LocationRelation
+                        {
+                            RelationType = LocationRelationType.ParentChild,
+                            SourceLocation = headToken.Text,
+                            TargetLocation = token.Text,
+                            DepRel = $"nn(internal:{entity.Text})",
+                            Confidence = entity.Confidence,
+                            Evidence = entity.Text
+                        });
+                        processedPairs.Add(internalPairKey);
+                        System.Diagnostics.Debug.WriteLine(
+                            $"[SemanticAnalysisService] Internal relation: {headToken.Text} --(nn)--> {token.Text} [ParentChild, entity={entity.Text}]");
+                    }
+                }
+            }
+        }
+
+        return relations;
+    }
+
+    /// <summary>
+    /// Checks if any LOCATION entity spans multiple tokens (potential internal nn).
+    /// </summary>
+    private static bool HasMultiTokenLocationEntity(List<SemanticEntity> locationEntities, List<HanLPToken> tokens)
+    {
+        foreach (var entity in locationEntities)
+        {
+            int entityStart = entity.Span.Length >= 1 ? entity.Span[0] : 0;
+            int entityEnd = entity.Span.Length >= 2 ? entity.Span[1] : entityStart;
+
+            int tokenCount = tokens.Count(t =>
+            {
+                if (t.Span.Count < 2) return false;
+                return t.Span[0] < entityEnd && t.Span[1] > entityStart;
+            });
+
+            if (tokenCount >= 2) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Heuristic: checks if a text segment looks like it could be an independent location name.
+    /// Filters out particles, numbers, single-character functional words.
+    /// </summary>
+    private static bool IsLikelyIndependentLocation(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        if (text.Length <= 1) return false;
+        // Contains at least one Chinese character
+        if (!System.Text.RegularExpressions.Regex.IsMatch(text, @"[\u4e00-\u9fff]")) return false;
+        // Not just punctuation or spaces
+        if (text.All(c => char.IsPunctuation(c) || char.IsWhiteSpace(c))) return false;
+        return true;
+    }
+
+    /// <summary>
+    /// Extracts the evidence text span from the full text.
+    /// </summary>
+    private static string ExtractEvidence(string fullText, int start, int end)
+    {
+        if (string.IsNullOrEmpty(fullText)) return string.Empty;
+        if (start < 0 || end > fullText.Length || start >= end) return string.Empty;
+        return fullText.Substring(start, end - start);
+    }
+
+    /// <summary>
+    /// Creates a deterministic pair key for deduplication.
+    /// </summary>
+    private static string GetPairKey(string a, string b)
+    {
+        return string.CompareOrdinal(a, b) <= 0 ? $"{a}|{b}" : $"{b}|{a}";
+    }
+
+    /// <summary>
+    /// Resolves cross-block coreference chains for LOCATION entities.
+    /// Matches HanLP coreference mentions to location entities across all blocks,
+    /// and creates Coreference relations where different names refer to the same location.
+    /// e.g., "帝都" and "北京" → Coreference(Source="帝都", Target="北京")
+    /// </summary>
+    private static List<LocationRelation> ResolveCrossBlockCoreferences(List<SemanticBlockResult> blocks)
+    {
+        var relations = new List<LocationRelation>();
+
+        // Collect all coreference chains across all blocks
+        var allChains = new List<HanLPCorefChain>();
+        foreach (var block in blocks)
+        {
+            if (block.CorefChains != null)
+                allChains.AddRange(block.CorefChains);
+        }
+
+        if (allChains.Count == 0)
+        {
+            System.Diagnostics.Debug.WriteLine("[SemanticAnalysisService] No coreference chains found across blocks");
+            return relations;
+        }
+
+        System.Diagnostics.Debug.WriteLine($"[SemanticAnalysisService] Processing {allChains.Count} coreference chains across {blocks.Count} blocks");
+
+        // Build a lookup: mention text → location entity (across all blocks)
+        var locationTexts = new HashSet<string>();
+        foreach (var block in blocks)
+        {
+            foreach (var entity in block.LocationEntities)
+            {
+                locationTexts.Add(entity.Text);
+                // Also index by normalized form if available
+                if (!string.IsNullOrEmpty(entity.Normalized) && entity.Normalized != entity.Text)
+                    locationTexts.Add(entity.Normalized);
+            }
+        }
+
+        // Process each coreference chain
+        foreach (var chain in allChains)
+        {
+            if (chain.Mentions == null || chain.Mentions.Count < 2)
+                continue;
+
+            // Find mentions that correspond to LOCATION entities
+            var locationMentions = chain.Mentions
+                .Where(m => locationTexts.Contains(m.Text))
+                .Select(m => m.Text)
+                .Distinct()
+                .ToList();
+
+            if (locationMentions.Count < 2)
+                continue;
+
+            // Use the representative (principal mention) as the canonical name, if available
+            string canonicalName;
+            var principalMention = chain.Mentions.FirstOrDefault(m => m.IsPrincipal);
+            if (principalMention != null && locationMentions.Contains(principalMention.Text))
+            {
+                canonicalName = principalMention.Text;
+            }
+            else
+            {
+                // Fallback: use the longest name as canonical
+                canonicalName = locationMentions.OrderByDescending(m => m.Length).First();
+            }
+
+            // Create Coreference relations: each alias → canonical name
+            foreach (var mention in locationMentions)
+            {
+                if (mention == canonicalName) continue;
+
+                relations.Add(new LocationRelation
+                {
+                    RelationType = LocationRelationType.Coreference,
+                    SourceLocation = mention,       // alias
+                    TargetLocation = canonicalName,  // canonical
+                    DepRel = string.Empty,
+                    Confidence = chain.Confidence,
+                    Evidence = $"{mention} → {canonicalName} (chain: {chain.ChainId})"
+                });
+
+                System.Diagnostics.Debug.WriteLine(
+                    $"[SemanticAnalysisService] Coreference: '{mention}' → '{canonicalName}' (chain: {chain.ChainId}, confidence: {chain.Confidence:F2})");
+            }
+        }
+
+        System.Diagnostics.Debug.WriteLine(
+            $"[SemanticAnalysisService] Resolved {relations.Count} cross-block coreference relations");
+
+        return relations;
     }
 }

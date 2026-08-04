@@ -23,6 +23,7 @@ using Avalonia.Threading;
 using Caly.Core.Models;
 using Caly.Core.Services;
 using Caly.Core.Services.Interfaces;
+using Caly.Core.Utilities;
 using Caly.Core.Views;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -379,16 +380,45 @@ public sealed partial class DocumentViewModel
             var geoJsonService = new GeoJsonService();
 
             // Step 1: Collect all unique location entities from semantic results
+            // Apply LocationValidator to filter out clearly invalid locations
             var locationByName = new Dictionary<string, SemanticEntity>();
+            var ambiguousNames = new HashSet<string>();
+            var filteredLocations = new List<(string Name, string Reason)>();
             foreach (var block in SemanticResults.Blocks)
             {
                 foreach (var entity in block.LocationEntities)
                 {
-                    if (!locationByName.ContainsKey(entity.Text))
+                    if (locationByName.ContainsKey(entity.Text))
+                        continue;
+
+                    // Phase 1: Validate location name before including it
+                    var (result, reason) = LocationValidator.Validate(entity.Text);
+                    switch (result)
                     {
-                        locationByName[entity.Text] = entity;
+                        case LocationValidationResult.Invalid:
+                            filteredLocations.Add((entity.Text, reason));
+                            System.Diagnostics.Debug.WriteLine(
+                                $"[Geo] Filtered INVALID location: '{entity.Text}' — {reason}");
+                            continue;
+                        case LocationValidationResult.Ambiguous:
+                            // Include but mark as ambiguous
+                            locationByName[entity.Text] = entity;
+                            ambiguousNames.Add(entity.Text);
+                            System.Diagnostics.Debug.WriteLine(
+                                $"[Geo] Marked AMBIGUOUS location: '{entity.Text}' — {reason}");
+                            break;
+                        default:
+                            locationByName[entity.Text] = entity;
+                            break;
                     }
                 }
+            }
+
+            if (filteredLocations.Count > 0)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[Geo] Filtered {filteredLocations.Count} invalid location(s): " +
+                    string.Join(", ", filteredLocations.Select(f => $"'{f.Name}'({f.Reason})")));
             }
 
             // Step 2: Create location ViewModels with syntactic role info from semantic analysis
@@ -399,6 +429,8 @@ public sealed partial class DocumentViewModel
                 var vm = new GeocodingLocationViewModel(kvp.Key);
                 vm.Index = index++;
                 vm.SyntacticRole = kvp.Value.SyntacticRole;
+                vm.IsAmbiguous = ambiguousNames.Contains(kvp.Key);
+                vm.LocationType = LocationValidator.ClassifyType(kvp.Key);
                 locationVms.Add(vm);
             }
 

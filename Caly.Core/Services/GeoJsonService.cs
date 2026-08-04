@@ -82,20 +82,68 @@ public sealed class GeoJsonService
         // Use explicit order if provided (to match UI display order), otherwise use dictionary order
         var locationNames = locationOrder ?? locationByName.Keys.ToList();
 
+        // Phase 3: Build location relation collection from semantic results
+        var relationCollection = BuildRelationCollection(semanticResults);
+
+        // Phase 3: Determine enhancement strategies for each location
+        var strategies = new Dictionary<string, GeocodingStrategy>();
+        var parentResults = new Dictionary<string, List<GeocodingResult>>();
+        foreach (var locationName in locationNames)
+        {
+            if (locationByName.TryGetValue(locationName, out var info))
+            {
+                strategies[locationName] = GeocodingEnhancementStrategy.DecideStrategy(
+                    info.Entity, relationCollection);
+            }
+            else
+            {
+                strategies[locationName] = new GeocodingStrategy();
+            }
+        }
+
         // Track failed locations with their error info
         var failedLocations = new Dictionary<string, (string error, string failureType)>();
 
-        // Geocode all locations with per-location callbacks (using confidence-based geocoding)
-        var geocodingResults = await _geocodingService.GeocodeManyWithConfidenceAsync(
-            locationNames, onProcessing, 
-            onSuccess: (name, results) => {
-                onSuccess?.Invoke(name, results);
-            },
-            onFailed: (name, error, failureType) => {
-                failedLocations[name] = (error, failureType.ToString());
-                onFailed?.Invoke(name, error, failureType);
-            }, 
-            cancellationToken);
+        // Geocode all locations with per-location callbacks, using enhancement strategies.
+        // SpatialBias locations wait for their parent; others process in sequence.
+        var geocodingResults = new Dictionary<string, List<GeocodingResult>>();
+
+        for (int i = 0; i < locationNames.Count; i++)
+        {
+            var locationName = locationNames[i];
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var strategy = strategies.GetValueOrDefault(locationName, new GeocodingStrategy());
+
+            onProcessing?.Invoke(locationName);
+
+            // Resolve parent bbox if needed (SpatialBias)
+            GeocodingService.GeocodingBbox? parentBbox = null;
+            if (strategy.QueryEnhancement == QueryEnhancement.SpatialBias &&
+                !string.IsNullOrWhiteSpace(strategy.ContextLocationName) &&
+                geocodingResults.TryGetValue(strategy.ContextLocationName, out var parentRes))
+            {
+                parentBbox = GeocodingService.GeocodingBbox.FromResult(parentRes.FirstOrDefault());
+                System.Diagnostics.Debug.WriteLine(
+                    $"[Geo] SpatialBias for '{locationName}': using parent '{strategy.ContextLocationName}' bbox");
+            }
+
+            // Process with enhancement
+            var attempt = await _geocodingService.GeocodeWithEnhancementAsync(
+                locationName, strategy, parentBbox, cancellationToken);
+
+            if (attempt.IsSuccess)
+            {
+                geocodingResults[locationName] = attempt.Results;
+                onSuccess?.Invoke(locationName, attempt.Results);
+            }
+            else
+            {
+                failedLocations[locationName] = (attempt.ErrorMessage ?? "Geocoding failed",
+                    attempt.FailureType.ToString());
+                onFailed?.Invoke(locationName, attempt.ErrorMessage ?? "Geocoding failed", attempt.FailureType);
+            }
+        }
 
         // Generate GeoJSON FeatureCollection with ALL locations (success + failed)
         var features = new List<Dictionary<string, object>>();
@@ -135,7 +183,8 @@ public sealed class GeoJsonService
                             { "match_type", r.MatchType },
                             { "matched_name_tag", r.MatchedNameTag },
                             { "matched_name", r.MatchedName },
-                            { "match_by_homophone", r.MatchByHomophone }
+                            { "match_by_homophone", r.MatchByHomophone },
+                            { "query_text", !string.IsNullOrEmpty(r.QueryText) ? r.QueryText : locationName }
                         };
                         if (r.BoundingBoxMinLat.HasValue)
                         {
@@ -148,6 +197,12 @@ public sealed class GeoJsonService
                     }
                     
                     // Successful geocoding (properties use best result)
+                    var strategy = strategies.GetValueOrDefault(locationName, new GeocodingStrategy());
+                    // Use the actual query that hit Nominatim from GeocodingResult.QueryText
+                    var actualQueryText = !string.IsNullOrEmpty(bestResult.QueryText)
+                        ? bestResult.QueryText
+                        : locationName;
+
                     var properties = new Dictionary<string, object>
                     {
                         { "name", locationName },
@@ -172,6 +227,11 @@ public sealed class GeoJsonService
                         { "matched_name_tag", bestResult.MatchedNameTag },
                         { "matched_name", bestResult.MatchedName },
                         { "match_by_homophone", bestResult.MatchByHomophone },
+                        // Phase 3: Enhanced geocoding metadata
+                        { "query_text", actualQueryText },
+                        { "parent_location", strategy.ContextLocationName ?? "" },
+                        { "query_enhancement", strategy.QueryEnhancement.ToString() },
+                        { "result_filtering", strategy.ResultFiltering.ToString() },
                         { "all_results", allResultsArray }
                     };
 
@@ -650,6 +710,40 @@ public sealed class GeoJsonService
         }
 
         return BuildJson(geoLibreJson);
+    }
+
+    /// <summary>
+    /// Builds a LocationRelationCollection from semantic results,
+    /// combining intra-block relations and cross-block coreferences.
+    /// </summary>
+    private static LocationRelationCollection BuildRelationCollection(SemanticResultFile semanticResults)
+    {
+        var collection = new LocationRelationCollection();
+
+        // Add intra-block relations from each block
+        foreach (var block in semanticResults.Blocks)
+        {
+            if (block.LocationRelations.Count > 0)
+            {
+                foreach (var rel in block.LocationRelations)
+                {
+                    if (rel.SourceBlockIds.Count == 0)
+                        rel.SourceBlockIds = new List<string>(block.SourceBlockIds);
+                }
+                collection.Relations.AddRange(block.LocationRelations);
+            }
+        }
+
+        // Add cross-block coreference relations
+        if (semanticResults.CrossBlockRelations.Count > 0)
+        {
+            collection.Relations.AddRange(semanticResults.CrossBlockRelations);
+        }
+
+        System.Diagnostics.Debug.WriteLine(
+            $"[GeoJson] Built relation collection: {collection.Relations.Count} total relations ({collection.Summary})");
+
+        return collection;
     }
 
     /// <summary>

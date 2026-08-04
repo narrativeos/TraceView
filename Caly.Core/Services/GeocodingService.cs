@@ -24,6 +24,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using Caly.Core.Models;
 
 namespace Caly.Core.Services;
 
@@ -57,6 +58,13 @@ public class GeocodingResult
     public double? BoundingBoxMaxLat { get; set; }
     public double? BoundingBoxMinLon { get; set; }
     public double? BoundingBoxMaxLon { get; set; }
+
+    /// <summary>
+    /// The actual query string sent to Nominatim that produced this result.
+    /// May differ from the original location name when context enhancement is applied.
+    /// e.g., "北京 北三环" vs original "北三环".
+    /// </summary>
+    public string QueryText { get; set; } = string.Empty;
 }
 
 /// <summary>
@@ -450,56 +458,20 @@ public sealed class GeocodingService : IDisposable
 
     /// <summary>
     /// 判断一个地名是否为单字简称（如：京、沪、湘、粤等），需要消歧。
+    /// 委托给 LocationValidator。
     /// </summary>
     static bool IsAmbiguousAbbreviation(string name)
     {
-        // 单字符地名通常是简称
-        if (name.Length == 1)
-            return true;
-
-        // 常见的两字简称/方位描述
-        var ambiguousPatterns = new[]
-        {
-            "京西", "京南", "京北", "京东",      // 北京方位
-            "沪上", "沪西", "沪南", "沪北",      // 上海方位
-            "渝中", "渝北", "渝南",               // 重庆方位
-            "皖中", "皖南", "皖北", "皖西",      // 安徽方位
-            "苏南", "苏北", "苏中",               // 江苏方位
-            "浙西", "浙东",                       // 浙江方位
-            "川西", "川东", "川南", "川北",      // 四川方位
-            "滇西", "滇南",                       // 云南方位
-            "关中", "陕北", "陕南",               // 陕西方位
-            "鄂西", "鄂东",                       // 湖北方位
-            "湘西", "湘南", "湘北",               // 湖南方位
-            "赣南", "赣北",                       // 江西方位
-            "闽西", "闽东",                       // 福建方位
-            "岭南", "岭北",                       // 广东方位
-            "塞外", "塞北",                       // 北方方位
-            "江南", "江北", "江东", "江西",       // 泛区域
-            "塞上", "关外",                       // 泛区域
-        };
-
-        return ambiguousPatterns.Contains(name);
+        return Utilities.LocationValidator.IsAmbiguousAbbreviation(name);
     }
 
     /// <summary>
     /// 判断一个地名是否可能是无效名称（非地名）。
+    /// 委托给 LocationValidator。
     /// </summary>
     static bool IsLikelyNotLocation(string name)
     {
-        // 包含数字和特殊字符，可能是编号而非地名
-        if (name.Length > 3 && name.Any(c => char.IsDigit(c)) && name.Any(c => c == ')'))
-            return true;
-
-        // 纯数字
-        if (name.All(c => char.IsDigit(c)))
-            return true;
-
-        // 以"号"结尾的短名称（如"第25号"）
-        if (name.EndsWith("号") && name.Length <= 6)
-            return true;
-
-        return false;
+        return Utilities.LocationValidator.IsLikelyNotLocation(name);
     }
 
     /// <summary>
@@ -550,6 +522,8 @@ public sealed class GeocodingService : IDisposable
 
             // 返回所有结果（按置信度排序）
             var sorted = allResults.OrderByDescending(r => r.Confidence).ToList();
+            foreach (var r in sorted)
+                r.QueryText = locationName;
             return new GeocodingAttemptResult { Results = sorted };
         }
         catch (OperationCanceledException)
@@ -786,6 +760,221 @@ public sealed class GeocodingService : IDisposable
         catch
         {
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Geocode a single location with optional context enhancement.
+    /// When context is provided, builds an enhanced query string and applies
+    /// post-query filtering/reranking based on the strategy.
+    /// </summary>
+    public async Task<GeocodingAttemptResult> GeocodeWithEnhancementAsync(
+        string locationName,
+        GeocodingStrategy? strategy = null,
+        GeocodingBbox? parentBbox = null,
+        CancellationToken cancellationToken = default)
+    {
+        // Build the query string based on strategy
+        string queryName = locationName;
+        if (strategy?.QueryEnhancement == QueryEnhancement.TextAugment ||
+            strategy?.QueryEnhancement == QueryEnhancement.SpatialBias)
+        {
+            if (!string.IsNullOrWhiteSpace(strategy.ContextLocationName))
+            {
+                queryName = GeocodingEnhancementStrategy.BuildEnhancedQuery(
+                    locationName, strategy.ContextLocationName);
+            }
+        }
+
+        // For coreference normalization: use canonical name directly
+        if (strategy?.QueryEnhancement == QueryEnhancement.TextAugment &&
+            strategy.ResultFiltering == ResultFiltering.None &&
+            !string.IsNullOrWhiteSpace(strategy.ContextLocationName))
+        {
+            queryName = strategy.ContextLocationName;
+        }
+
+        GeocodingAttemptResult result;
+        try
+        {
+            var encoded = System.Net.WebUtility.UrlEncode(queryName);
+            var url = $"http://127.0.0.1:8088/search?q={encoded}&format=json&limit=5&accept-language=zh&withevidence=1&extratags=1";
+
+            // Add viewbox if we have parent bbox (SpatialBias)
+            if (parentBbox != null && strategy?.QueryEnhancement == QueryEnhancement.SpatialBias)
+            {
+                url += $"&viewbox={parentBbox.MinLon},{parentBbox.MaxLat},{parentBbox.MaxLon},{parentBbox.MinLat}&bounded=1";
+            }
+
+            var response = await _httpClient.GetAsync(url, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                return new GeocodingAttemptResult
+                {
+                    ErrorMessage = $"API 错误: HTTP {(int)response.StatusCode}",
+                    FailureType = GeocodingFailureType.Transient
+                };
+            }
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken);
+            var allResults = ParseAllApiResults(json, queryName);
+
+            // Stamp the actual query text on all results
+            foreach (var r in allResults)
+                r.QueryText = queryName;
+
+            if (allResults.Count == 0)
+            {
+                // If enhanced query failed, try fallback with original name
+                if (queryName != locationName)
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[Geo] Enhanced query '{queryName}' returned no results, falling back to '{locationName}'");
+                    var fallback = await GeocodeWithConfidenceAsync(locationName, cancellationToken);
+                    // Stamp fallback results with the fallback query
+                    foreach (var r in fallback.Results)
+                        r.QueryText = locationName;
+                    return fallback;
+                }
+
+                var failureType = ClassifyFailureType(locationName);
+                return new GeocodingAttemptResult
+                {
+                    ErrorMessage = GetFailureMessage(locationName, failureType),
+                    FailureType = failureType
+                };
+            }
+
+            result = new GeocodingAttemptResult
+            {
+                Results = allResults.OrderByDescending(r => r.Confidence).ToList()
+            };
+        }
+        catch (OperationCanceledException)
+        {
+            return new GeocodingAttemptResult
+            {
+                ErrorMessage = "请求已取消",
+                FailureType = GeocodingFailureType.Transient
+            };
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Enhanced geocoding failed for '{locationName}': {ex.Message}");
+            return new GeocodingAttemptResult
+            {
+                ErrorMessage = $"网络错误: {ex.Message}",
+                FailureType = GeocodingFailureType.Transient
+            };
+        }
+
+        // Apply post-query filtering/reranking
+        if (strategy != null && strategy.ResultFiltering != ResultFiltering.None && result.IsSuccess)
+        {
+            result = ApplyPostFilter(result, locationName, strategy);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Applies post-query filtering and confidence adjustment based on the strategy.
+    /// </summary>
+    private static GeocodingAttemptResult ApplyPostFilter(
+        GeocodingAttemptResult rawResult,
+        string locationName,
+        GeocodingStrategy strategy)
+    {
+        var contextName = strategy.ContextLocationName;
+        if (string.IsNullOrWhiteSpace(contextName))
+            return rawResult;
+
+        var roleForAdjustment = strategy.ResultFiltering == ResultFiltering.StrictParentFilter
+            ? LocationSyntacticRole.Attributive
+            : LocationSyntacticRole.Object;
+
+        var (matchBoost, mismatchPenalty) = GeocodingEnhancementStrategy.GetConfidenceAdjustment(roleForAdjustment);
+
+        var filteredResults = new List<GeocodingResult>();
+        var discardedCount = 0;
+
+        foreach (var r in rawResult.Results)
+        {
+            bool matchesContext = MatchesParentContext(r, contextName);
+
+            if (strategy.ResultFiltering == ResultFiltering.StrictParentFilter)
+            {
+                if (matchesContext)
+                {
+                    r.Confidence = Math.Min(1.0, r.Confidence + matchBoost);
+                    filteredResults.Add(r);
+                }
+                else
+                {
+                    discardedCount++;
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[Geo] StrictParentFilter: discarded '{r.DisplayName}' (doesn't match parent '{contextName}')");
+                }
+            }
+            else // ParentAreaBoost
+            {
+                r.Confidence = Math.Max(0.0, Math.Min(1.0,
+                    r.Confidence + (matchesContext ? matchBoost : mismatchPenalty)));
+                filteredResults.Add(r);
+            }
+        }
+
+        filteredResults = filteredResults.OrderByDescending(r => r.Confidence).ToList();
+
+        System.Diagnostics.Debug.WriteLine(
+            $"[Geo] Post-filter for '{locationName}': {rawResult.Results.Count} raw → {filteredResults.Count} filtered (discarded {discardedCount}, strategy={strategy.ResultFiltering})");
+
+        return new GeocodingAttemptResult { Results = filteredResults };
+    }
+
+    /// <summary>
+    /// Checks whether a geocoding result matches the parent context location.
+    /// </summary>
+    private static bool MatchesParentContext(GeocodingResult result, string parentName)
+    {
+        if (string.IsNullOrWhiteSpace(parentName))
+            return false;
+
+        var displayName = result.DisplayName ?? string.Empty;
+
+        if (displayName.Contains(parentName, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (!string.IsNullOrEmpty(result.MatchedName) &&
+            result.MatchedName.Contains(parentName, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return false;
+    }
+
+    /// <summary>
+    /// Bounding box for spatial filtering in geocoding queries.
+    /// </summary>
+    public class GeocodingBbox
+    {
+        public double MinLat { get; set; }
+        public double MaxLat { get; set; }
+        public double MinLon { get; set; }
+        public double MaxLon { get; set; }
+
+        public static GeocodingBbox? FromResult(GeocodingResult? result)
+        {
+            if (result?.BoundingBoxMinLat == null || result?.BoundingBoxMaxLat == null ||
+                result?.BoundingBoxMinLon == null || result?.BoundingBoxMaxLon == null)
+                return null;
+
+            return new GeocodingBbox
+            {
+                MinLat = result.BoundingBoxMinLat.Value,
+                MaxLat = result.BoundingBoxMaxLat.Value,
+                MinLon = result.BoundingBoxMinLon.Value,
+                MaxLon = result.BoundingBoxMaxLon.Value,
+            };
         }
     }
 }

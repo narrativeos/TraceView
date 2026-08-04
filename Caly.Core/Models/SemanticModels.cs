@@ -248,6 +248,21 @@ public class SemanticBlockResult
     [JsonPropertyName("dep_edges")]
     public List<SemanticDepEdge> DepEdges { get; set; } = new();
 
+    /// <summary>
+    /// Location relationships extracted within this block from dependency parsing.
+    /// Includes ParentChild (nn), Ownership (assmod/assm), and Parallel (conj) relations.
+    /// </summary>
+    [JsonPropertyName("location_relations")]
+    public List<LocationRelation> LocationRelations { get; set; } = new();
+
+    /// <summary>
+    /// Temporary storage for HanLP coreference chains from a single block's NLP response.
+    /// Used during ProcessAllNodesAsync for cross-block coreference resolution.
+    /// Not serialized to semantic_result.json.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal List<HanLPCorefChain>? CorefChains { get; set; }
+
     [JsonPropertyName("error")]
     public string? Error { get; set; }
 
@@ -429,4 +444,11 @@ public class SemanticResultFile
 
     [JsonPropertyName("blocks")]
     public List<SemanticBlockResult> Blocks { get; set; } = new();
+
+    /// <summary>
+    /// Cross-block location relationships (coreferences) extracted from HanLP coreference chains.
+    /// These span multiple blocks and are resolved after all blocks are processed.
+    /// </summary>
+    [JsonPropertyName("cross_block_relations")]
+    public List<LocationRelation> CrossBlockRelations { get; set; } = new();
 }

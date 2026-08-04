@@ -24,6 +24,7 @@ using System.Collections.ObjectModel;
 using Avalonia.Media;
 using Caly.Core.Models;
 using Caly.Core.Services;
+using Caly.Core.Utilities;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -134,6 +135,38 @@ public partial class GeocodingLocationViewModel : ObservableObject
 
     [ObservableProperty]
     private string _syntacticRole = "";
+
+    /// <summary>
+    /// Whether this location name was flagged as ambiguous by LocationValidator.
+    /// Ambiguous locations (e.g., single-character names, directional abbreviations)
+    /// may need additional context for accurate geocoding.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isAmbiguous;
+
+    /// <summary>
+    /// Semantic type of this location: PlaceName (specific named place)
+    /// or GenericFacility (e.g., "餐厅", "地铁站" — contextual pointer, not geocodable).
+    /// </summary>
+    [ObservableProperty]
+    private LocationType _locationType = LocationType.PlaceName;
+
+    partial void OnLocationTypeChanged(LocationType value)
+    {
+        OnPropertyChanged(nameof(LocationTypeDisplay));
+        OnPropertyChanged(nameof(LocationTypeColor));
+    }
+
+    /// <summary>Chinese display name for the location type.</summary>
+    public string LocationTypeDisplay => LocationValidator.ToDisplay(LocationType);
+
+    /// <summary>Color for the location type badge.</summary>
+    public IBrush LocationTypeColor => LocationType switch
+    {
+        LocationType.PlaceName => new SolidColorBrush(Color.Parse("#81C784")),       // 绿色 - 具体地名
+        LocationType.GenericFacility => new SolidColorBrush(Color.Parse("#FFB74D")), // 橙色 - 泛称设施
+        _ => new SolidColorBrush(Color.Parse("#9E9E9E"))
+    };
 
     [ObservableProperty]
     private string _matchType = "";
