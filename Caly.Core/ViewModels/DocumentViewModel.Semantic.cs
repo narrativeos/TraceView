@@ -73,10 +73,11 @@ public sealed partial class DocumentViewModel
     public bool HasEnrichedData => ExistsInSemanticDir("enriched_result.json");
 
     /// <summary>
-    /// Whether enrichment can run: requires both semantic results (in-memory)
-    /// and GeoJSON file to exist on disk.
+    /// Whether enrichment can run: requires semantic results (in-memory).
+    /// GeoJSON is preferred for location enrichment but not required — if missing,
+    /// LOCATION entities will be enriched without geocoding data.
     /// </summary>
-    public bool CanEnrich => HasSemanticResults && HasGeoJsonFile;
+    public bool CanEnrich => HasSemanticResults;
 
     /// <summary>
     /// Dynamic tooltip for the Enrich button reflecting current state.
@@ -91,8 +92,6 @@ public sealed partial class DocumentViewModel
                 return "Enrich 已完成 · 点击重新处理";
             if (!HasSemanticResults)
                 return "需要先完成 NLP 语义分析";
-            if (!HasGeoJsonFile)
-                return "需要先生成地理数据 (GeoJSON)";
             return "运行实体富化处理";
         }
     }
@@ -159,8 +158,6 @@ public sealed partial class DocumentViewModel
             }
             if (!HasSemanticResults)
                 return "Run Semantic Analysis first";
-            if (!HasGeoJsonFile)
-                return "Generate GeoJSON first";
             return "Click Enrich to process entities";
         }
     }
@@ -322,61 +319,56 @@ public sealed partial class DocumentViewModel
     /// <summary>Load enriched_result.json from disk. Auto-regenerate if stale (empty BlockIds).</summary>
     internal void TryLoadEnrichedData()
     {
-        if (ProjectPath is null) return;
+        if (ProjectPath is null)
+        {
+            ShowEnrichedColumn = true;
+            SetEnrichStatus("Project path not set");
+            return;
+        }
         var enrichedPath = Path.Combine(ProjectPath, "semantic", "enriched_result.json");
-        if (!File.Exists(enrichedPath)) return;
+        if (!File.Exists(enrichedPath))
+        {
+            ShowEnrichedColumn = true;
+            SetEnrichStatus("Enrich 数据未生成。点击 Enrich 按钮进行加工");
+            return;
+        }
         try
         {
             var json = File.ReadAllText(enrichedPath);
             var loaded = System.Text.Json.JsonSerializer.Deserialize<EnrichedResultFile>(
                 json, Caly.Core.Services.SourceGenerationContext.Default.EnrichedResultFile);
 
-            if (loaded is null) return;
-
-            // Check for stale data: blocks with empty BlockIds (old format before SourceBlockIds fix)
-            bool hasStaleBlocks = loaded.Blocks.Any(b => b.BlockIds.Count == 0);
-            if (hasStaleBlocks)
+            if (loaded is null)
             {
-                System.Diagnostics.Debug.WriteLine("[Semantic] Enriched data is stale (empty BlockIds). Auto-regenerating...");
-                // Delete stale file and trigger re-enrichment
-                File.Delete(enrichedPath);
-                if (HasSemanticResults && HasGeoJsonFile)
-                {
-                    // Trigger async re-enrichment
-                    _ = Task.Run(async () =>
-                    {
-                        try
-                        {
-                            var pipeline = CreateDefaultPipeline();
-                            var enrichedResult = await pipeline.ProcessAsync(SemanticResults!, CancellationToken.None);
-                            if (enrichedResult != null)
-                            {
-                                var outPath = Path.Combine(GetSemanticOutputDir(), "enriched_result.json");
-                                var outJson = System.Text.Json.JsonSerializer.Serialize(
-                                    enrichedResult, SourceGenerationContext.Default.EnrichedResultFile);
-                                await File.WriteAllTextAsync(outPath, outJson);
-                                Dispatcher.UIThread.Invoke(() =>
-                                {
-                                    EnrichedResults = enrichedResult;
-                                    ShowEnrichedColumn = true;
-                                    System.Diagnostics.Debug.WriteLine("[Semantic] Auto-regeneration complete");
-                                });
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            System.Diagnostics.Debug.WriteLine($"[Semantic] Auto-regeneration failed: {ex.Message}");
-                        }
-                    });
-                }
+                ShowEnrichedColumn = true;
+                SetEnrichStatus("Enrich 数据加载失败: 反序列化返回 null");
+                System.Diagnostics.Debug.WriteLine("[Semantic] Enriched data deserialization returned null");
                 return;
             }
 
+            // Check for stale data: blocks with empty BlockIds (old format before SourceBlockIds fix)
+            bool hasStaleBlocks = loaded.Blocks.Any(b => b.BlockIds.Count == 0);
+
             EnrichedResults = loaded;
             ShowEnrichedColumn = true;
+
+            if (hasStaleBlocks)
+            {
+                SetEnrichStatus("Enrich 数据可能过期 (empty BlockIds)，建议重新加工");
+                System.Diagnostics.Debug.WriteLine("[Semantic] Loaded enriched data with stale blocks (empty BlockIds)");
+            }
+            else
+            {
+                // Clear status override so computed EnrichStatusText takes effect
+                _enrichStatusText = null;
+                OnPropertyChanged(nameof(EnrichStatusText));
+                System.Diagnostics.Debug.WriteLine("[Semantic] Loaded enriched data successfully");
+            }
         }
         catch (Exception ex)
         {
+            ShowEnrichedColumn = true;
+            SetEnrichStatus($"Enrich 数据加载失败: {ex.Message}");
             System.Diagnostics.Debug.WriteLine($"[Semantic] Failed to load enriched_result.json: {ex.Message}");
         }
     }
@@ -412,6 +404,16 @@ public sealed partial class DocumentViewModel
     {
         ShowEnrichedColumn = !ShowEnrichedColumn;
         if (ShowEnrichedColumn && EnrichedResults == null)
+            TryLoadEnrichedData();
+    }
+
+    /// <summary>
+    /// Called automatically when ShowEnrichedColumn changes via two-way binding (ToggleButton click).
+    /// Ensures data is loaded when the column is opened.
+    /// </summary>
+    partial void OnShowEnrichedColumnChanged(bool value)
+    {
+        if (value && EnrichedResults == null)
             TryLoadEnrichedData();
     }
 
@@ -515,6 +517,7 @@ public sealed partial class DocumentViewModel
                 {
                     SemanticProgress = 100;
                     SemanticStatusText = $"Analysis + enrichment complete ({SemanticNodeCount} nodes, {SemanticEntityCount} entities)";
+                    TryLoadEnrichedData();
                 }
             }
             catch (OperationCanceledException)
@@ -612,13 +615,100 @@ public sealed partial class DocumentViewModel
 
     /// <summary>
     /// Runs the entity enrichment pipeline and saves results.
+    /// Parses locations.geojson for pre-geocoded location data to avoid redundant Nominatim calls.
     /// Extracted to avoid code duplication between ProcessWithSemanticAsync and ReEnrichAsync.
     /// </summary>
     async Task<EnrichedResultFile?> RunEnrichmentPipelineAsync(
         SemanticResultFile result, string outputDir, CancellationToken ct)
     {
+        // Parse locations.geojson for pre-geocoded location data
+        Dictionary<string, Caly.Core.Models.EntityProcessors.GeoJsonFeature>? geoLookup = null;
+        var geoJsonPath = Path.Combine(outputDir, "locations.geojson");
+        if (File.Exists(geoJsonPath))
+        {
+            try
+            {
+                var geoJson = File.ReadAllText(geoJsonPath);
+                geoLookup = new Dictionary<string, Caly.Core.Models.EntityProcessors.GeoJsonFeature>(
+                    StringComparer.OrdinalIgnoreCase);
+
+                using var doc = System.Text.Json.JsonDocument.Parse(geoJson);
+                var root = doc.RootElement;
+                if (root.TryGetProperty("features", out var features) &&
+                    features.ValueKind == System.Text.Json.JsonValueKind.Array)
+                {
+                    foreach (var feature in features.EnumerateArray())
+                    {
+                        if (!feature.TryGetProperty("properties", out var props) ||
+                            props.ValueKind != System.Text.Json.JsonValueKind.Object)
+                            continue;
+
+                        var name = GetJsonProperty(props, "name");
+                        if (string.IsNullOrEmpty(name)) continue;
+
+                        var status = GetJsonProperty(props, "status") ?? "";
+
+                        var geoFeature = new Caly.Core.Models.EntityProcessors.GeoJsonFeature
+                        {
+                            Name = name,
+                            DisplayName = GetJsonProperty(props, "display_name") ?? "",
+                            Status = status,
+                            OsmType = GetJsonProperty(props, "osm_type") ?? "",
+                            OsmId = GetJsonPropertyLong(props, "osm_id"),
+                            Category = GetJsonProperty(props, "category") ?? "",
+                            Type = GetJsonProperty(props, "type") ?? "",
+                            Addresstype = GetJsonProperty(props, "addresstype") ?? "",
+                            PlaceRank = (int)GetJsonPropertyDouble(props, "place_rank"),
+                            Importance = GetJsonPropertyDouble(props, "importance"),
+                            Confidence = GetJsonPropertyDouble(props, "confidence"),
+                            MatchType = GetJsonProperty(props, "match_type") ?? "",
+                            QueryText = GetJsonProperty(props, "query_text") ?? "",
+                        };
+
+                        // Parse coordinates from geometry
+                        if (status == "success" &&
+                            feature.TryGetProperty("geometry", out var geometry) &&
+                            geometry.ValueKind == System.Text.Json.JsonValueKind.Object &&
+                            geometry.TryGetProperty("coordinates", out var coords) &&
+                            coords.ValueKind == System.Text.Json.JsonValueKind.Array &&
+                            coords.GetArrayLength() >= 2)
+                        {
+                            geoFeature.Longitude = coords[0].GetDouble();
+                            geoFeature.Latitude = coords[1].GetDouble();
+                        }
+
+                        // Parse bbox from properties
+                        if (props.TryGetProperty("bbox", out var bbox) &&
+                            bbox.ValueKind == System.Text.Json.JsonValueKind.Array &&
+                            bbox.GetArrayLength() == 4)
+                        {
+                            geoFeature.Bbox = new double[]
+                            {
+                                bbox[0].GetDouble(), bbox[1].GetDouble(),
+                                bbox[2].GetDouble(), bbox[3].GetDouble()
+                            };
+                        }
+
+                        // Use case-insensitive key; prefer first occurrence
+                        if (!geoLookup.ContainsKey(name))
+                            geoLookup[name] = geoFeature;
+                    }
+                }
+                System.Diagnostics.Debug.WriteLine($"[Semantic] Parsed {geoLookup.Count} GeoJSON features from locations.geojson");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[Semantic] Failed to parse locations.geojson: {ex.Message}");
+                geoLookup = null; // Continue without GeoJSON data
+            }
+        }
+        else
+        {
+            System.Diagnostics.Debug.WriteLine("[Semantic] locations.geojson not found — LOCATION entities will not be geocoded");
+        }
+
         var pipeline = CreateDefaultPipeline();
-        var enrichedResult = await pipeline.ProcessAsync(result, ct);
+        var enrichedResult = await pipeline.ProcessAsync(result, ct, geoLookup);
         if (enrichedResult != null)
         {
             var enrichedPath = Path.Combine(outputDir, "enriched_result.json");
@@ -629,6 +719,30 @@ public sealed partial class DocumentViewModel
             System.Diagnostics.Debug.WriteLine($"[Semantic] Saved enriched_result.json ({enrichedResult.Blocks.Count} blocks)");
         }
         return enrichedResult;
+    }
+
+    /// <summary>Helper: reads a string property from a JsonElement.</summary>
+    private static string? GetJsonProperty(System.Text.Json.JsonElement element, string name)
+    {
+        if (element.TryGetProperty(name, out var prop) && prop.ValueKind == System.Text.Json.JsonValueKind.String)
+            return prop.GetString();
+        return null;
+    }
+
+    /// <summary>Helper: reads a double property from a JsonElement.</summary>
+    private static double GetJsonPropertyDouble(System.Text.Json.JsonElement element, string name)
+    {
+        if (element.TryGetProperty(name, out var prop) && prop.ValueKind == System.Text.Json.JsonValueKind.Number)
+            return prop.GetDouble();
+        return 0.0;
+    }
+
+    /// <summary>Helper: reads a long property from a JsonElement.</summary>
+    private static long GetJsonPropertyLong(System.Text.Json.JsonElement element, string name)
+    {
+        if (element.TryGetProperty(name, out var prop) && prop.ValueKind == System.Text.Json.JsonValueKind.Number)
+            return prop.GetInt64();
+        return 0;
     }
 
     [RelayCommand]

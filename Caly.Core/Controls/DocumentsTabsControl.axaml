@@ -317,7 +317,7 @@
 								HorizontalAlignment="Center"
 								VerticalAlignment="Stretch"
 								Background="Transparent"
-                                Command="{Binding ReEnrichCommand}"
+                                Click="OnEnrichClick"
                                 IsEnabled="{Binding CanEnrich}"
                                 IsVisible="{Binding HasSemanticData}">
 							<PathIcon Width="17"

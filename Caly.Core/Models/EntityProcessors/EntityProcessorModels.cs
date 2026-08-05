@@ -108,6 +108,12 @@ public class EntityContext
 
     /// <summary>The block this entity belongs to.</summary>
     public SemanticBlockResult Block { get; set; } = null!;
+
+    /// <summary>
+    /// Pre-parsed GeoJSON location features from locations.geojson, keyed by normalized location name.
+    /// Null if GeoJSON file is not available. Used by LocationProcessor to avoid re-calling Nominatim.
+    /// </summary>
+    public IReadOnlyDictionary<string, GeoJsonFeature>? GeoJsonLookup { get; set; }
 }
 
 /// <summary>

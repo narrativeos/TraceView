@@ -97,7 +97,13 @@ public class EntityProcessorPipeline
     /// <summary>
     /// Process all blocks in a semantic result file.
     /// </summary>
-    public async Task<Models.EnrichedResultFile?> ProcessAsync(SemanticResultFile resultFile, CancellationToken ct = default)
+    /// <param name="resultFile">Semantic analysis results to enrich.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <param name="geoJsonLookup">Optional pre-parsed GeoJSON location features from locations.geojson, keyed by location name.</param>
+    public async Task<Models.EnrichedResultFile?> ProcessAsync(
+        SemanticResultFile resultFile,
+        CancellationToken ct = default,
+        IReadOnlyDictionary<string, Models.EntityProcessors.GeoJsonFeature>? geoJsonLookup = null)
     {
         var sorted = GetSortedProcessors();
         if (sorted.Count == 0)
@@ -126,7 +132,7 @@ public class EntityProcessorPipeline
                 continue;
 
             await ProcessBlockAsync(block, sorted, allEnrichedByType, allRelations, ct,
-                counter, totalEntities);
+                counter, totalEntities, geoJsonLookup);
         }
 
         // Phase 2: Cross-block resolution
@@ -159,7 +165,8 @@ public class EntityProcessorPipeline
         List<EntityRelation> allRelations,
         CancellationToken ct,
         ProgressCounter counter,
-        int totalEntities)
+        int totalEntities,
+        IReadOnlyDictionary<string, Models.EntityProcessors.GeoJsonFeature>? geoJsonLookup = null)
     {
         // Build enriched entities map for this block (for dependency context)
         var blockEnriched = new Dictionary<string, List<SemanticEntity>>();
@@ -201,7 +208,8 @@ public class EntityProcessorPipeline
                     kvp => kvp.Key,
                     kvp => (IReadOnlyList<SemanticEntity>)kvp.Value.AsReadOnly()),
                 Relations = allRelations.AsReadOnly(),
-                Block = block
+                Block = block,
+                GeoJsonLookup = geoJsonLookup
             };
 
             foreach (var entity in validEntities)
