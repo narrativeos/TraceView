@@ -461,6 +461,8 @@ public sealed partial class DocumentsTabsControl : UserControl
                     return;
                 }
             }
+            // Mark for re-process to skip cached results
+            docVm.MarkSemanticForReprocess();
         }
 
         docVm.ProcessWithSemanticCommand?.Execute(null);

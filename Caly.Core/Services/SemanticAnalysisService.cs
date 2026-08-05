@@ -171,6 +171,7 @@ public sealed class SemanticAnalysisService : IDisposable
                 // Store error result for this node
                 blocks.Add(new SemanticBlockResult
                 {
+                    BlockIds = nodes[i].BlockIds,
                     SourceBlockIds = nodes[i].SourceBlockIds,
                     Content = nodes[i].Content,
                     Error = ex.Message
@@ -224,11 +225,12 @@ public sealed class SemanticAnalysisService : IDisposable
             System.Diagnostics.Debug.WriteLine($"[SemanticAnalysisService] Source-gen deserialization failed: {ex.Message}");
         }
         
-        // Fallback to reflection-based deserialization (slower but more tolerant)
+        // Fallback: use SourceGenerationContext with TypeInfoResolver (reflection is disabled in .NET 10)
         try
         {
             var options = new System.Text.Json.JsonSerializerOptions 
             { 
+                TypeInfoResolver = SourceGenerationContext.Default,
                 PropertyNameCaseInsensitive = true 
             };
             var result = JsonSerializer.Deserialize(json, typeof(SemanticResultFile), options) as SemanticResultFile;
@@ -249,6 +251,7 @@ public sealed class SemanticAnalysisService : IDisposable
     {
         var result = new SemanticBlockResult
         {
+            BlockIds = node.BlockIds,
             SourceBlockIds = node.SourceBlockIds,
             Content = node.Content,
             Type = node.Type,
@@ -288,14 +291,8 @@ public sealed class SemanticAnalysisService : IDisposable
             result.Entities = new List<SemanticEntity>();
             foreach (var entity in content.Entities)
             {
-                var attributes = new List<string>();
-                if (entity.Attributes is not null)
-                {
-                    foreach (var attr in entity.Attributes)
-                    {
-                        attributes.Add($"{attr.Key}={attr.Value}");
-                    }
-                }
+                // Keep the HanLPEntityAttribute objects as-is for proper JSON serialization
+                var attributes = entity.Attributes ?? new List<HanLPEntityAttribute>();
 
                 result.Entities.Add(new SemanticEntity
                 {

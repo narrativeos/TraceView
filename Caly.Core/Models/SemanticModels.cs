@@ -148,7 +148,7 @@ public class SemanticEntity
     public int[] Span { get; set; } = new int[2];
 
     [JsonPropertyName("attributes")]
-    public List<string> Attributes { get; set; } = new();
+    public List<HanLPEntityAttribute> Attributes { get; set; } = new();
 
     [JsonPropertyName("syntactic_role")]
     public string SyntacticRole { get; set; } = "";

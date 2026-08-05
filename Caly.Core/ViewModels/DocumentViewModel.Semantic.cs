@@ -172,6 +172,21 @@ public sealed partial class DocumentViewModel
 
     private CancellationTokenSource? _semanticCts;
 
+    /// <summary>
+    /// When true, skips the cached semantic_result.json and forces a full re-process.
+    /// Set by the UI before calling ProcessWithSemanticCommand for re-processing.
+    /// </summary>
+    private bool _forceSemanticReprocess;
+
+    /// <summary>
+    /// Marks that the next semantic processing should skip cached results and re-process.
+    /// Called from the UI click handler when the user confirms re-processing.
+    /// </summary>
+    public void MarkSemanticForReprocess()
+    {
+        _forceSemanticReprocess = true;
+    }
+
     private bool _showSemanticBlocksList;
     private bool _showSemanticPlaceholder;
 
@@ -198,7 +213,9 @@ public sealed partial class DocumentViewModel
     /// </summary>
     private void UpdateSemanticVisibility()
     {
-        ShowSemanticBlocksList = !IsSemanticProcessing && SemanticStatus != SemanticProcessStatus.Failed && HasSemanticResults;
+        // Show results as soon as semantic analysis completes, even if enrichment is still running.
+        // Previously required !IsSemanticProcessing which hid results until the finally block.
+        ShowSemanticBlocksList = SemanticStatus == SemanticProcessStatus.Completed && HasSemanticResults;
         ShowSemanticPlaceholder = !IsSemanticProcessing && !HasSemanticResults && SemanticStatus != SemanticProcessStatus.Failed;
     }
 
@@ -399,6 +416,29 @@ public sealed partial class DocumentViewModel
         ShowSemanticColumn = !ShowSemanticColumn;
     }
 
+    /// <summary>
+    /// Called automatically when ShowSemanticColumn changes via two-way binding (ToggleButton click).
+    /// Ensures data is loaded when the column is opened.
+    /// </summary>
+    partial void OnShowSemanticColumnChanged(bool value)
+    {
+        if (value && SemanticResults == null)
+        {
+            // Try loading from cache when user opens the column
+            var cachedResult = TryLoadSemanticResultFromFile();
+            if (cachedResult is not null)
+            {
+                SemanticResults = cachedResult;
+                SemanticStatus = SemanticProcessStatus.Completed;
+                SemanticProgress = 100;
+                SemanticStatusText = $"Loaded from cache ({SemanticNodeCount} nodes, {SemanticEntityCount} entities)";
+                OnPropertyChanged(nameof(HasSemanticData));
+                TryLoadEnrichedData();
+                UpdateSemanticVisibility();
+            }
+        }
+    }
+
     [RelayCommand]
     private void ToggleEnrichedColumn()
     {
@@ -441,20 +481,24 @@ public sealed partial class DocumentViewModel
             return;
         }
 
-        // Check if cached results exist
-        var cachedResult = TryLoadSemanticResultFromFile();
-        if (cachedResult is not null)
+        // Check if cached results exist (skip when user explicitly requested re-process)
+        if (!_forceSemanticReprocess)
         {
-            SemanticResults = cachedResult;
-            SemanticStatus = SemanticProcessStatus.Completed;
-            SemanticProgress = 100;
-            SemanticStatusText = $"Loaded from cache ({SemanticNodeCount} nodes)";
-            ShowSemanticColumn = true;
-            OnPropertyChanged(nameof(HasSemanticData));
-            UpdateSemanticVisibility();
-            System.Diagnostics.Debug.WriteLine($"[Semantic] Loaded cached results: {SemanticNodeCount} nodes");
-            return;
+            var cachedResult = TryLoadSemanticResultFromFile();
+            if (cachedResult is not null)
+            {
+                SemanticResults = cachedResult;
+                SemanticStatus = SemanticProcessStatus.Completed;
+                SemanticProgress = 100;
+                SemanticStatusText = $"Loaded from cache ({SemanticNodeCount} nodes)";
+                ShowSemanticColumn = true;
+                OnPropertyChanged(nameof(HasSemanticData));
+                UpdateSemanticVisibility();
+                System.Diagnostics.Debug.WriteLine($"[Semantic] Loaded cached results: {SemanticNodeCount} nodes");
+                return;
+            }
         }
+        _forceSemanticReprocess = false;
 
         _semanticCts = new CancellationTokenSource();
         IsSemanticProcessing = true;
@@ -777,7 +821,6 @@ public sealed partial class DocumentViewModel
     {
         try
         {
-            System.Diagnostics.Debug.WriteLine($"[Semantic] TryLoadSemanticData called, ProjectPath=" + (ProjectPath ?? "null") + ", LocalPath=" + (LocalPath ?? "null"));
             var result = TryLoadSemanticResultFromFile();
             if (result is not null)
             {
@@ -789,17 +832,17 @@ public sealed partial class DocumentViewModel
                 OnPropertyChanged(nameof(HasSemanticData));
                 TryLoadEnrichedData();
                 UpdateSemanticVisibility();
-                System.Diagnostics.Debug.WriteLine($"[Semantic] Auto-loaded cached results: {SemanticNodeCount} nodes, {SemanticEntityCount} entities");
+                System.Diagnostics.Debug.WriteLine($"[Semantic] Auto-loaded {SemanticNodeCount} nodes, {SemanticEntityCount} entities");
             }
             else
             {
-                System.Diagnostics.Debug.WriteLine("[Semantic] No cached semantic data found on document open");
+                System.Diagnostics.Debug.WriteLine("[Semantic] TryLoadSemanticResultFromFile returned null");
             }
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[Semantic] TryLoadSemanticData ERROR: {ex.Message}");
-            System.Diagnostics.Debug.WriteLine($"[Semantic] StackTrace: {ex.StackTrace}");
+            SemanticStatusText = $"ERROR: {ex.Message}";
         }
     }
 
@@ -808,47 +851,113 @@ public sealed partial class DocumentViewModel
     /// </summary>
     private SemanticResultFile? TryLoadSemanticResultFromFile()
     {
+        var diagFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "semantic_load_diag.txt");
+        var logLines = new System.Collections.Generic.List<string>();
+        
         var outputDir = GetSemanticOutputDir();
         var filePath = Path.Combine(outputDir, "semantic_result.json");
-        System.Diagnostics.Debug.WriteLine($"[Semantic] TryLoadSemanticResultFromFile: checking {filePath}, exists={File.Exists(filePath)}");
+        logLines.Add($"TryLoadSemanticResultFromFile: checking {filePath}");
         
         if (!File.Exists(filePath))
         {
-            System.Diagnostics.Debug.WriteLine("[Semantic] File does not exist");
+            logLines.Add("File does not exist");
+            File.WriteAllLines(diagFile, logLines);
             return null;
         }
         
-        // Read raw content for debugging
-        var rawJson = File.ReadAllText(filePath);
-        System.Diagnostics.Debug.WriteLine($"[Semantic] Raw JSON length: {rawJson.Length} chars");
-        // Check if the JSON contains "blocks" key
-        bool hasBlocksKey = rawJson.Contains("\"blocks\"");
-        System.Diagnostics.Debug.WriteLine($"[Semantic] JSON contains 'blocks' key: {hasBlocksKey}");
+        logLines.Add($"File exists, attempting to read...");
         
-        var result = SemanticAnalysisService.LoadFromFile(filePath);
+        // Read raw content for debugging
+        string rawJson;
+        try
+        {
+            rawJson = File.ReadAllText(filePath);
+            logLines.Add($"Raw JSON length: {rawJson.Length} chars");
+            bool hasBlocksKey = rawJson.Contains("\"blocks\"");
+            logLines.Add($"JSON contains 'blocks' key: {hasBlocksKey}");
+            // Log first 500 chars for debugging
+            logLines.Add($"First 500 chars: {rawJson.Substring(0, Math.Min(500, rawJson.Length))}");
+        }
+        catch (Exception ex)
+        {
+            logLines.Add($"ERROR reading file: {ex.Message}");
+            File.WriteAllLines(diagFile, logLines);
+            return null;
+        }
+        
+        // Try source-gen first
+        logLines.Add("Attempting SemanticAnalysisService.LoadFromFile (source-gen)...");
+        SemanticResultFile? result = null;
+        try
+        {
+            result = SemanticAnalysisService.LoadFromFile(filePath);
+            if (result != null)
+            {
+                logLines.Add($"LoadFromFile succeeded: {result.Blocks.Count} blocks");
+            }
+            else
+            {
+                logLines.Add("LoadFromFile returned null");
+            }
+        }
+        catch (Exception ex)
+        {
+            logLines.Add($"LoadFromFile exception: {ex.GetType().Name}: {ex.Message}");
+        }
         
         if (result is null)
         {
-            System.Diagnostics.Debug.WriteLine("[Semantic] LoadFromFile returned null (deserialization failed)");
+            logLines.Add("Attempting fallback deserialization with SourceGenerationContext...");
+            // Fallback: use SourceGenerationContext with TypeInfoResolver (reflection is disabled in .NET 10)
+            try
+            {
+                var options = new System.Text.Json.JsonSerializerOptions
+                {
+                    TypeInfoResolver = SourceGenerationContext.Default,
+                    PropertyNameCaseInsensitive = true,
+                    DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+                };
+                result = System.Text.Json.JsonSerializer.Deserialize(rawJson, typeof(SemanticResultFile), options) as SemanticResultFile;
+                if (result != null)
+                {
+                    logLines.Add($"Fallback deserialization succeeded: {result.Blocks.Count} blocks");
+                }
+                else
+                {
+                    logLines.Add("Fallback deserialization also returned null");
+                }
+            }
+            catch (Exception ex)
+            {
+                logLines.Add($"Fallback deserialization exception: {ex.GetType().Name}: {ex.Message}");
+                logLines.Add($"StackTrace: {ex.StackTrace}");
+            }
+        }
+        
+        if (result is null)
+        {
+            logLines.Add("All deserialization attempts failed");
+            File.WriteAllLines(diagFile, logLines);
             return null;
         }
         
         int totalEntities = result.Blocks.Sum(b => b.Entities.Count);
         int totalRelations = result.Blocks.Sum(b => b.Relations.Count);
-        System.Diagnostics.Debug.WriteLine($"[Semantic] LoadFromFile succeeded: {result.Blocks.Count} blocks, {totalEntities} entities, {totalRelations} relations");
-        System.Diagnostics.Debug.WriteLine($"[Semantic] Version={result.Version}, Source={result.Source}, Timestamp={result.Timestamp}");
+        logLines.Add($"Loaded: {result.Blocks.Count} blocks, {totalEntities} entities, {totalRelations} relations");
+        logLines.Add($"Version={result.Version}, Source={result.Source}, Timestamp={result.Timestamp}");
         
         // Log first block details for debugging
         if (result.Blocks.Count > 0)
         {
             var first = result.Blocks[0];
-            System.Diagnostics.Debug.WriteLine($"[Semantic] First block: type={first.Type}, title={first.Title}, source_ids={first.SourceBlockIds?.Count ?? 0}, tokens={first.Tokens?.Count ?? 0}, entities={first.Entities?.Count ?? 0}, error={first.Error ?? "null"}");
+            logLines.Add($"First block: type={first.Type}, title={first.Title}, source_ids={first.SourceBlockIds?.Count ?? 0}, tokens={first.Tokens?.Count ?? 0}, entities={first.Entities?.Count ?? 0}, error={first.Error ?? "null"}");
         }
         
         // Only use cache if it has blocks
         if (result.Blocks.Count == 0)
         {
-            System.Diagnostics.Debug.WriteLine("[Semantic] Cache has no blocks, will re-process");
+            logLines.Add("Cache has no blocks, returning null");
+            File.WriteAllLines(diagFile, logLines);
             return null;
         }
         
@@ -857,17 +966,19 @@ public sealed partial class DocumentViewModel
         int validCount = result.Blocks.Count(b => string.IsNullOrEmpty(b.Error));
         if (errorCount > 0)
         {
-            System.Diagnostics.Debug.WriteLine($"[Semantic] Cache has {errorCount} errors out of {result.Blocks.Count} blocks ({validCount} valid), loading partial results");
+            logLines.Add($"Cache has {errorCount} errors out of {result.Blocks.Count} blocks ({validCount} valid)");
         }
         
         // Only reject if ALL blocks have errors
         if (validCount == 0)
         {
-            System.Diagnostics.Debug.WriteLine($"[Semantic] Cache has all errors ({errorCount} blocks), will re-process");
+            logLines.Add($"Cache has all errors ({errorCount} blocks), returning null");
+            File.WriteAllLines(diagFile, logLines);
             return null;
         }
         
-        System.Diagnostics.Debug.WriteLine("[Semantic] Cache loaded successfully");
+        logLines.Add("Cache loaded successfully");
+        File.WriteAllLines(diagFile, logLines);
         return result;
     }
 
@@ -937,6 +1048,7 @@ public sealed partial class DocumentViewModel
                 Title = block.Level > 0 ? block.Content : string.Empty,
                 Content = block.Content,
                 Level = block.Level,
+                BlockIds = new List<int> { block.Id },
                 SourceBlockIds = new List<string>(block.SourceBlockIds)
             };
             

@@ -379,6 +379,7 @@ public sealed partial class DocumentViewModel : ViewModelBase
                 TryLoadPopoData();        // Load Popo from popo/
                 TryLoadSemanticData();    // Load Semantic from semantic/
                 TryLoadGeoData();         // Load Geo from semantic/locations.geojson
+                TryLoadEnrichedData();    // Load Enriched independently (doesn't depend on Semantic being in memory)
             });
         }
 

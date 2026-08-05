@@ -49,18 +49,22 @@ public static class EnrichedResultBuilder
 
         foreach (var block in semanticResult.Blocks)
         {
-            // Use SourceBlockIds (string) as the primary identifier since BlockIds is often empty.
-            // Try to parse as integers first; fall back to using index-based IDs.
+            // Prefer BlockIds (int) when available; otherwise try to parse
+            // SourceBlockIds as integers (e.g., Popo assigns integer string IDs).
+            // MinerU SourceBlockIds are UUIDs and won't parse as int.
             var blockIds = new List<int>();
-            foreach (var id in block.SourceBlockIds)
+            if (block.BlockIds.Count > 0)
             {
-                // SourceBlockIds are strings like "0", "1", etc.
-                if (int.TryParse(id, out var numId))
-                    blockIds.Add(numId);
-            }
-            // If SourceBlockIds didn't yield integers, use BlockIds
-            if (blockIds.Count == 0 && block.BlockIds.Count > 0)
                 blockIds = block.BlockIds;
+            }
+            else
+            {
+                foreach (var id in block.SourceBlockIds)
+                {
+                    if (int.TryParse(id, out var numId))
+                        blockIds.Add(numId);
+                }
+            }
 
             var enrichedBlock = new EnrichedBlockResult
             {
