@@ -53,6 +53,13 @@ public class EntityProcessorPipeline
     private Action<int, int, string, string>? _onProgress;
 
     /// <summary>
+    /// Cache for enrichment results to avoid redundant external API calls
+    /// for the same entity text across different blocks.
+    /// Key: (processorEntityType, entityText)
+    /// </summary>
+    private readonly Dictionary<(string ProcessorType, string EntityText), EntityEnrichmentResult> _enrichmentCache = new();
+
+    /// <summary>
     /// Sets an optional progress callback invoked after each entity is processed.
     /// </summary>
     public EntityProcessorPipeline ReportProgress(Action<int, int, string, string> onProgress)
@@ -215,36 +222,72 @@ public class EntityProcessorPipeline
             foreach (var entity in validEntities)
             {
                 ct.ThrowIfCancellationRequested();
-                try
-                {
-                    var enrichment = await processor.EnrichAsync(entity, context, ct);
 
-                    // Store enrichment result as JSON-serializable metadata
-                    entity.EnrichedMetadata[$"{processor.EntityType}:enrichment"] = new Dictionary<string, object>
-                    {
-                        ["enriched_text"] = enrichment.EnrichedText ?? "",
-                        ["external_id"] = enrichment.ExternalId ?? "",
-                        ["confidence"] = enrichment.Confidence,
-                        ["source"] = enrichment.Source ?? "",
-                        ["metadata"] = enrichment.Metadata
-                    };
-                }
-                catch (OperationCanceledException)
+                // Check cache first to avoid redundant API calls for duplicate entity texts
+                var cacheKey = (processor.EntityType, entity.Text);
+                EntityEnrichmentResult enrichment;
+
+                if (!_enrichmentCache.TryGetValue(cacheKey, out var cached) || cached is null)
                 {
-                    throw;
+                    enrichment = null!;
                 }
+                else
+                {
+                    enrichment = cached;
+                }
+
+                if (enrichment is null)
+                {
+                    try
+                    {
+                        enrichment = await processor.EnrichAsync(entity, context, ct);
+
+                        // Cache the result for future lookups
+                        _enrichmentCache[cacheKey] = enrichment;
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        // Enrichment failure — create a safe error result (don't leak internal details)
+                        System.Diagnostics.Debug.WriteLine(
+                            $"[{processor.EntityType}] Enrichment failed for '{entity.Text}': {ex.Message}");
+
+                        enrichment = new EntityEnrichmentResult
+                        {
+                            Source = "error",
+                            Confidence = 0.0,
+                            EnrichedText = entity.Text,
+                            Metadata = new Dictionary<string, object>
+                            {
+                                ["error"] = "Enrichment failed"
+                            }
+                        };
+
+                        // Cache the error result too to avoid repeated failed API calls
+                        _enrichmentCache[cacheKey] = enrichment;
+                    }
+                }
+
+                // Store enrichment result as JSON-serializable metadata
+                entity.EnrichedMetadata[$"{processor.EntityType}:enrichment"] = new Dictionary<string, object>
+                {
+                    ["enriched_text"] = enrichment.EnrichedText ?? "",
+                    ["external_id"] = enrichment.ExternalId ?? "",
+                    ["confidence"] = enrichment.Confidence,
+                    ["source"] = enrichment.Source ?? "",
+                    ["metadata"] = enrichment.Metadata
+                };
+
+                // Report progress after each entity (with exception protection)
+                counter.Value++;
+                try { _onProgress?.Invoke(counter.Value, totalEntities, entity.Text, processor.EntityType); }
                 catch (Exception ex)
                 {
-                    // Enrichment failure should not block other entities
-                    entity.EnrichedMetadata[$"{processor.EntityType}:enrichment"] = new Dictionary<string, object>
-                    {
-                        ["error"] = ex.Message,
-                        ["confidence"] = 0.0
-                    };
+                    System.Diagnostics.Debug.WriteLine($"Progress callback failed: {ex.Message}");
                 }
-                // Report progress after each entity
-                counter.Value++;
-                _onProgress?.Invoke(counter.Value, totalEntities, entity.Text, processor.EntityType);
             }
 
             // Track enriched entities for cross-block and dependency context

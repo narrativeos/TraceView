@@ -103,15 +103,28 @@ public static class EnrichedResultBuilder
 
     private static EnrichedEntityEntry? BuildEntityEntry(SemanticEntity entity)
     {
+        // Build validation status respecting the full severity spectrum:
+        // - invalid when is_valid == false
+        // - ambiguous when severity == "Warning" (valid but needs disambiguation)
+        // - valid when is_valid == true and no warning
+        // - unknown when validation data is missing
+        var isValid = GetValidationField(entity, "is_valid");
+        var severity = GetValidationField(entity, "severity") as string;
+        var validationStatus = isValid is bool v && !v
+            ? "invalid"
+            : (severity is not null && severity == "Warning")
+                ? "ambiguous"
+                : (isValid is bool bv && bv)
+                    ? "valid"
+                    : "unknown";
+
         var entry = new EnrichedEntityEntry
         {
             Id = entity.Id,
             Text = entity.Text,
             Category = entity.Category,
             Normalized = entity.Normalized ?? "",
-            ValidationStatus = GetValidationField(entity, "is_valid") is bool v
-                ? (v ? "valid" : "invalid")
-                : "unknown",
+            ValidationStatus = validationStatus,
             ValidationReason = GetValidationField(entity, "reason") as string ?? "",
             EnrichedText = GetEnrichmentField(entity, "enriched_text") as string ?? entity.Text,
             ExternalId = GetEnrichmentField(entity, "external_id") as string ?? "",

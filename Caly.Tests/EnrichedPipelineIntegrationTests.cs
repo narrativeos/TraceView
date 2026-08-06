@@ -52,13 +52,17 @@ public class EnrichedPipelineIntegrationTests
     public async Task RunPipeline_OnRealData_ProducesEnrichedResult()
     {
         // ── 1. Find the test data ──
-        var semanticDir = "/Users/futuremeng/.TraceView/978-7-111-74324-8_1-1_2/semantic";
+        // Support environment variable for test data directory, fallback to default
+        var semanticDir = Environment.GetEnvironmentVariable("CALY_TEST_SEMATIC_DIR")
+            ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                ".TraceView", "978-7-111-74324-8_1-1_2", "semantic");
         var inputPath = Path.Combine(semanticDir, "semantic_result.json");
         var outputPath = Path.Combine(semanticDir, "enriched_result.json");
 
         if (!File.Exists(inputPath))
         {
             _output.WriteLine($"SKIP: File not found: {inputPath}");
+            _output.WriteLine("Set CALY_TEST_SEMATIC_DIR environment variable to point to your semantic data directory.");
             return;
         }
 

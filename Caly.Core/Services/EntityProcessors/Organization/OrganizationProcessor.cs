@@ -79,29 +79,28 @@ public sealed class OrganizationProcessor : IEntityProcessor, IDisposable
     {
         var (_, nameType, _) = OrganizationValidator.Validate(entity);
 
+        var localConfidence = nameType switch
+        {
+            OrganizationNameType.FullFormalName => 0.90,
+            OrganizationNameType.GeographicPrefix => 0.80,
+            OrganizationNameType.Abbreviation => 0.50,
+            OrganizationNameType.Generic => 0.40,
+            _ => 0.30
+        };
+
         var result = new EntityEnrichmentResult
         {
             Source = "OrganizationValidator",
-            Confidence = nameType switch
-            {
-                OrganizationNameType.FullFormalName => 0.90,
-                OrganizationNameType.GeographicPrefix => 0.80,
-                OrganizationNameType.Abbreviation => 0.50,
-                OrganizationNameType.Generic => 0.40,
-                _ => 0.30
-            },
+            Confidence = localConfidence,
             EnrichedText = entity.Text,
             Metadata = new Dictionary<string, object>
             {
                 ["org_name_type"] = nameType.ToString(),
-                ["original_text"] = entity.Text,
-                ["wikidata_qid"] = "",
-                ["wikidata_label"] = "",
-                ["wikidata_description"] = ""
+                ["original_text"] = entity.Text
             }
         };
 
-        // Wikidata lookup (non-fatal)
+        // Wikidata lookup (non-fatal) — when found, it becomes the authoritative source
         try
         {
             var searchResults = await _wikidataService.SearchAsync(entity.Text, ct);
@@ -111,7 +110,10 @@ public sealed class OrganizationProcessor : IEntityProcessor, IDisposable
                 result.Source = "Wikidata";
                 result.ExternalId = best.QId;
                 result.EnrichedText = best.Label;
-                result.Confidence = Math.Max(result.Confidence, best.Confidence);
+                // Wikidata API confidence is authoritative; use it directly rather than
+                // taking the max with the local heuristic. This ensures that a high-quality
+                // Wikidata match properly elevates the overall confidence.
+                result.Confidence = best.Confidence;
 
                 result.Metadata["wikidata_qid"] = best.QId;
                 result.Metadata["wikidata_label"] = best.Label;
@@ -124,7 +126,9 @@ public sealed class OrganizationProcessor : IEntityProcessor, IDisposable
         }
         catch (Exception ex)
         {
+            // Log internally but don't leak details to the output
             System.Diagnostics.Debug.WriteLine($"[OrganizationProcessor] Wikidata query failed for '{entity.Text}': {ex.Message}");
+            // Keep local validation result as fallback
         }
 
         return result;
