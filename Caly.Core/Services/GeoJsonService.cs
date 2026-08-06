@@ -474,17 +474,19 @@ public sealed class GeoJsonService
         var zoom = CalculateZoomLevel(minLon, maxLon, minLat, maxLat);
 
         // Group geocoding results by syntactic role (use best result from each location)
-        var roles = new Dictionary<string, List<GeocodingResult>>();
+        // Use (queryName, result) to preserve the original query for entity info lookup.
+        var roles = new Dictionary<string, List<(string QueryName, GeocodingResult Result)>>();
         foreach (var kvp in geocodingResults)
         {
             var result = kvp.Value.FirstOrDefault();
             if (result == null) continue;
-            var (entity, _, _) = locationByName.TryGetValue(result.Name, out var info) ? info : (null, "", new List<string>());
+            // Use the dictionary key (original query name) for entity lookup, not result.Name (OSM name)
+            var (entity, _, _) = locationByName.TryGetValue(kvp.Key, out var info) ? info : (null, "", new List<string>());
             var role = entity?.SyntacticRole ?? LocationSyntacticRole.Unknown;
 
             if (!roles.ContainsKey(role))
-                roles[role] = new List<GeocodingResult>();
-            roles[role].Add(result);
+                roles[role] = new List<(string QueryName, GeocodingResult Result)>();
+            roles[role].Add((kvp.Key, result));
         }
 
         // Build a separate layer for each syntactic role that has data
@@ -513,9 +515,10 @@ public sealed class GeoJsonService
             // Generate GeoJSON features for this role (only successful locations)
             var features = new List<Dictionary<string, object>>();
 
-            foreach (var result in results)
+            foreach (var (queryName, result) in results)
             {
-                var (entity, blockContent, sourceBlockIds) = locationByName.TryGetValue(result.Name, out var info) ? info : (null, "", new List<string>());
+                // Use original query name for entity info lookup (not result.Name which is set to OSM name)
+                var (entity, blockContent, sourceBlockIds) = locationByName.TryGetValue(queryName, out var info) ? info : (null, "", new List<string>());
 
                 var properties = new Dictionary<string, object>
                 {
@@ -668,7 +671,8 @@ public sealed class GeoJsonService
                 var result = kvp.Value.FirstOrDefault();
                 if (result == null) continue;
 
-                var (entity, blockContent, sourceBlockIds) = locationByName.TryGetValue(result.Name, out var info)
+                // Use original query name (kvp.Key) for entity lookup
+                var (entity, blockContent, sourceBlockIds) = locationByName.TryGetValue(kvp.Key, out var info)
                     ? info : (null, "", new List<string>());
 
                 geoFeatures.Add(new GeoStoryBuilder.GeoFeature
@@ -718,7 +722,7 @@ public sealed class GeoJsonService
                     Caly.Core.Services.SourceGenerationContext.Default.EnrichedResultFile);
                 if (enrichedResult != null)
                 {
-                    kgData = BuildEnrichedKnowledgeGraph(enrichedResult, geocodingResults);
+                    kgData = BuildEnrichedKnowledgeGraph(enrichedResult, geocodingResults, semanticResults);
                     System.Diagnostics.Debug.WriteLine($"[GeoJsonService] Built KG from enriched_result.json ({enrichedResult.Blocks.Count} blocks)");
                 }
             }
@@ -800,12 +804,17 @@ public sealed class GeoJsonService
                 if (entity.Category == "LOCATION")
                     continue;
 
+                // Skip noise: pure numeric/symbol labels, LaTeX artifacts, single-char labels
+                if (IsKgNoiseLabel(entity.Text))
+                    continue;
+
                 var key = $"{entity.Category}|{entity.Normalized}";
                 if (!entityMap.ContainsKey(key))
                 {
                     var newNode = new Dictionary<string, object>
                     {
                         { "id", $"node_{entity.Category}_{entity.Normalized}" },
+                        { "type", MapToKgCategory(entity.Category) },
                         { "label", entity.Text },
                         { "normalized", entity.Normalized },
                         { "category", MapToKgCategory(entity.Category) },
@@ -866,6 +875,7 @@ public sealed class GeoJsonService
             var locNode = new Dictionary<string, object>
             {
                 { "id", $"node_LOCATION_{normalized}" },
+                { "type", "LOCATION" },
                 { "label", label },
                 { "normalized", normalized },
                 { "category", "LOCATION" },
@@ -1147,11 +1157,13 @@ public sealed class GeoJsonService
     /// </summary>
     Dictionary<string, object>? BuildEnrichedKnowledgeGraph(
         Caly.Core.Models.EnrichedResultFile enrichedResult,
-        Dictionary<string, List<GeocodingResult>> geocodingResults)
+        Dictionary<string, List<GeocodingResult>> geocodingResults,
+        SemanticResultFile semanticResults)
     {
         var nodes = new List<Dictionary<string, object>>();
         var edges = new List<Dictionary<string, object>>();
         var nodeIndex = new Dictionary<string, Dictionary<string, object>>(); // id -> node
+        var textToNodeId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         int edgeCounter = 1;
 
         // ── Phase 1: Build nodes from enriched entities ──
@@ -1163,12 +1175,17 @@ public sealed class GeoJsonService
                 if (entry.ValidationStatus == "invalid")
                     continue;
 
+                // Skip noise: pure numeric/symbol labels, LaTeX artifacts, single-char labels
+                if (IsKgNoiseLabel(entry.Text))
+                    continue;
+
                 var nodeId = $"node_{entry.Category}_{entry.Normalized}";
                 if (!nodeIndex.ContainsKey(nodeId))
                 {
                     var node = new Dictionary<string, object>
                     {
                         { "id", nodeId },
+                        { "type", MapToKgCategory(entry.Category) },
                         { "label", !string.IsNullOrEmpty(entry.EnrichedText) ? entry.EnrichedText : entry.Text },
                         { "normalized", entry.Normalized },
                         { "category", MapToKgCategory(entry.Category) },
@@ -1209,11 +1226,39 @@ public sealed class GeoJsonService
                         node["metadata"] = meta;
                     }
 
-                    // LOCATION-specific: coordinates from metadata
-                    if (entry.Category == "LOCATION" && node.ContainsKey("metadata"))
+                    // LOCATION-specific: try metadata coords first, then geocodingResults
+                    if (entry.Category == "LOCATION")
                     {
-                        var meta = (Dictionary<string, object>)node["metadata"];
-                        if (meta.TryGetValue("latitude", out var latObj) && meta.TryGetValue("longitude", out var lonObj))
+                        double? lat = null, lon = null;
+
+                        // Try metadata first
+                        if (node.TryGetValue("metadata", out var metaObj) && metaObj is Dictionary<string, object> meta)
+                        {
+                            if (meta.TryGetValue("latitude", out var latObj) && meta.TryGetValue("longitude", out var lonObj))
+                            {
+                                lat = double.Parse(latObj.ToString()!, System.Globalization.CultureInfo.InvariantCulture);
+                                lon = double.Parse(lonObj.ToString()!, System.Globalization.CultureInfo.InvariantCulture);
+                            }
+                        }
+
+                        // Fallback: try geocodingResults by entity text or enriched text
+                        if (lat == null || lon == null)
+                        {
+                            var lookupName = !string.IsNullOrEmpty(entry.EnrichedText) ? entry.EnrichedText : entry.Text;
+                            if (geocodingResults.TryGetValue(lookupName, out var geoResults) ||
+                                geocodingResults.TryGetValue(entry.Text, out geoResults) ||
+                                geocodingResults.TryGetValue(entry.Normalized, out geoResults))
+                            {
+                                var best = geoResults.FirstOrDefault();
+                                if (best != null)
+                                {
+                                    lat = best.Latitude;
+                                    lon = best.Longitude;
+                                }
+                            }
+                        }
+
+                        if (lat.HasValue && lon.HasValue)
                         {
                             node["geoRefs"] = new List<Dictionary<string, object>>
                             {
@@ -1222,8 +1267,8 @@ public sealed class GeoJsonService
                                     { "sourceBlockIds", block.BlockIds },
                                     { "location", new Dictionary<string, object>
                                         {
-                                            { "lat", double.Parse(latObj.ToString()!, System.Globalization.CultureInfo.InvariantCulture) },
-                                            { "lng", double.Parse(lonObj.ToString()!, System.Globalization.CultureInfo.InvariantCulture) }
+                                            { "lat", lat.Value },
+                                            { "lng", lon.Value }
                                         }
                                     }
                                 }
@@ -1233,6 +1278,14 @@ public sealed class GeoJsonService
 
                     nodes.Add(node);
                     nodeIndex[nodeId] = node;
+
+                    // Register text→nodeId for dep edge matching
+                    var nodeLabel = (string)node["label"];
+                    var nodeNormalized = (string)node["normalized"];
+                    if (!textToNodeId.ContainsKey(nodeLabel))
+                        textToNodeId[nodeLabel] = nodeId;
+                    if (!string.IsNullOrEmpty(nodeNormalized) && !textToNodeId.ContainsKey(nodeNormalized))
+                        textToNodeId[nodeNormalized] = nodeId;
                 }
                 else
                 {
@@ -1249,6 +1302,11 @@ public sealed class GeoJsonService
                             { "text", entry.Text }
                         });
                     }
+
+                    // Also register text→nodeId for this entry
+                    var nodeLabel = (string)existing["label"];
+                    if (!textToNodeId.ContainsKey(nodeLabel))
+                        textToNodeId[nodeLabel] = nodeId;
                 }
             }
         }
@@ -1287,6 +1345,93 @@ public sealed class GeoJsonService
             }
         }
 
+        // ── Phase 2.5: Add NLP block-level relations from semantic results ──
+        // These are relations extracted by the NLP pipeline (IS_A, COMPOSED_OF, HAS_PROPERTY, etc.)
+        // and stored in each semantic block's Relations list.
+        foreach (var block in semanticResults.Blocks)
+        {
+            foreach (var rel in block.Relations)
+            {
+                // Find KG nodes for subject and object by text lookup
+                var subjId = FindNodeId(nodeIndex, rel.Subject);
+                var objId = FindNodeId(nodeIndex, rel.ObjectText);
+
+                if (subjId == null || objId == null || subjId == objId)
+                    continue;
+
+                var edgeType = MapPredicateToKgEdgeType(rel.Predicate);
+                // Override with more specific type for common predicates
+                if (rel.Predicate == "HAS_PROPERTY" || rel.Predicate == "PROPERTY_OF")
+                    edgeType = "HAS_PROPERTY";
+                else if (rel.Predicate == "COMPOSED_OF" || rel.Predicate == "PART_OF")
+                    edgeType = "COMPOSED_OF";
+                else if (rel.Predicate == "IS_A")
+                    edgeType = "IS_A";
+
+                var edge = new Dictionary<string, object>
+                {
+                    { "id", $"edge_nlp_{edgeCounter:D3}" },
+                    { "sourceId", subjId },
+                    { "targetId", objId },
+                    { "type", edgeType },
+                    { "label", $"{rel.Predicate}: {rel.Subject} → {rel.ObjectText}" },
+                    { "confidence", rel.Confidence > 0 ? rel.Confidence : 0.75 },
+                    { "provenance", new Dictionary<string, object>
+                        {
+                            { "evidence", rel.Evidence ?? $"{rel.Subject} {rel.PredicateVerb} {rel.ObjectText}" },
+                            { "source", $"nlp/{rel.Predicate}" },
+                            { "confidence", rel.Confidence }
+                        }
+                    }
+                };
+                edges.Add(edge);
+                edgeCounter++;
+            }
+        }
+
+        // ── Phase 2.6: Add entity attribute edges from semantic results ──
+        // Entity attributes are key-value pairs like "韧性=高" attached to entities.
+        foreach (var block in semanticResults.Blocks)
+        {
+            foreach (var entity in block.Entities)
+            {
+                if (entity.Attributes == null || entity.Attributes.Count == 0)
+                    continue;
+
+                var entityId = FindNodeId(nodeIndex, entity.Text);
+                if (entityId == null)
+                    continue;
+
+                foreach (var attr in entity.Attributes)
+                {
+                    // Attribute key → target node; if no value, key is the target
+                    var attrText = !string.IsNullOrEmpty(attr.Value) ? attr.Value : attr.Key;
+                    var attrId = FindNodeId(nodeIndex, attrText);
+                    if (attrId == null || attrId == entityId)
+                        continue;
+
+                    var edge = new Dictionary<string, object>
+                    {
+                        { "id", $"edge_attr_{edgeCounter:D3}" },
+                        { "sourceId", entityId },
+                        { "targetId", attrId },
+                        { "type", "HAS_PROPERTY" },
+                        { "label", $"{attr.Key}={attr.Value}" },
+                        { "confidence", attr.Confidence > 0 ? attr.Confidence : 0.75 },
+                        { "provenance", new Dictionary<string, object>
+                            {
+                                { "evidence", $"{entity.Text}.{attr.Key} = {attr.Value}" },
+                                { "source", "nlp/attribute" },
+                                { "confidence", attr.Confidence }
+                            }
+                        }
+                    };
+                    edges.Add(edge);
+                    edgeCounter++;
+                }
+            }
+        }
+
         // ── Phase 3: Add cross-block relations ──
         foreach (var rel in enrichedResult.CrossBlockRelations)
         {
@@ -1315,6 +1460,137 @@ public sealed class GeoJsonService
             };
             edges.Add(edge);
             edgeCounter++;
+        }
+
+        // ── Phase 3.5: Add dependency edges from semantic results ──
+        // This supplements explicit enriched relations with syntactic dependency edges
+        // (nn, conj, assmod, etc.) that the non-enriched KG builder already captures.
+        //
+        // Two-level matching:
+        //   1. Exact match: dep token text == node label/normalized (fast, precise)
+        //   2. Substring match: dep token text is substring of a node label (relaxed, cached)
+        var substringMatchCache = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var block in semanticResults.Blocks)
+        {
+            if (block.DepTokens.Count == 0 || block.DepEdges.Count == 0)
+                continue;
+
+            foreach (var depEdge in block.DepEdges)
+            {
+                var kgType = MapDepRelToKgEdgeType(depEdge.Rel);
+                if (kgType == null)
+                    continue;
+                if (depEdge.Head == -1)
+                    continue; // Skip root
+
+                if (depEdge.Child < 0 || depEdge.Child >= block.DepTokens.Count)
+                    continue;
+                if (depEdge.Head < 0 || depEdge.Head >= block.DepTokens.Count)
+                    continue;
+
+                var childToken = block.DepTokens[depEdge.Child];
+                var headToken = block.DepTokens[depEdge.Head];
+
+                // Skip punctuation and particles
+                if (IsSkipPos(childToken.Pos) || IsSkipPos(headToken.Pos))
+                    continue;
+
+                // ── Level 1: Exact match ──
+                string? childId = FindNodeByTokenExactOrSubstring(childToken.Text, textToNodeId, nodeIndex, substringMatchCache);
+                string? headId = FindNodeByTokenExactOrSubstring(headToken.Text, textToNodeId, nodeIndex, substringMatchCache);
+
+                if (childId == null || headId == null)
+                    continue;
+
+                // Skip self-loops
+                if (childId == headId)
+                    continue;
+
+                var (src, tgt) = DetermineEdgeDirection(kgType, childId, headId);
+
+                var depKvEdge = new Dictionary<string, object>
+                {
+                    { "id", $"edge_dep_{edgeCounter:D3}" },
+                    { "sourceId", src },
+                    { "targetId", tgt },
+                    { "type", kgType },
+                    { "label", depEdge.Rel },
+                    { "confidence", 0.85 },
+                    { "provenance", new Dictionary<string, object>
+                        {
+                            { "blockId", block.SourceBlockIds.FirstOrDefault() ?? "" },
+                            { "evidence", $"{childToken.Text} --[{depEdge.Rel}]--> {headToken.Text}" },
+                            { "source", $"dep/{depEdge.Rel}" },
+                            { "confidence", 0.85 }
+                        }
+                    }
+                };
+
+                edges.Add(depKvEdge);
+                edgeCounter++;
+            }
+        }
+
+        // ── Phase 3.6: Add co-occurrence edges ──
+        // Nodes that appear in the same text block together get a weak COOCCUR edge.
+        // This connects otherwise isolated nodes that share context but lack explicit
+        // NLP relations or dependency edges.
+        var blockNodeGroups = new Dictionary<string, HashSet<string>>(); // blockKey → set of nodeIds
+        foreach (var block in semanticResults.Blocks)
+        {
+            var blockKey = block.SourceBlockIds.FirstOrDefault() ?? "";
+            if (string.IsNullOrEmpty(blockKey)) continue;
+
+            var nodeIdsInBlock = new HashSet<string>();
+            foreach (var entity in block.Entities)
+            {
+                var nid = FindNodeId(nodeIndex, entity.Text);
+                if (nid != null)
+                    nodeIdsInBlock.Add(nid);
+            }
+
+            if (nodeIdsInBlock.Count < 2)
+                continue;
+
+            if (!blockNodeGroups.ContainsKey(blockKey))
+                blockNodeGroups[blockKey] = nodeIdsInBlock;
+            else
+                blockNodeGroups[blockKey].UnionWith(nodeIdsInBlock);
+        }
+
+        // Create co-occurrence edges (limit to avoid quadratic explosion)
+        foreach (var kvp in blockNodeGroups)
+        {
+            var nodeIds = kvp.Value.ToList();
+            if (nodeIds.Count < 2 || nodeIds.Count > 50) // Skip tiny or huge blocks
+                continue;
+
+            // Only connect each node to its nearest 3 neighbors (sorted by id)
+            nodeIds.Sort();
+            for (int i = 0; i < nodeIds.Count; i++)
+            {
+                for (int j = i + 1; j < System.Math.Min(i + 4, nodeIds.Count); j++)
+                {
+                    edges.Add(new Dictionary<string, object>
+                    {
+                        { "id", $"edge_cooc_{edgeCounter:D3}" },
+                        { "sourceId", nodeIds[i] },
+                        { "targetId", nodeIds[j] },
+                        { "type", "COOCCUR" },
+                        { "label", "共现" },
+                        { "confidence", 0.3 },
+                        { "provenance", new Dictionary<string, object>
+                            {
+                                { "blockId", kvp.Key },
+                                { "source", "cooccurrence" },
+                                { "confidence", 0.3 }
+                            }
+                        }
+                    });
+                    edgeCounter++;
+                }
+            }
         }
 
         // ── Phase 4: Deduplicate edges ──
@@ -1910,6 +2186,94 @@ public sealed class GeoJsonService
     }
 
     /// <summary>
+    /// Filters out labels that are clearly not meaningful KG nodes:
+    /// pure numbers/symbols, LaTeX artifacts, single-char non-CJK labels,
+    /// and single-char CJK characters that are common noise (function words,
+    /// measure words, segmentation artifacts).
+    /// </summary>
+    static bool IsKgNoiseLabel(string label)
+    {
+        if (string.IsNullOrWhiteSpace(label))
+            return true;
+
+        // Single character that isn't a CJK ideograph → noise
+        if (label.Length == 1)
+        {
+            var c = label[0];
+            // Allow CJK characters (U+4E00–U+9FFF, U+3400–U+4DBF)
+            if ((c >= 0x4E00 && c <= 0x9FFF) || (c >= 0x3400 && c <= 0x4DBF))
+            {
+                // But reject common CJK noise chars: function words, measure words,
+                // segmentation artifacts, and generic terms that are never standalone entities
+                if (IsSingleCharCjkNoise(c))
+                    return true;
+                return false;
+            }
+            // Allow CJK compatibility ideographs
+            if (c >= 0xF900 && c <= 0xFAFF)
+                return false;
+            return true; // Single non-CJK char is noise
+        }
+
+        // LaTeX artifacts
+        if (label.StartsWith("\\") || label.Contains("\\frac") || label.Contains("\\mathrm") ||
+            label.Contains("\\mathbf") || label.Contains("\\begin") || label.Contains("\\array"))
+            return true;
+        if (label == "frac" || label == "mathrm" || label == "array" || label == "begin" ||
+            label == "mathbf" || label == "textrm")
+            return true;
+
+        // Pure numeric/symbol patterns (with optional dashes, dots, brackets)
+        if (System.Text.RegularExpressions.Regex.IsMatch(label, @"^[\d\s\-\.\+/\\\(\)\[\]\{\},;:'""\\|@#$%^&*=~`±×÷≤≥<>]+$"))
+            return true;
+
+        return false;
+    }
+
+    /// <summary>
+    /// Two-level token-to-node matching: exact match first, then substring match (cached).
+    /// Substring match requires the token to be ≥ half the length of the matched label
+    /// to avoid false positives from short tokens (e.g., "上海" matching "上海尧治..." is OK,
+    /// but "图" matching "图3-1" is not).
+    /// </summary>
+    static string? FindNodeByTokenExactOrSubstring(
+        string tokenText,
+        Dictionary<string, string> textToNodeId,
+        Dictionary<string, Dictionary<string, object>> nodeIndex,
+        Dictionary<string, string?> cache)
+    {
+        // Check cache
+        if (cache.TryGetValue(tokenText, out var cached))
+            return cached;
+
+        // Level 1: Exact match
+        if (textToNodeId.TryGetValue(tokenText, out var exactId))
+        {
+            cache[tokenText] = exactId;
+            return exactId;
+        }
+
+        // Level 2: Substring match (token must be ≥ 2 chars AND ≥ half the label length)
+        if (tokenText.Length >= 2)
+        {
+            foreach (var kvp in nodeIndex)
+            {
+                var label = (string)kvp.Value["label"];
+                if (label.Length >= tokenText.Length * 2)
+                    continue; // Token too short relative to label — skip to avoid false positives
+                if (label.Contains(tokenText, StringComparison.OrdinalIgnoreCase))
+                {
+                    cache[tokenText] = kvp.Key;
+                    return kvp.Key;
+                }
+            }
+        }
+
+        cache[tokenText] = null;
+        return null;
+    }
+
+    /// <summary>
     /// Get the GeoLibre URL to load the generated JSON file.
     /// </summary>
     public string GetGeoLibreUrl(string geoLibreBaseUrl, string geoJsonFilePath)
@@ -1919,5 +2283,61 @@ public sealed class GeoJsonService
         var baseUrl = geoLibreBaseUrl.TrimEnd('/');
         
         return $"{baseUrl}?url={Uri.EscapeDataString(fileUri)}";
+    }
+
+    /// <summary>
+    /// Returns true if a single CJK character is common noise that should never
+    /// appear as a standalone KG node. Covers: function words, measure words,
+    /// cardinal directions, generic geographic terms, and known segmentation artifacts.
+    /// </summary>
+    static bool IsSingleCharCjkNoise(char c)
+    {
+        // This set covers chars observed as segmentation noise in real data,
+        // plus common function/measure words that HanLP may mis-tag as entities.
+        // We intentionally do NOT include:
+        //   - Province abbreviations (京, 沪, 粤...)
+        //   - Common surnames (王, 李, 张...)
+        //   - Material/element names (铁, 钢, 金...)
+        // as those can be legitimate standalone entities.
+        return c switch
+        {
+            // Function words / particles
+            '的' or '了' or '是' or '在' or '和' or '与' or '或' => true,
+            '但' or '而' or '则' or '也' or '就' or '要' or '会' => true,
+            '能' or '可' or '以' or '被' or '把' or '从' or '对' => true,
+            '向' or '往' or '到' or '于' or '着' or '过' or '得' => true,
+            '之' or '其' or '所' or '者' or '此' or '该' or '各' => true,
+            '又' or '再' or '还' or '已' or '将' or '未' or '非' => true,
+            
+            // Measure words / classifiers
+            '个' or '只' or '条' or '件' or '种' or '次' or '回' => true,
+            '遍' or '趟' or '张' or '本' or '支' or '块' or '片' => true,
+            '句' or '位' or '双' or '台' or '辆' or '艘' or '架' => true,
+            '号' or '余' or '章' or '节' or '页' or '段' or '行' => true,
+            '册' or '篇' or '份' or '类' or '款' or '项' => true,
+
+            // CJK numerals (standalone almost never meaningful entities)
+            '零' or '一' or '二' or '三' or '四' or '五' => true,
+            '六' or '七' or '八' or '九' or '十' or '百' => true,
+            '千' or '万' or '亿' or '两' or '几' or '半' => true,
+            
+            // Cardinal directions (too ambiguous alone)
+            '东' or '南' or '西' or '北' or '中' or '上' or '下' => true,
+            '左' or '右' or '前' or '后' or '内' or '外' or '里' => true,
+            
+            // Generic geographic terms (need qualifier to be a location)
+            '河' or '山' or '海' or '江' or '湖' or '岛' or '湾' => true,
+            '港' or '城' or '镇' or '村' or '庄' or '市' or '县' => true,
+            '区' or '省' or '路' or '街' or '桥' or '门' or '关' => true,
+            '岭' or '峰' or '谷' or '原' or '漠' or '林' or '泉' => true,
+            '溪' or '潭' or '池' or '寺' or '庙' or '塔' or '楼' => true,
+            
+            // Known segmentation noise from real data
+            '柱' or '际' or '杆' or '草' or '方' or '间' or '处' => true,
+            '系' or '杠' or '模' or '途' or '层' or '端' or '侧' => true,
+            '边' or '角' or '底' or '顶' or '头' or '尾' or '面' => true,
+            
+            _ => false
+        };
     }
 }

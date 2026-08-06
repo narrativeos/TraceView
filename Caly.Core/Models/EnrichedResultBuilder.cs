@@ -103,6 +103,10 @@ public static class EnrichedResultBuilder
 
     private static EnrichedEntityEntry? BuildEntityEntry(SemanticEntity entity)
     {
+        // Skip noise entities: pure numeric/symbol, LaTeX artifacts, single non-CJK chars
+        if (IsNoiseEntity(entity.Text))
+            return null;
+
         // Build validation status respecting the full severity spectrum:
         // - invalid when is_valid == false
         // - ambiguous when severity == "Warning" (valid but needs disambiguation)
@@ -223,5 +227,90 @@ public static class EnrichedResultBuilder
         var key = $"{entity.Category}:enrichment";
         return entity.EnrichedMetadata.TryGetValue(key, out var v) &&
                v is Dictionary<string, object> d ? d : null;
+    }
+
+    /// <summary>
+    /// Returns true if the entity text is noise that should not appear in the KG:
+    /// pure numbers/symbols, LaTeX artifacts, single non-CJK characters,
+    /// and single CJK characters that are common function words or segmentation noise.
+    /// </summary>
+    private static bool IsNoiseEntity(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return true;
+
+        // Single character that isn't a CJK ideograph
+        if (text.Length == 1)
+        {
+            var c = text[0];
+            if ((c >= 0x4E00 && c <= 0x9FFF) || (c >= 0x3400 && c <= 0x4DBF))
+            {
+                // Reject common CJK noise chars: function words, measure words,
+                // cardinal directions, geographic generics, segmentation artifacts
+                if (IsSingleCharCjkNoise(c))
+                    return true;
+                return false;
+            }
+            if (c >= 0xF900 && c <= 0xFAFF)
+                return false;
+            return true;
+        }
+
+        // LaTeX artifacts
+        if (text.StartsWith("\\") || text.Contains("\\frac") || text.Contains("\\mathrm") ||
+            text.Contains("\\mathbf") || text.Contains("\\begin") || text.Contains("\\array"))
+            return true;
+        if (text == "frac" || text == "mathrm" || text == "array" || text == "begin" ||
+            text == "mathbf" || text == "textrm")
+            return true;
+
+        // Pure numeric/symbol (with optional dashes, dots, brackets)
+        if (System.Text.RegularExpressions.Regex.IsMatch(text,
+                @"^[\d\s\-\.\+/\\\(\)\[\]\{\},;:'""\\|@#$%^&*=~`±×÷≤≥<>]+$"))
+            return true;
+
+        return false;
+    }
+
+    /// <summary>
+    /// Returns true if a single CJK character is common noise.
+    /// Mirrors GeoJsonService.IsSingleCharCjkNoise.
+    /// </summary>
+    private static bool IsSingleCharCjkNoise(char c)
+    {
+        return c switch
+        {
+            // Function words / particles
+            '的' or '了' or '是' or '在' or '和' or '与' or '或' => true,
+            '但' or '而' or '则' or '也' or '就' or '要' or '会' => true,
+            '能' or '可' or '以' or '被' or '把' or '从' or '对' => true,
+            '向' or '往' or '到' or '于' or '着' or '过' or '得' => true,
+            '之' or '其' or '所' or '者' or '此' or '该' or '各' => true,
+            '又' or '再' or '还' or '已' or '将' or '未' or '非' => true,
+            // Measure words / classifiers
+            '个' or '只' or '条' or '件' or '种' or '次' or '回' => true,
+            '遍' or '趟' or '张' or '本' or '支' or '块' or '片' => true,
+            '句' or '位' or '双' or '台' or '辆' or '艘' or '架' => true,
+            '号' or '余' or '章' or '节' or '页' or '段' or '行' => true,
+            '册' or '篇' or '份' or '类' or '款' or '项' => true,
+            // CJK numerals (standalone almost never meaningful entities)
+            '零' or '一' or '二' or '三' or '四' or '五' => true,
+            '六' or '七' or '八' or '九' or '十' or '百' => true,
+            '千' or '万' or '亿' or '两' or '几' or '半' => true,
+            // Cardinal directions
+            '东' or '南' or '西' or '北' or '中' or '上' or '下' => true,
+            '左' or '右' or '前' or '后' or '内' or '外' or '里' => true,
+            // Generic geographic terms
+            '河' or '山' or '海' or '江' or '湖' or '岛' or '湾' => true,
+            '港' or '城' or '镇' or '村' or '庄' or '市' or '县' => true,
+            '区' or '省' or '路' or '街' or '桥' or '门' or '关' => true,
+            '岭' or '峰' or '谷' or '原' or '漠' or '林' or '泉' => true,
+            '溪' or '潭' or '池' or '寺' or '庙' or '塔' or '楼' => true,
+            // Known segmentation noise
+            '柱' or '际' or '杆' or '草' or '方' or '间' or '处' => true,
+            '系' or '杠' or '模' or '途' or '层' or '端' or '侧' => true,
+            '边' or '角' or '底' or '顶' or '头' or '尾' or '面' => true,
+            _ => false
+        };
     }
 }
