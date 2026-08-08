@@ -516,6 +516,30 @@ public sealed partial class DocumentsTabsControl : UserControl
         docVm.ReEnrichCommand?.Execute(null);
     }
 
+    private async void OnTermProcessClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel mainVm || mainVm.SelectedDocument is not DocumentViewModel docVm)
+            return;
+
+        if (docVm.HasTermData)
+        {
+            var dialogService = DialogService;
+            if (dialogService is not null)
+            {
+                var confirmed = await dialogService.ShowConfirmationDialogAsync(
+                    "确认重新加工",
+                    "术语发现数据已存在，重新加工将覆盖现有数据。是否继续？");
+                if (!confirmed)
+                {
+                    e.Handled = true;
+                    return;
+                }
+            }
+        }
+
+        docVm.ProcessTermCommand?.Execute(null);
+    }
+
     private async void OnExportGeoLibreClick(object? sender, RoutedEventArgs e)
     {
         if (DataContext is not MainViewModel mainVm || mainVm.SelectedDocument is not DocumentViewModel docVm)
@@ -634,6 +658,7 @@ public sealed partial class DocumentsTabsControl : UserControl
                                                     "ShowAnalysisColumn" or "HasPopoBlocks" or "PopoTreeRoot" or
                                                     "ShowSemanticColumn" or "HasSemanticResults" or "SemanticResults" or
                                                      "ShowGeoColumn" or "GeoStatus" or
+                                                    "ShowEnrichedColumn" or "ShowTermColumn" or
                                                     "VisiblePages" or "ZoomLevel")
         {
             UpdateConnectionLines();

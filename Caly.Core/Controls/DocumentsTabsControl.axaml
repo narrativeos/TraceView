@@ -276,6 +276,20 @@
                                 </PathIcon>
                             </ToggleButton>
 
+                            <!-- Toggle Term Column -->
+                            <ToggleButton DockPanel.Dock="Left"
+                                        Margin="0,0,0,0"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Stretch"
+                                       Background="Transparent"
+                                       IsChecked="{Binding ShowTermColumn}">
+                                <PathIcon Width="17"
+                                          Height="17"
+                                          Data="{StaticResource bookmark_regular}">
+                                    <ToolTip.Tip>Toggle Term Discovery</ToolTip.Tip>
+                                </PathIcon>
+                            </ToggleButton>
+
                             <!-- Alignment Report -->
 						<Button DockPanel.Dock="Left"
                                 Margin="5,0,0,0"
@@ -326,6 +340,25 @@
 									  Opacity="{Binding HasEnrichedData, Converter={StaticResource CompletedToOpacityConverter}}">
 								<ToolTip.Tip>
 									<TextBlock Text="{Binding EnrichButtonTooltip}"/>
+								</ToolTip.Tip>
+							</PathIcon>
+						</Button>
+
+						<!-- Term Process (visible when semantic data exists) -->
+						<Button DockPanel.Dock="Right"
+                                Margin="0,0,5,0"
+								HorizontalAlignment="Center"
+								VerticalAlignment="Stretch"
+								Background="Transparent"
+                                Click="OnTermProcessClick"
+                                IsEnabled="{Binding CanProcessTerm}"
+                                IsVisible="{Binding HasSemanticData}">
+							<PathIcon Width="17"
+									  Height="17"
+									  Data="{StaticResource bookmark_regular}"
+									  Opacity="{Binding HasTermData, Converter={StaticResource CompletedToOpacityConverter}}">
+								<ToolTip.Tip>
+									<TextBlock Text="{Binding TermButtonTooltip}"/>
 								</ToolTip.Tip>
 							</PathIcon>
 						</Button>
@@ -438,6 +471,7 @@
                                  <ColumnDefinition Width="{Binding ShowSemanticColumn, Converter={StaticResource BoolToGridLengthConverter}}"/>
                                  <ColumnDefinition Width="{Binding ShowGeoColumn, Converter={StaticResource BoolToGridLengthConverter}}"/>
                                  <ColumnDefinition Width="{Binding ShowEnrichedColumn, Converter={StaticResource BoolToGridLengthConverter}}"/>
+                                 <ColumnDefinition Width="{Binding ShowTermColumn, Converter={StaticResource BoolToGridLengthConverter}}"/>
                              </Grid.ColumnDefinitions>
 
                             <!-- Column 1: PDF Document -->
@@ -2191,17 +2225,89 @@
                                   </DockPanel>
                               </Border>
 
-                             <!-- Connection Lines overlay between all six columns -->
+                             <!-- GridSplitter between Enriched and Term -->
+                             <GridSplitter Grid.Column="5"
+                                           HorizontalAlignment="Right"
+                                           Width="4"
+                                           Background="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                                           IsVisible="{Binding ShowTermColumn}"/>
+
+                              <!-- Column 7: Term Discovery Tree -->
+                              <Border Grid.Column="6"
+                                      Padding="8"
+                                      Background="{DynamicResource SystemChromeLowColor}"
+                                      BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                                      BorderThickness="1"
+                                      IsVisible="{Binding ShowTermColumn}">
+                                  <DockPanel>
+                                      <!-- Header -->
+                                      <Grid DockPanel.Dock="Top"
+                                            Margin="0,0,0,6">
+                                          <StackPanel Spacing="2">
+                                              <TextBlock Text="术语"
+                                                         FontWeight="Bold"
+                                                         FontSize="12"/>
+                                              <TextBlock Text="{Binding TermStatusText}"
+                                                         FontSize="10"
+                                                         Opacity="0.5"/>
+                                          </StackPanel>
+                                      </Grid>
+
+                                      <!-- Tree Content -->
+                                      <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                                                    VerticalScrollBarVisibility="Auto">
+                                          <TreeView ItemsSource="{Binding TermBlockViewModel.RootNodes}"
+                                                    BorderThickness="0"
+                                                    Background="Transparent">
+                                              <TreeView.ItemTemplate>
+                                                  <TreeDataTemplate ItemsSource="{Binding Children}">
+                                                      <StackPanel Orientation="Horizontal"
+                                                                  Spacing="4"
+                                                                  Margin="0,1">
+                                                          <!-- Expand/Collapse arrow handled by TreeView -->
+                                                          <Border Padding="4,2"
+                                                                  CornerRadius="3"
+                                                                  Background="{DynamicResource SystemChromeMediumLowColor}">
+                                                              <StackPanel Spacing="0">
+                                                                  <TextBlock FontSize="11"
+                                                                             FontWeight="SemiBold"
+                                                                             Text="{Binding Term}"/>
+                                                                  <StackPanel Orientation="Horizontal"
+                                                                              Spacing="4">
+                                                                      <TextBlock FontSize="9"
+                                                                                 Foreground="{Binding CategoryColorHex}"
+                                                                                 Text="{Binding Category}"/>
+                                                                      <TextBlock FontSize="9"
+                                                                                 Opacity="0.5"
+                                                                                 Text="{Binding ScoreDisplay, StringFormat='s={0}'}"/>
+                                                                  </StackPanel>
+                                                                  <TextBlock FontSize="8"
+                                                                             Opacity="0.4"
+                                                                             FontStyle="Italic"
+                                                                             Text="{Binding Definition}"
+                                                                              TextWrapping="Wrap"
+                                                                              MaxWidth="240"/>
+                                                              </StackPanel>
+                                                          </Border>
+                                                      </StackPanel>
+                                                  </TreeDataTemplate>
+                                              </TreeView.ItemTemplate>
+                                          </TreeView>
+                                      </ScrollViewer>
+                                  </DockPanel>
+                              </Border>
+
+                             <!-- Connection Lines overlay between all seven columns -->
                              <controls:ConnectionLinesControl 
                                  Grid.Column="0"
-                                 Grid.ColumnSpan="6"
+                                 Grid.ColumnSpan="7"
                                  Name="PART_ConnectionLinesControl"
                                  IsVisible="True"
                                  IsHitTestVisible="False"/>
 
                              <!-- TOC Overlay (covers all columns) -->
                              <Panel Grid.Column="0"
-                                    Grid.ColumnSpan="6"
+                                    Grid.ColumnSpan="7"
                                     IsVisible="{Binding ShowTocPanel}">
                                  <Rectangle Fill="Gray"
                                             Opacity="0.3"/>

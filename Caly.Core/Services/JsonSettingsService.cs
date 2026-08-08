@@ -69,6 +69,18 @@ namespace Caly.Core.Services;
 [JsonSerializable(typeof(Caly.Core.Models.EnrichedBlockResult), GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(Caly.Core.Models.EnrichedEntityEntry), GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(Caly.Core.Models.EnrichedRelation), GenerationMode = JsonSourceGenerationMode.Metadata)]
+// Term definition models
+[JsonSerializable(typeof(Caly.Core.Models.TermDefinition), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(System.Collections.Generic.List<Caly.Core.Models.TermDefinition>), GenerationMode = JsonSourceGenerationMode.Metadata)]
+// Term result models
+[JsonSerializable(typeof(Caly.Core.Models.TermResultFile), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(Caly.Core.Models.TermEntry), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(Caly.Core.Models.TermOutputRelation), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(Caly.Core.Models.TermTreeNodeOutput), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(Caly.Core.Models.TermStatistics), GenerationMode = JsonSourceGenerationMode.Metadata)]
+// Location relation models
+[JsonSerializable(typeof(Caly.Core.Models.LocationRelation), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(System.Collections.Generic.List<Caly.Core.Models.LocationRelation>), GenerationMode = JsonSourceGenerationMode.Metadata)]
 internal partial class SourceGenerationContext : JsonSerializerContext;
 
 internal sealed class JsonSettingsService : ISettingsService

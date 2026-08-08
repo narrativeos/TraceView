@@ -72,8 +72,12 @@ public sealed class SemanticAnalysisService : IDisposable
     /// Calls /analyze once (deps are now merged into the response),
     /// saves dependency data to the result, and annotates LOCATION entities with syntactic roles.
     /// </summary>
+    /// <param name="node">The Popo tree node to analyze.</param>
+    /// <param name="entityCategories">Optional domain-specific keyword dictionaries for entity discovery.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<SemanticBlockResult> AnalyzeAsync(
         AnalysisTreeNode node,
+        Dictionary<string, List<string>>? entityCategories = null,
         CancellationToken cancellationToken = default)
     {
         System.Diagnostics.Debug.WriteLine($"[SemanticAnalysisService] Analyzing node with {node.Content.Length} chars");
@@ -83,7 +87,12 @@ public sealed class SemanticAnalysisService : IDisposable
         {
             Text = cleanText,
             Source = "hanlp_v2",
-            Language = "auto"
+            Language = "auto",
+            // ── Phase 1: Enable HanLP advanced discovery features ──
+            Discover = true,                  // Enable new word discovery
+            Enhance = true,                   // Auto-apply discovered words & re-analyze
+            AutoDiscoverEntities = true,      // Promote high-score candidates to entities
+            EntityCategories = entityCategories // Domain-specific keyword injection
         };
 
         var json = JsonSerializer.Serialize(request, SourceGenerationContext.Default.HanLPAnalyzeRequest);
@@ -149,10 +158,16 @@ public sealed class SemanticAnalysisService : IDisposable
     /// <summary>
     /// Analyzes multiple nodes in sequence.
     /// </summary>
+    /// <param name="nodes">Popo tree nodes to analyze.</param>
+    /// <param name="outputDir">Output directory for semantic_result.json.</param>
+    /// <param name="progressCallback">Progress callback (current, total).</param>
+    /// <param name="entityCategories">Optional domain-specific keyword dictionaries for entity discovery.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<SemanticResultFile> ProcessAllNodesAsync(
         List<AnalysisTreeNode> nodes,
         string outputDir,
         Action<int, int> progressCallback,
+        Dictionary<string, List<string>>? entityCategories = null,
         CancellationToken cancellationToken = default)
     {
         var blocks = new List<SemanticBlockResult>();
@@ -163,7 +178,7 @@ public sealed class SemanticAnalysisService : IDisposable
 
             try
             {
-                var blockResult = await AnalyzeAsync(nodes[i], cancellationToken);
+                var blockResult = await AnalyzeAsync(nodes[i], entityCategories, cancellationToken);
                 blocks.Add(blockResult);
             }
             catch (Exception ex)
@@ -191,6 +206,16 @@ public sealed class SemanticAnalysisService : IDisposable
 
         // Phase 2 Step 6: Resolve cross-block coreference relations for LOCATION entities
         fileResult.CrossBlockRelations = ResolveCrossBlockCoreferences(blocks);
+
+        // ── Phase 1: Extract term definitions from all blocks ──
+        var definitionExtractor = new TermDefinitionExtractor();
+        foreach (var block in blocks)
+        {
+            if (block.Error != null) continue;
+            block.TermDefinitions = definitionExtractor.ExtractDefinitions(block);
+        }
+        // Cross-block definition resolution (merge same-term definitions)
+        definitionExtractor.ResolveCrossBlockDefinitions(blocks);
 
         // Save to disk
         Directory.CreateDirectory(outputDir);

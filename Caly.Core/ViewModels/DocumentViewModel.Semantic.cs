@@ -26,6 +26,7 @@ using Caly.Core.Services.EntityProcessors.Location;
 using Caly.Core.Services.EntityProcessors.Temporal;
 using Caly.Core.Services.EntityProcessors.Person;
 using Caly.Core.Services.EntityProcessors.Organization;
+using Caly.Core.Services.EntityProcessors.Term;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System;
@@ -52,6 +53,20 @@ public sealed partial class DocumentViewModel
     [ObservableProperty]
     private bool _showEnrichedColumn = false;
 
+    /// <summary>Whether the Term Discovery column is visible.</summary>
+    [ObservableProperty]
+    private bool _showTermColumn = false;
+
+    /// <summary>Whether term discovery processing is running.</summary>
+    [ObservableProperty]
+    private bool _isTermProcessing;
+
+    partial void OnIsTermProcessingChanged(bool value)
+    {
+        OnPropertyChanged(nameof(TermButtonTooltip));
+        OnPropertyChanged(nameof(TermStatusText));
+    }
+
     /// <summary>
     /// Cached semantic analysis results loaded from disk.
     /// </summary>
@@ -72,12 +87,48 @@ public sealed partial class DocumentViewModel
     /// <summary>Whether enriched result exists on disk.</summary>
     public bool HasEnrichedData => ExistsInSemanticDir("enriched_result.json");
 
+    /// <summary>Whether term discovery result exists on disk.</summary>
+    public bool HasTermData => ExistsInSemanticDir("term_result.json");
+
     /// <summary>
     /// Whether enrichment can run: requires semantic results (in-memory).
     /// GeoJSON is preferred for location enrichment but not required — if missing,
     /// LOCATION entities will be enriched without geocoding data.
     /// </summary>
     public bool CanEnrich => HasSemanticResults;
+
+    /// <summary>
+    /// Whether term discovery can run: requires semantic results (in-memory).
+    /// </summary>
+    public bool CanProcessTerm => HasSemanticResults && !IsTermProcessing;
+
+    /// <summary>
+    /// Dynamic tooltip for the Term Process button.
+    /// </summary>
+    public string TermButtonTooltip
+    {
+        get
+        {
+            if (IsTermProcessing) return "术语发现处理中...";
+            if (HasTermData) return "术语发现已完成 · 点击重新加工";
+            if (!HasSemanticResults) return "需要先完成 NLP 语义分析";
+            return "运行术语发现加工";
+        }
+    }
+
+    /// <summary>Status text for the Term column.</summary>
+    public string TermStatusText
+    {
+        get
+        {
+            if (IsTermProcessing) return "术语发现处理中...";
+            if (_termResults is not null)
+                return $"术语发现完成: {_termResults.Terms.Count} terms, {_termResults.Relations.Count} relations";
+            if (HasTermData) return "术语数据已生成 · 点击术语列切换按钮加载";
+            if (!HasSemanticResults) return "需要先完成 NLP 语义分析";
+            return "点击 Term Process 进行术语发现";
+        }
+    }
 
     /// <summary>
     /// Dynamic tooltip for the Enrich button reflecting current state.
@@ -330,6 +381,35 @@ public sealed partial class DocumentViewModel
         OnPropertyChanged(nameof(EnrichButtonTooltip));
     }
 
+    /// <summary>Term discovery results loaded from term_result.json.</summary>
+    [ObservableProperty]
+    private TermResultFile? _termResults;
+
+    private TermBlockViewModel? _termBlockViewModel;
+
+    public TermBlockViewModel? TermBlockViewModel
+    {
+        get
+        {
+            if (_termBlockViewModel is not null) return _termBlockViewModel;
+            if (TermResults is null) return null;
+            _termBlockViewModel = new TermBlockViewModel(TermResults);
+            return _termBlockViewModel;
+        }
+    }
+
+    partial void OnTermResultsChanged(TermResultFile? value)
+    {
+        _termBlockViewModel = null;
+        OnPropertyChanged(nameof(TermBlockViewModel));
+        OnPropertyChanged(nameof(HasTermData));
+        OnPropertyChanged(nameof(TermButtonTooltip));
+        OnPropertyChanged(nameof(TermStatusText));
+        // Auto-open the column when data loads (e.g., after pipeline completes)
+        if (value != null)
+            ShowTermColumn = true;
+    }
+
     public int EnrichedEntityCount => EnrichedResults?.Blocks.Sum(b => b.Entities.Count) ?? 0;
     public int EnrichedWithSourceCount => EnrichedResults?.Blocks.Sum(b => b.Entities.Count(e => !string.IsNullOrEmpty(e.EnrichmentSource))) ?? 0;
 
@@ -390,6 +470,43 @@ public sealed partial class DocumentViewModel
         }
     }
 
+    /// <summary>Load term_result.json from disk.</summary>
+    internal void TryLoadTermData()
+    {
+        if (ProjectPath is null)
+        {
+            ShowTermColumn = true;
+            return;
+        }
+        var termPath = Path.Combine(ProjectPath, "semantic", "term_result.json");
+        if (!File.Exists(termPath))
+        {
+            ShowTermColumn = false;
+            return;
+        }
+        try
+        {
+            var json = File.ReadAllText(termPath);
+            var options = new System.Text.Json.JsonSerializerOptions
+            {
+                TypeInfoResolver = Caly.Core.Services.SourceGenerationContext.Default,
+                PropertyNameCaseInsensitive = true
+            };
+            var loaded = System.Text.Json.JsonSerializer.Deserialize<TermResultFile>(json, options);
+            if (loaded is not null)
+            {
+                TermResults = loaded;
+                ShowTermColumn = true;
+                System.Diagnostics.Debug.WriteLine($"[Term] Loaded term_result.json ({loaded.Terms.Count} terms, {loaded.Relations.Count} relations)");
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowTermColumn = false;
+            System.Diagnostics.Debug.WriteLine($"[Term] Failed to load term_result.json: {ex.Message}");
+        }
+    }
+
     /// <summary>
     /// Overrides SemanticResults setter to reset cached ViewModels.
     /// </summary>
@@ -434,6 +551,7 @@ public sealed partial class DocumentViewModel
                 SemanticStatusText = $"Loaded from cache ({SemanticNodeCount} nodes, {SemanticEntityCount} entities)";
                 OnPropertyChanged(nameof(HasSemanticData));
                 TryLoadEnrichedData();
+                TryLoadTermData();
                 UpdateSemanticVisibility();
             }
         }
@@ -455,6 +573,58 @@ public sealed partial class DocumentViewModel
     {
         if (value && EnrichedResults == null)
             TryLoadEnrichedData();
+    }
+
+    [RelayCommand]
+    private void ToggleTermColumn()
+    {
+        ShowTermColumn = !ShowTermColumn;
+        if (ShowTermColumn && TermResults == null)
+            TryLoadTermData();
+    }
+
+    partial void OnShowTermColumnChanged(bool value)
+    {
+        if (value && TermResults == null)
+            TryLoadTermData();
+    }
+
+    [RelayCommand]
+    private async Task ProcessTermAsync()
+    {
+        if (!HasSemanticResults || IsTermProcessing) return;
+
+        // Term discovery is part of the enrichment pipeline — if enriched data exists,
+        // term_result.json should already be generated. If not, trigger enrichment.
+        if (!HasEnrichedData && CanEnrich)
+        {
+            // Run enrichment pipeline which will also generate term_result.json
+            await ProcessWithEnrichmentAsync();
+        }
+
+        // Try loading the term result
+        TryLoadTermData();
+    }
+
+    private async Task ProcessWithEnrichmentAsync()
+    {
+        if (SemanticResults is null) return;
+        try
+        {
+            IsEnrichProcessing = true;
+            SetEnrichStatus("Enriching entities...");
+            var outputDir = Path.Combine(ProjectPath!, "semantic");
+            var enrichedResult = await RunEnrichmentPipelineAsync(SemanticResults, outputDir, CancellationToken.None);
+            if (enrichedResult != null)
+            {
+                EnrichedResults = enrichedResult;
+                SetEnrichStatus("Enrichment complete");
+            }
+        }
+        finally
+        {
+            IsEnrichProcessing = false;
+        }
     }
 
     [RelayCommand]
@@ -545,6 +715,7 @@ public sealed partial class DocumentViewModel
                         SemanticStatusText = $"Analyzing node {current + 1}/{total}...";
                     });
                 },
+                entityCategories: null, // Phase 5 will inject domain dictionaries
                 _semanticCts.Token);
 
             SemanticResults = result;
@@ -761,6 +932,33 @@ public sealed partial class DocumentViewModel
                 SourceGenerationContext.Default.EnrichedResultFile);
             await File.WriteAllTextAsync(enrichedPath, json);
             System.Diagnostics.Debug.WriteLine($"[Semantic] Saved enriched_result.json ({enrichedResult.Blocks.Count} blocks)");
+
+            // ── Build and save term discovery results ──
+            try
+            {
+                // Collect entity metadata from semantic entities
+                var entityMetadata = new Dictionary<string, Dictionary<string, object>>();
+                foreach (var block in result.Blocks)
+                {
+                    foreach (var entity in block.Entities)
+                    {
+                        if (entity.EnrichedMetadata.Count > 0)
+                            entityMetadata[entity.Text] = entity.EnrichedMetadata;
+                    }
+                }
+
+                var termResult = TermResultBuilder.Build(enrichedResult, result, outputDir, entityMetadata);
+                var termPath = Path.Combine(outputDir, "term_result.json");
+                var termJson = System.Text.Json.JsonSerializer.Serialize(
+                    termResult,
+                    SourceGenerationContext.Default.EnrichedResultFile);
+                await File.WriteAllTextAsync(termPath, termJson);
+                System.Diagnostics.Debug.WriteLine($"[Semantic] Saved term_result.json ({termResult.Terms.Count} terms, {termResult.Relations.Count} relations, {termResult.TermTree.Count} root nodes)");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[Semantic] Failed to build term_result.json: {ex.Message}");
+            }
         }
         return enrichedResult;
     }
@@ -808,6 +1006,7 @@ public sealed partial class DocumentViewModel
         pipeline.AddProcessor(new TemporalProcessor());
         pipeline.AddProcessor(new PersonProcessor());
         pipeline.AddProcessor(new OrganizationProcessor());
+        pipeline.AddProcessor(new TermProcessor());
         return pipeline;
     }
 

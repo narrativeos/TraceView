@@ -738,6 +738,32 @@ public sealed class GeoJsonService
             kgData = BuildKnowledgeGraph(semanticResults, geocodingResults, locationByName);
         }
 
+        // ── Phase: Augment KG with term discovery results (if available) ──
+        var termPath = System.IO.Path.Combine(semanticDir ?? "", "term_result.json");
+        if (System.IO.File.Exists(termPath) && kgData != null)
+        {
+            try
+            {
+                var termJson = await System.IO.File.ReadAllTextAsync(termPath);
+                var options = new System.Text.Json.JsonSerializerOptions
+                {
+                    TypeInfoResolver = Caly.Core.Services.SourceGenerationContext.Default,
+                    PropertyNameCaseInsensitive = true
+                };
+                var termResult = System.Text.Json.JsonSerializer.Deserialize(
+                    termJson, typeof(Caly.Core.Models.TermResultFile), options) as Caly.Core.Models.TermResultFile;
+                if (termResult != null)
+                {
+                    EnrichKgWithTerms(kgData, termResult);
+                    System.Diagnostics.Debug.WriteLine($"[GeoJsonService] Augmented KG with {termResult.Terms.Count} terms from term_result.json");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[GeoJsonService] Failed to load term_result.json: {ex.Message}");
+            }
+        }
+
         if (kgData is not null)
         {
             geoLibreJson["knowledgeGraph"] = kgData;
@@ -1647,6 +1673,115 @@ public sealed class GeoJsonService
     }
 
     /// <summary>
+    /// Augments an existing knowledge graph dictionary with term nodes and HYPERNYM/HYPONYM edges
+    /// from term discovery results. Called after the main KG is built.
+    /// </summary>
+    static void EnrichKgWithTerms(Dictionary<string, object> kgData, Caly.Core.Models.TermResultFile termResult)
+    {
+        if (!kgData.TryGetValue("nodes", out var nodesObj) || nodesObj is not List<Dictionary<string, object>> nodes)
+            return;
+        if (!kgData.TryGetValue("edges", out var edgesObj) || edgesObj is not List<Dictionary<string, object>> edges)
+            return;
+
+        // Update node colors to include TERM
+        if (kgData.TryGetValue("visualization", out var visObj) && visObj is Dictionary<string, object> vis)
+        {
+            if (vis.TryGetValue("nodeColors", out var colorsObj) && colorsObj is Dictionary<string, object> colors)
+            {
+                colors["TERM"] = "#E91E63"; // Pink for terms
+            }
+        }
+
+        var existingLabels = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var node in nodes)
+        {
+            if (node.TryGetValue("label", out var label) && label is string l)
+                existingLabels.Add(l);
+        }
+
+        int edgeCounter = edges.Count + 1;
+
+        // Add top-scoring terms as TERM nodes (limit to top 50 to avoid clutter)
+        var topTerms = termResult.Terms
+            .OrderByDescending(t => t.Score)
+            .Take(50)
+            .ToList();
+
+        foreach (var term in topTerms)
+        {
+            var label = term.Text;
+            if (existingLabels.Contains(label)) continue;
+
+            var node = new Dictionary<string, object>
+            {
+                { "id", $"node_TERM_{label}" },
+                { "type", "TERM" },
+                { "label", label },
+                { "normalized", label },
+                { "category", "TERM" },
+                { "frequency", term.Frequency },
+                { "importanceScore", term.Score },
+                { "mentions", new List<Dictionary<string, object>>() }
+            };
+
+            if (!string.IsNullOrEmpty(term.Definition))
+                node["definition"] = term.Definition;
+            if (!string.IsNullOrEmpty(term.Category))
+                node["termCategory"] = term.Category;
+
+            nodes.Add(node);
+            existingLabels.Add(label);
+        }
+
+        // Add HYPERNYM / SYNONYM edges
+        var labelToId = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var node in nodes)
+        {
+            if (node.TryGetValue("label", out var label) && label is string l &&
+                node.TryGetValue("id", out var id) && id is string i)
+            {
+                labelToId[l] = i;
+            }
+        }
+
+        foreach (var rel in termResult.Relations)
+        {
+            if (!labelToId.TryGetValue(rel.Source, out var srcId) ||
+                !labelToId.TryGetValue(rel.Target, out var tgtId))
+                continue;
+            if (srcId == tgtId) continue;
+
+            var kgType = rel.Type switch
+            {
+                "HYPERNYM" => "HYPERNYM",
+                "HYPONYM" => "HYPONYM",
+                "SYNONYM" => "SYNONYM",
+                "COMPOSED_OF" => "COMPOSED_OF",
+                "RELATED_TERM" => "RELATED_TERM",
+                _ => "SEMANTIC"
+            };
+
+            var edge = new Dictionary<string, object>
+            {
+                { "id", $"edge_term_{edgeCounter++:D3}" },
+                { "sourceId", srcId },
+                { "targetId", tgtId },
+                { "type", kgType },
+                { "label", $"{rel.Type}: {rel.Source} → {rel.Target}" },
+                { "confidence", rel.Confidence },
+                { "provenance", new Dictionary<string, object>
+                    {
+                        { "evidence", rel.Evidence ?? "" },
+                        { "source", "term_discovery" },
+                        { "confidence", rel.Confidence }
+                    }
+                }
+            };
+            edges.Add(edge);
+        }
+    }
+
+    /// <summary>
     /// Maps enriched relation types to knowledge graph edge types.
     /// </summary>
     static string MapEnrichedRelationToKgType(string relationType, string entityCategory)
@@ -2217,10 +2352,29 @@ public sealed class GeoJsonService
 
         // LaTeX artifacts
         if (label.StartsWith("\\") || label.Contains("\\frac") || label.Contains("\\mathrm") ||
-            label.Contains("\\mathbf") || label.Contains("\\begin") || label.Contains("\\array"))
+            label.Contains("\\mathbf") || label.Contains("\\begin") || label.Contains("\\array") ||
+            label.Contains("\\bigcirc") || label.Contains("\\mu") || label.Contains("\\sigma"))
             return true;
         if (label == "frac" || label == "mathrm" || label == "array" || label == "begin" ||
-            label == "mathbf" || label == "textrm")
+            label == "mathbf" || label == "textrm" || label == "bigcirc" || label == "cdot")
+            return true;
+
+        // ── P1: HTML/XML fragment detection ──
+        if (label.StartsWith("</") || label.EndsWith("/>"))
+            return true;
+        if (label == "</sup" || label == "</sub" || label == "<sup>" || label == "<sub>")
+            return true;
+
+        // ── P1: Year range detection ──
+        if (System.Text.RegularExpressions.Regex.IsMatch(label, @"^\d{4}[—\-–]\d{4}$"))
+            return true;
+
+        // ── P1: Single ASCII char ──
+        if (label.Length == 1 && label[0] >= 'A' && label[0] <= 'z')
+            return true;
+
+        // ── P1: Short standard codes ──
+        if (label.Length <= 6 && System.Text.RegularExpressions.Regex.IsMatch(label, @"^[A-Z]{2,5}[\s/]?[A-Z]?$"))
             return true;
 
         // Pure numeric/symbol patterns (with optional dashes, dots, brackets)

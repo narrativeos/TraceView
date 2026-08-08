@@ -258,10 +258,29 @@ public static class EnrichedResultBuilder
 
         // LaTeX artifacts
         if (text.StartsWith("\\") || text.Contains("\\frac") || text.Contains("\\mathrm") ||
-            text.Contains("\\mathbf") || text.Contains("\\begin") || text.Contains("\\array"))
+            text.Contains("\\mathbf") || text.Contains("\\begin") || text.Contains("\\array") ||
+            text.Contains("\\bigcirc") || text.Contains("\\mu") || text.Contains("\\sigma"))
             return true;
         if (text == "frac" || text == "mathrm" || text == "array" || text == "begin" ||
-            text == "mathbf" || text == "textrm")
+            text == "mathbf" || text == "textrm" || text == "bigcirc" || text == "cdot")
+            return true;
+
+        // ── P1: HTML/XML fragment detection ──
+        if (text.StartsWith("</") || text.EndsWith("/>"))
+            return true;
+        if (text == "</sup" || text == "</sub" || text == "<sup>" || text == "<sub>")
+            return true;
+
+        // ── P1: Year range detection (e.g., "1234—2020") ──
+        if (System.Text.RegularExpressions.Regex.IsMatch(text, @"^\d{4}[—\-–]\d{4}$"))
+            return true;
+
+        // ── P1: Single ASCII char ──
+        if (text.Length == 1 && text[0] >= 'A' && text[0] <= 'z')
+            return true;
+
+        // ── P1: Standard codes (GB/T, JB/T, etc. — short ones are noise) ──
+        if (text.Length <= 6 && System.Text.RegularExpressions.Regex.IsMatch(text, @"^[A-Z]{2,5}[\s/]?[A-Z]?$"))
             return true;
 
         // Pure numeric/symbol (with optional dashes, dots, brackets)

@@ -300,6 +300,53 @@ public class SemanticRelation
 }
 
 /// <summary>
+/// Represents a term definition extracted from text patterns (e.g., "X是Y", "X者Y也").
+/// Used by TermDefinitionExtractor and consumed by TermProcessor.
+/// </summary>
+public class TermDefinition
+{
+    /// <summary>The term being defined (e.g., "丞相").</summary>
+    [JsonPropertyName("term")]
+    public string TermText { get; set; } = string.Empty;
+
+    /// <summary>The definition or hypernym (e.g., "百官之长").</summary>
+    [JsonPropertyName("definition")]
+    public string DefinitionText { get; set; } = string.Empty;
+
+    /// <summary>Relation type: "IS_A" (hypernym), "SYNONYM" (alternate name).</summary>
+    [JsonPropertyName("relation_type")]
+    public string RelationType { get; set; } = "IS_A";
+
+    /// <summary>Confidence score (0.0–1.0).</summary>
+    [JsonPropertyName("confidence")]
+    public double Confidence { get; set; }
+
+    /// <summary>The matched evidence text.</summary>
+    [JsonPropertyName("evidence")]
+    public string Evidence { get; set; } = string.Empty;
+
+    /// <summary>Character span of the evidence in the source text.</summary>
+    [JsonPropertyName("evidence_span")]
+    public int[] EvidenceSpan { get; set; } = new int[2];
+
+    /// <summary>Source of extraction: "pattern" or "dependency".</summary>
+    [JsonPropertyName("source")]
+    public string Source { get; set; } = "pattern";
+
+    /// <summary>Cross-block occurrence count (set during cross-block resolution).</summary>
+    [JsonPropertyName("cross_block_count")]
+    public int CrossBlockCount { get; set; } = 1;
+
+    /// <summary>Whether this is an alternate (lower-confidence) definition.</summary>
+    [JsonPropertyName("is_alternate")]
+    public bool IsAlternateDefinition { get; set; }
+
+    /// <summary>Primary definition text if this is an alternate.</summary>
+    [JsonPropertyName("primary_definition")]
+    public string? PrimaryDefinition { get; set; }
+}
+
+/// <summary>
 /// Represents the NLP analysis result for a single Popo block/node.
 /// </summary>
 public class SemanticBlockResult
@@ -348,6 +395,13 @@ public class SemanticBlockResult
     /// </summary>
     [JsonPropertyName("location_relations")]
     public List<LocationRelation> LocationRelations { get; set; } = new();
+
+    /// <summary>
+    /// Term definitions extracted from this block by TermDefinitionExtractor.
+    /// Includes IS_A (hypernym) and SYNONYM (alternate name) relations.
+    /// </summary>
+    [JsonPropertyName("term_definitions")]
+    public List<TermDefinition> TermDefinitions { get; set; } = new();
 
     /// <summary>
     /// Block-level enriched metadata from entity processors.
