@@ -418,14 +418,12 @@ public sealed partial class DocumentViewModel
     {
         if (ProjectPath is null)
         {
-            ShowEnrichedColumn = true;
             SetEnrichStatus("Project path not set");
             return;
         }
         var enrichedPath = Path.Combine(ProjectPath, "semantic", "enriched_result.json");
         if (!File.Exists(enrichedPath))
         {
-            ShowEnrichedColumn = true;
             SetEnrichStatus("Enrich 数据未生成。点击 Enrich 按钮进行加工");
             return;
         }
@@ -437,7 +435,6 @@ public sealed partial class DocumentViewModel
 
             if (loaded is null)
             {
-                ShowEnrichedColumn = true;
                 SetEnrichStatus("Enrich 数据加载失败: 反序列化返回 null");
                 System.Diagnostics.Debug.WriteLine("[Semantic] Enriched data deserialization returned null");
                 return;
@@ -464,7 +461,6 @@ public sealed partial class DocumentViewModel
         }
         catch (Exception ex)
         {
-            ShowEnrichedColumn = true;
             SetEnrichStatus($"Enrich 数据加载失败: {ex.Message}");
             System.Diagnostics.Debug.WriteLine($"[Semantic] Failed to load enriched_result.json: {ex.Message}");
         }
@@ -475,13 +471,11 @@ public sealed partial class DocumentViewModel
     {
         if (ProjectPath is null)
         {
-            ShowTermColumn = true;
             return;
         }
         var termPath = Path.Combine(ProjectPath, "semantic", "term_result.json");
         if (!File.Exists(termPath))
         {
-            ShowTermColumn = false;
             return;
         }
         try
@@ -502,7 +496,6 @@ public sealed partial class DocumentViewModel
         }
         catch (Exception ex)
         {
-            ShowTermColumn = false;
             System.Diagnostics.Debug.WriteLine($"[Term] Failed to load term_result.json: {ex.Message}");
         }
     }
@@ -535,7 +528,7 @@ public sealed partial class DocumentViewModel
 
     /// <summary>
     /// Called automatically when ShowSemanticColumn changes via two-way binding (ToggleButton click).
-    /// Ensures data is loaded when the column is opened.
+    /// Ensures data is loaded when the column is opened, but does NOT auto-open dependent columns.
     /// </summary>
     partial void OnShowSemanticColumnChanged(bool value)
     {
@@ -550,8 +543,6 @@ public sealed partial class DocumentViewModel
                 SemanticProgress = 100;
                 SemanticStatusText = $"Loaded from cache ({SemanticNodeCount} nodes, {SemanticEntityCount} entities)";
                 OnPropertyChanged(nameof(HasSemanticData));
-                TryLoadEnrichedData();
-                TryLoadTermData();
                 UpdateSemanticVisibility();
             }
         }
@@ -1015,6 +1006,7 @@ public sealed partial class DocumentViewModel
     /// <summary>
     /// Tries to load semantic analysis results from the cache directory and sets them on the ViewModel.
     /// Called automatically when the document is opened. Matches TryLoadMinerUData/TryLoadPopoData pattern.
+    /// Does NOT cascade-load Enriched or Term data (those are loaded independently in OpenDocumentCore).
     /// </summary>
     internal void TryLoadSemanticData()
     {
@@ -1029,7 +1021,6 @@ public sealed partial class DocumentViewModel
                 SemanticStatusText = $"Loaded from cache ({SemanticNodeCount} nodes, {SemanticEntityCount} entities)";
                 ShowSemanticColumn = true;
                 OnPropertyChanged(nameof(HasSemanticData));
-                TryLoadEnrichedData();
                 UpdateSemanticVisibility();
                 System.Diagnostics.Debug.WriteLine($"[Semantic] Auto-loaded {SemanticNodeCount} nodes, {SemanticEntityCount} entities");
             }

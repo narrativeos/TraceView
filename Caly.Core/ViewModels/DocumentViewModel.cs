@@ -380,6 +380,7 @@ public sealed partial class DocumentViewModel : ViewModelBase
                 TryLoadSemanticData();    // Load Semantic from semantic/
                 TryLoadGeoData();         // Load Geo from semantic/locations.geojson
                 TryLoadEnrichedData();    // Load Enriched independently (doesn't depend on Semantic being in memory)
+                TryLoadTermData();        // Load Term from semantic/term_result.json
             });
         }
 

@@ -517,9 +517,6 @@ public sealed partial class DocumentViewModel
                 GeoStatus = GeoProcessStatus.Completed;
                 GeoStatusText = GeocodingProgressText;
                 ShowGeoColumn = true;
-
-                // Auto-trigger re-enrichment now that fresh Geo data is available
-                _ = ReEnrichAsync();
             }
             else
             {
