@@ -479,7 +479,10 @@ public sealed class MinerUService : IDisposable
         {
             var path = GetTaskIdFilePath(pdfPath, projectPath);
             var dir = Path.GetDirectoryName(path);
-            Directory.CreateDirectory(dir);
+            if (dir is not null)
+            {
+                Directory.CreateDirectory(dir);
+            }
             var data = new
             {
                 taskId = taskId,

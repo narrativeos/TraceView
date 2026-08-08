@@ -61,9 +61,7 @@ public partial class App : Application
     private readonly CancellationToken _listeningToFilesToken;
     private Task? _listeningToFiles;
 
-#pragma warning disable CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider declaring as nullable.
-    private IPdfDocumentsManagerService _pdfDocumentsService;
-#pragma warning restore CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider declaring as nullable.
+    private IPdfDocumentsManagerService? _pdfDocumentsService;
 
     public new static App? Current => Application.Current as App;
 
@@ -79,6 +77,8 @@ public partial class App : Application
 
     public override void Initialize()
     {
+        // Use typeof(App) explicitly so that derived classes (e.g., DesktopApp) 
+        // will load the base App XAML resources instead of looking for their own.
         AvaloniaXamlLoader.Load(this);
     }
 
@@ -210,10 +210,12 @@ public partial class App : Application
     {
         try
         {
-            if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+            if (ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime desktop)
             {
-                desktop.Startup -= Desktop_Startup;
+                return;
             }
+
+            desktop.Startup -= Desktop_Startup;
 
             _listeningToFiles = Task.Run(ListenToIncomingFiles); // Start listening
 
@@ -300,7 +302,10 @@ public partial class App : Application
                 return;
             }
 
-            await _pdfDocumentsService.OpenLoadDocument(path, token);
+            if (_pdfDocumentsService is not null)
+            {
+                await _pdfDocumentsService.OpenLoadDocument(path, token);
+            }
         }
         catch (Exception ex)
         {
