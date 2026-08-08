@@ -325,25 +325,6 @@
 							</PathIcon>
 						</Button>
 
-						<!-- Enrich Entities (visible when semantic data exists) -->
-						<Button DockPanel.Dock="Right"
-                                Margin="0,0,5,0"
-								HorizontalAlignment="Center"
-								VerticalAlignment="Stretch"
-								Background="Transparent"
-                                Click="OnEnrichClick"
-                                IsEnabled="{Binding CanEnrich}"
-                                IsVisible="{Binding HasSemanticData}">
-							<PathIcon Width="17"
-									  Height="17"
-									  Data="{StaticResource arrow_sync_regular}"
-									  Opacity="{Binding HasEnrichedData, Converter={StaticResource CompletedToOpacityConverter}}">
-								<ToolTip.Tip>
-									<TextBlock Text="{Binding EnrichButtonTooltip}"/>
-								</ToolTip.Tip>
-							</PathIcon>
-						</Button>
-
 						<!-- Term Process (visible when semantic data exists) -->
 						<Button DockPanel.Dock="Right"
                                 Margin="0,0,5,0"
@@ -359,6 +340,25 @@
 									  Opacity="{Binding HasTermData, Converter={StaticResource CompletedToOpacityConverter}}">
 								<ToolTip.Tip>
 									<TextBlock Text="{Binding TermButtonTooltip}"/>
+								</ToolTip.Tip>
+							</PathIcon>
+						</Button>
+
+						<!-- Enrich Entities (visible when semantic data exists) -->
+						<Button DockPanel.Dock="Right"
+                                Margin="0,0,5,0"
+								HorizontalAlignment="Center"
+								VerticalAlignment="Stretch"
+								Background="Transparent"
+                                Click="OnEnrichClick"
+                                IsEnabled="{Binding CanEnrich}"
+                                IsVisible="{Binding HasSemanticData}">
+							<PathIcon Width="17"
+									  Height="17"
+									  Data="{StaticResource arrow_sync_regular}"
+									  Opacity="{Binding HasEnrichedData, Converter={StaticResource CompletedToOpacityConverter}}">
+								<ToolTip.Tip>
+									<TextBlock Text="{Binding EnrichButtonTooltip}"/>
 								</ToolTip.Tip>
 							</PathIcon>
 						</Button>
