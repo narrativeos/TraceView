@@ -27,6 +27,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace Caly.Core.Services;
 
@@ -255,13 +256,28 @@ public static class MinerUJsonService
                     // providing a clear contrast with the PDF overlay layer which uses preproc_blocks (raw detection).
                     var paraBlocks = new List<MinerUBlock>();
                     var discardedBlocks = new List<MinerUBlock>();
+                    
+                    // Build a lookup map from preproc_blocks by block_id BEFORE processing para_blocks.
+                    // This allows table para_blocks (which have empty table_body sub-blocks) to get their
+                    // content from the corresponding preproc_blocks (which have table_body HTML).
+                    var preprocBlockMap = new Dictionary<string, JsonElement>();
+                    if (pageInfoElem.TryGetProperty("preproc_blocks", out var preprocMapElem) && preprocMapElem.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var preprocBlock in preprocMapElem.EnumerateArray())
+                        {
+                            var preprocId = GetStringProperty(preprocBlock, "block_id");
+                            if (!string.IsNullOrEmpty(preprocId))
+                                preprocBlockMap[preprocId] = preprocBlock;
+                        }
+                    }
+                    
                     // Use the global ID counter (declared outside the page loop) to ensure unique IDs
                     // across all pages. Without this, page 1 and page 2 would both have blocks with id=1,2,3...
                     if (pageInfoElem.TryGetProperty("para_blocks", out var paraElem) && paraElem.ValueKind == JsonValueKind.Array)
                     {
                         foreach (var blockElem in paraElem.EnumerateArray())
                         {
-                            var paraList = MapMinerUPageSectionToBlocks(blockElem, pageNum, pageWidth, pageHeight);
+                            var paraList = MapMinerUPageSectionToBlocks(blockElem, pageNum, pageWidth, pageHeight, preprocBlockMap);
                             foreach (var b in paraList)
                             {
                                 b.Id = globalNextBlockId++;
@@ -618,7 +634,7 @@ public static class MinerUJsonService
         return block;
     }
 
-    static IEnumerable<MinerUBlock> MapMinerUPageSectionToBlocks(JsonElement sectionElem, int pageNum, double pageWidth, double pageHeight)
+    static IEnumerable<MinerUBlock> MapMinerUPageSectionToBlocks(JsonElement sectionElem, int pageNum, double pageWidth, double pageHeight, Dictionary<string, JsonElement>? preprocBlockMap = null)
     {
         var results = new List<MinerUBlock>();
 
@@ -716,6 +732,36 @@ public static class MinerUJsonService
             results.Add(block);
         }
 
+        // For table para_blocks: if the parent has type="table" but sub-blocks have empty content,
+        // try to extract content from the corresponding preproc_block which has table_body HTML.
+        var sectionType = GetStringProperty(sectionElem, "type") ?? string.Empty;
+        if (sectionType == "table" && preprocBlockMap != null && results.Count > 0)
+        {
+            // Check if any result block has empty content (indicating empty table_body sub-block)
+            bool hasEmptyTable = results.Any(b => b.Type == "table" && string.IsNullOrEmpty(b.Content));
+            if (hasEmptyTable)
+            {
+                // Get the parent's block_id to find the matching preproc_block
+                var parentBlockId = GetStringProperty(sectionElem, "block_id") ?? string.Empty;
+                if (!string.IsNullOrEmpty(parentBlockId) && preprocBlockMap.TryGetValue(parentBlockId, out var preprocElem))
+                {
+                    // Extract table content from the preproc_block
+                    var tableContent = ExtractTableContent(preprocElem);
+                    if (!string.IsNullOrEmpty(tableContent))
+                    {
+                        // Find the table body sub-block and set its content
+                        foreach (var block in results)
+                        {
+                            if (block.Type == "table" && string.IsNullOrEmpty(block.Content))
+                            {
+                                block.Content = tableContent;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         return results;
     }
 
@@ -723,6 +769,13 @@ public static class MinerUJsonService
     {
         if (elem.TryGetProperty("content", out var contentElem) && contentElem.ValueKind == JsonValueKind.String)
             return contentElem.GetString() ?? string.Empty;
+
+        // Extract table content from table_body HTML and table_caption
+        var minerUType = GetStringProperty(elem, "type") ?? string.Empty;
+        if (minerUType == "table")
+        {
+            return ExtractTableContent(elem);
+        }
 
         if (elem.TryGetProperty("lines", out var linesElem) && linesElem.ValueKind == JsonValueKind.Array)
         {
@@ -756,6 +809,121 @@ public static class MinerUJsonService
         }
 
         return string.Empty;
+    }
+
+    /// <summary>
+    /// Extracts structured text from a MinerU table block.
+    /// Parses table_body HTML into a readable format: "列名: 值 | 列名: 值" per row.
+    /// Also includes table_caption as the title.
+    /// </summary>
+    static string ExtractTableContent(JsonElement elem)
+    {
+        var parts = new List<string>();
+
+        // Extract table caption
+        if (elem.TryGetProperty("table_caption", out var captionElem) && captionElem.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var cap in captionElem.EnumerateArray())
+            {
+                if (cap.ValueKind == JsonValueKind.String)
+                {
+                    var text = (cap.GetString() ?? string.Empty).Trim();
+                    // Remove HTML tags from caption (e.g., <sup>)
+                    text = Regex.Replace(text, "<[^>]+>", "");
+                    if (!string.IsNullOrEmpty(text))
+                    {
+                        parts.Add(text);
+                    }
+                }
+            }
+        }
+
+        // Parse table_body HTML
+        if (elem.TryGetProperty("table_body", out var bodyElem) && bodyElem.ValueKind == JsonValueKind.String)
+        {
+            var html = bodyElem.GetString() ?? string.Empty;
+            var rows = ParseHtmlTableRows(html);
+            parts.AddRange(rows);
+        }
+
+        return string.Join("\n", parts);
+    }
+
+    /// <summary>
+    /// Parses HTML table into structured text rows.
+    /// First row is treated as headers; subsequent rows are formatted as "header: value | header: value".
+    /// </summary>
+    static List<string> ParseHtmlTableRows(string html)
+    {
+        var results = new List<string>();
+
+        // Extract all <tr>...</tr>
+        var rowRegex = new Regex("<tr[^>]*>(.*?)</tr>", RegexOptions.Singleline);
+        var headerCells = new List<string>();
+        bool isFirstRow = true;
+
+        foreach (Match match in rowRegex.Matches(html))
+        {
+            var rowHtml = match.Groups[1].Value;
+            var cells = ExtractHtmlCells(rowHtml);
+
+            if (isFirstRow)
+            {
+                headerCells = cells;
+                isFirstRow = false;
+            }
+            else
+            {
+                // Format as "header: value | header: value"
+                var pairs = new List<string>();
+                int maxCols = Math.Max(headerCells.Count, cells.Count);
+                for (int i = 0; i < maxCols; i++)
+                {
+                    var key = i < headerCells.Count ? StripHtmlTags(headerCells[i]) : string.Empty;
+                    var val = i < cells.Count ? StripHtmlTags(cells[i]) : string.Empty;
+
+                    // Skip if both key and value are empty
+                    if (string.IsNullOrEmpty(key) && string.IsNullOrEmpty(val))
+                        continue;
+
+                    pairs.Add($"{key}: {val}");
+                }
+
+                if (pairs.Count > 0)
+                {
+                    results.Add(string.Join(" | ", pairs));
+                }
+            }
+        }
+
+        return results;
+    }
+
+    /// <summary>
+    /// Extracts cell content from <td> and <th> tags.
+    /// </summary>
+    static List<string> ExtractHtmlCells(string rowHtml)
+    {
+        var cells = new List<string>();
+        var cellRegex = new Regex("<t[hd][^>]*>(.*?)</t[hd]>", RegexOptions.Singleline);
+
+        foreach (Match match in cellRegex.Matches(rowHtml))
+        {
+            cells.Add(match.Groups[1].Value);
+        }
+
+        return cells;
+    }
+
+    /// <summary>
+    /// Removes HTML tags from a string, keeping only text content.
+    /// </summary>
+    static string StripHtmlTags(string html)
+    {
+        var text = Regex.Replace(html, "<[^>]+>", "");
+        // Normalize whitespace
+        text = Regex.Replace(text, "\\s+", " ").Trim();
+        return text;
     }
 
     /// <summary>

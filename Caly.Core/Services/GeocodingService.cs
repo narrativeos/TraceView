@@ -115,7 +115,7 @@ public sealed class GeocodingService : IDisposable
     public GeocodingService()
     {
         _httpClient = new HttpClient();
-        _httpClient.Timeout = TimeSpan.FromSeconds(10);
+        _httpClient.Timeout = TimeSpan.FromSeconds(30);
         _httpClient.DefaultRequestHeaders.Add("User-Agent", "CalyPdf/1.0 (Geocoding Client)");
     }
 
@@ -538,7 +538,7 @@ public sealed class GeocodingService : IDisposable
         {
             return new GeocodingAttemptResult
             {
-                ErrorMessage = "网络错误: 请求超时 (10秒)",
+                ErrorMessage = "网络错误: 请求超时 (30秒)",
                 FailureType = GeocodingFailureType.Transient
             };
         }

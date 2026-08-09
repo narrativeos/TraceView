@@ -45,7 +45,7 @@ public sealed class OrganizationDisambiguationService : IDisposable
     public OrganizationDisambiguationService()
     {
         _httpClient = new HttpClient();
-        _httpClient.Timeout = TimeSpan.FromSeconds(10);
+        _httpClient.Timeout = TimeSpan.FromSeconds(30);
         _httpClient.DefaultRequestHeaders.Add("User-Agent", "CalyPdf/1.0 (Wikidata Client)");
         _rateLimiter = new RateLimiter(maxRequestsPerSecond: 5.0);
     }

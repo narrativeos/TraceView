@@ -387,12 +387,17 @@ public sealed partial class DocumentViewModel
 
     private TermBlockViewModel? _termBlockViewModel;
 
-    public TermBlockViewModel? TermBlockViewModel
+    public TermBlockViewModel TermBlockViewModel
     {
         get
         {
             if (_termBlockViewModel is not null) return _termBlockViewModel;
-            if (TermResults is null) return null;
+            if (TermResults is null)
+            {
+                // Return an empty ViewModel to prevent binding failures
+                _termBlockViewModel = new TermBlockViewModel(new TermResultFile());
+                return _termBlockViewModel;
+            }
             _termBlockViewModel = new TermBlockViewModel(TermResults);
             return _termBlockViewModel;
         }
@@ -512,6 +517,7 @@ public sealed partial class DocumentViewModel
         OnPropertyChanged(nameof(SemanticRelationCount));
         OnPropertyChanged(nameof(HasSemanticResults));
         OnPropertyChanged(nameof(CanEnrich));
+        OnPropertyChanged(nameof(CanProcessTerm));
         // Critical: notify that SemanticBlockViewModels has changed so the ItemsControl re-reads the property
         OnPropertyChanged(nameof(SemanticBlockViewModels));
     }
@@ -585,12 +591,25 @@ public sealed partial class DocumentViewModel
     {
         if (!HasSemanticResults || IsTermProcessing) return;
 
-        // Term discovery is part of the enrichment pipeline — if enriched data exists,
-        // term_result.json should already be generated. If not, trigger enrichment.
-        if (!HasEnrichedData && CanEnrich)
+        // 确保术语列显示
+        ShowTermColumn = true;
+        
+        IsTermProcessing = true;
+        try
         {
-            // Run enrichment pipeline which will also generate term_result.json
-            await ProcessWithEnrichmentAsync();
+            // Always re-run the enrichment pipeline to regenerate term_result.json.
+            // The existing enriched_result.json may be from an older version that didn't
+            // properly generate term data, so we need to regenerate both.
+            var outputDir = Path.Combine(ProjectPath!, "semantic");
+            var enrichedResult = await RunEnrichmentPipelineAsync(SemanticResults!, outputDir, CancellationToken.None);
+            if (enrichedResult != null)
+            {
+                EnrichedResults = enrichedResult;
+            }
+        }
+        finally
+        {
+            IsTermProcessing = false;
         }
 
         // Try loading the term result
@@ -712,28 +731,7 @@ public sealed partial class DocumentViewModel
             SemanticResults = result;
             SemanticStatus = SemanticProcessStatus.Completed;
             SemanticProgress = 100;
-            SemanticStatusText = $"Analysis completed ({SemanticNodeCount} nodes, {SemanticEntityCount} entities, {SemanticRelationCount} relations). Enriching entities...";
-            SemanticProgress = 95;  // Reserve 95-100 for pipeline
-
-            // Phase A: Run entity processors pipeline to enrich entities
-            try
-            {
-                var enrichedResult = await RunEnrichmentPipelineAsync(result, outputDir, _semanticCts.Token);
-                if (enrichedResult != null)
-                {
-                    SemanticProgress = 100;
-                    SemanticStatusText = $"Analysis + enrichment complete ({SemanticNodeCount} nodes, {SemanticEntityCount} entities)";
-                    TryLoadEnrichedData();
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                System.Diagnostics.Debug.WriteLine("[Semantic] Entity processors pipeline cancelled");
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[Semantic] Entity processors pipeline error: {ex.Message}");
-            }
+            SemanticStatusText = $"Analysis completed ({SemanticNodeCount} nodes, {SemanticEntityCount} entities, {SemanticRelationCount} relations)";
             System.Diagnostics.Debug.WriteLine($"[Semantic] Completed: {SemanticNodeCount} nodes, {SemanticEntityCount} entities, {SemanticRelationCount} relations");
             OnPropertyChanged(nameof(HasSemanticData));
 
@@ -942,7 +940,7 @@ public sealed partial class DocumentViewModel
                 var termPath = Path.Combine(outputDir, "term_result.json");
                 var termJson = System.Text.Json.JsonSerializer.Serialize(
                     termResult,
-                    SourceGenerationContext.Default.EnrichedResultFile);
+                    SourceGenerationContext.Default.TermResultFile);
                 await File.WriteAllTextAsync(termPath, termJson);
                 System.Diagnostics.Debug.WriteLine($"[Semantic] Saved term_result.json ({termResult.Terms.Count} terms, {termResult.Relations.Count} relations, {termResult.TermTree.Count} root nodes)");
             }
@@ -1021,6 +1019,9 @@ public sealed partial class DocumentViewModel
                 SemanticStatusText = $"Loaded from cache ({SemanticNodeCount} nodes, {SemanticEntityCount} entities)";
                 ShowSemanticColumn = true;
                 OnPropertyChanged(nameof(HasSemanticData));
+                OnPropertyChanged(nameof(CanProcessTerm));
+                OnPropertyChanged(nameof(TermButtonTooltip));
+                OnPropertyChanged(nameof(TermStatusText));
                 UpdateSemanticVisibility();
                 System.Diagnostics.Debug.WriteLine($"[Semantic] Auto-loaded {SemanticNodeCount} nodes, {SemanticEntityCount} entities");
             }
@@ -1195,7 +1196,8 @@ public sealed partial class DocumentViewModel
 
     /// <summary>
     /// Collects all text para_blocks from MinerUBlocks for NLP analysis.
-    /// Filters for para_blocks (adopted blocks) with text content, excluding images and tables.
+    /// Filters for para_blocks (adopted blocks) with text content, excluding images.
+    /// Tables with extracted content (from table_body HTML) are now included.
     /// </summary>
     private List<AnalysisTreeNode> CollectTextNodesFromMinerUBlocks()
     {
@@ -1223,10 +1225,11 @@ public sealed partial class DocumentViewModel
                 continue;
             }
             
-            // Skip tables - only analyze text/paragraph/title blocks
-            if (block.Type == "table")
+            // Skip tables only if they have no extracted content (empty table_body)
+            // Tables with content from table_body HTML parsing should be included
+            if (block.Type == "table" && string.IsNullOrWhiteSpace(block.Content))
             {
-                System.Diagnostics.Debug.WriteLine($"[Semantic]   Skipped (table): BlockId={block.BlockId}");
+                System.Diagnostics.Debug.WriteLine($"[Semantic]   Skipped (empty table): BlockId={block.BlockId}");
                 continue;
             }
             

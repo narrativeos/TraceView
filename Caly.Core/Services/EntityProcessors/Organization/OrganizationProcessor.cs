@@ -120,9 +120,10 @@ public sealed class OrganizationProcessor : IEntityProcessor, IDisposable
                 result.Metadata["wikidata_description"] = best.Description;
             }
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException ex)
         {
-            throw;
+            // Timeout or cancellation — treat as non-fatal, keep local validation result
+            System.Diagnostics.Debug.WriteLine($"[OrganizationProcessor] Wikidata query timed out/cancelled for '{entity.Text}': {ex.Message}");
         }
         catch (Exception ex)
         {

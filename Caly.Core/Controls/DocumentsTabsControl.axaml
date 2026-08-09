@@ -250,11 +250,12 @@
 
                             <!-- Toggle Geo Column -->
                             <ToggleButton DockPanel.Dock="Left"
-                                        Margin="0,0,0,0"
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Stretch"
-                                       Background="Transparent"
-                                       IsChecked="{Binding ShowGeoColumn}">
+                                         Margin="0,0,0,0"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Stretch"
+                                        Background="Transparent"
+                                        IsChecked="{Binding ShowGeoColumn}"
+                                        IsVisible="{Binding HasSemanticData}">
                                 <PathIcon Width="17"
                                           Height="17"
                                           Data="{StaticResource map_regular}">
@@ -264,11 +265,12 @@
 
                             <!-- Toggle Enriched Column -->
                             <ToggleButton DockPanel.Dock="Left"
-                                        Margin="0,0,0,0"
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Stretch"
-                                       Background="Transparent"
-                                       IsChecked="{Binding ShowEnrichedColumn}">
+                                         Margin="0,0,0,0"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Stretch"
+                                        Background="Transparent"
+                                        IsChecked="{Binding ShowEnrichedColumn}"
+                                        IsVisible="{Binding HasSemanticData}">
                                 <PathIcon Width="17"
                                           Height="17"
                                           Data="{StaticResource star_add_regular}">
@@ -278,11 +280,12 @@
 
                             <!-- Toggle Term Column -->
                             <ToggleButton DockPanel.Dock="Left"
-                                        Margin="0,0,0,0"
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Stretch"
-                                       Background="Transparent"
-                                       IsChecked="{Binding ShowTermColumn}">
+                                         Margin="0,0,0,0"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Stretch"
+                                        Background="Transparent"
+                                        IsChecked="{Binding ShowTermColumn}"
+                                        IsVisible="{Binding HasSemanticData}">
                                 <PathIcon Width="17"
                                           Height="17"
                                           Data="{StaticResource bookmark_regular}">
@@ -307,14 +310,15 @@
 
 						<controls:VerticalSeparator/>
 
-						<!-- GeoLibre JSON Export (visible when semantic data exists) -->
+						<!-- GeoLibre JSON Export (visible when semantic data exists, enabled when loaded in memory) -->
 						<Button DockPanel.Dock="Right"
                                 Margin="0,0,5,0"
 								HorizontalAlignment="Center"
 								VerticalAlignment="Stretch"
 								Background="Transparent"
                                 Click="OnExportGeoLibreClick"
-                                IsVisible="{Binding HasSemanticData}">
+                                IsVisible="{Binding HasSemanticData}"
+                                IsEnabled="{Binding HasSemanticResults}">
 							<PathIcon Width="17"
 									  Height="17"
 									  Data="{StaticResource share_regular}"
@@ -363,14 +367,15 @@
 							</PathIcon>
 						</Button>
 
-						<!-- GeoJSON Generate (visible when semantic data exists) -->
+						<!-- GeoJSON Generate (visible when semantic data exists, enabled when loaded in memory) -->
 						<Button DockPanel.Dock="Right"
                                 Margin="0,0,5,0"
 								HorizontalAlignment="Center"
 								VerticalAlignment="Stretch"
 								Background="Transparent"
                                 Click="OnGenerateGeoJsonClick"
-                                IsVisible="{Binding HasSemanticData}">
+                                IsVisible="{Binding HasSemanticData}"
+                                IsEnabled="{Binding HasSemanticResults}">
 							<PathIcon Width="17"
 									  Height="17"
 									  Data="{StaticResource map_regular}"
@@ -2253,10 +2258,30 @@
                                           </StackPanel>
                                       </Grid>
 
-                                      <!-- Tree Content -->
-                                      <ScrollViewer HorizontalScrollBarVisibility="Auto"
-                                                    VerticalScrollBarVisibility="Auto">
-                                          <TreeView ItemsSource="{Binding TermBlockViewModel.RootNodes}"
+                                       <!-- Processing State: shown during term processing -->
+                                       <Border IsVisible="{Binding IsTermProcessing}"
+                                               VerticalAlignment="Center"
+                                               HorizontalAlignment="Stretch">
+                                           <StackPanel VerticalAlignment="Center"
+                                                       HorizontalAlignment="Center"
+                                                       Spacing="12">
+                                               <PathIcon Width="32"
+                                                         Height="32"
+                                                         Data="{StaticResource spinner_regular}"
+                                                         Foreground="{DynamicResource SystemAccentColor}"
+                                                         HorizontalAlignment="Center"/>
+                                               <TextBlock Text="{Binding TermStatusText}"
+                                                          FontSize="13"
+                                                          HorizontalAlignment="Center"
+                                                          TextAlignment="Center"/>
+                                           </StackPanel>
+                                       </Border>
+
+                                       <!-- Tree Content: hidden during processing -->
+                                       <ScrollViewer IsVisible="{Binding !IsTermProcessing}"
+                                                     HorizontalScrollBarVisibility="Auto"
+                                                     VerticalScrollBarVisibility="Auto">
+                                           <TreeView ItemsSource="{Binding TermBlockViewModel.RootNodes}"
                                                     BorderThickness="0"
                                                     Background="Transparent">
                                               <TreeView.ItemTemplate>
