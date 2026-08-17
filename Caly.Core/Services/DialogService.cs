@@ -269,4 +269,21 @@ internal sealed class DialogService : IDialogService
             return result ?? GeoLibreRegenerateChoice.Cancel;
         }, DispatcherPriority.Loaded);
     }
+
+    public async Task<TermProcessChoice> ShowTermProcessChoiceDialogAsync(string title, string message)
+    {
+        return await Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            Debug.ThrowNotOnUiThread();
+
+            if (_target is not Window w)
+            {
+                return TermProcessChoice.Cancel;
+            }
+
+            var dialog = new TermProcessChoiceWindow(title, message);
+            var result = await dialog.ShowDialog<TermProcessChoice?>(w);
+            return result ?? TermProcessChoice.Cancel;
+        }, DispatcherPriority.Loaded);
+    }
 }

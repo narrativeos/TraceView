@@ -98,9 +98,11 @@ public sealed partial class DocumentViewModel
     public bool CanEnrich => HasSemanticResults;
 
     /// <summary>
-    /// Whether term discovery can run: requires semantic results (in-memory).
+    /// Whether term discovery can run: requires enriched data on disk (enriched_result.json).
+    /// Term processing is now decoupled from enrichment — it builds term_result.json
+    /// from the existing enriched_result.json without re-running the full pipeline.
     /// </summary>
-    public bool CanProcessTerm => HasSemanticResults && !IsTermProcessing;
+    public bool CanProcessTerm => HasEnrichedData && !IsTermProcessing;
 
     /// <summary>
     /// Dynamic tooltip for the Term Process button.
@@ -111,7 +113,7 @@ public sealed partial class DocumentViewModel
         {
             if (IsTermProcessing) return "术语发现处理中...";
             if (HasTermData) return "术语发现已完成 · 点击重新加工";
-            if (!HasSemanticResults) return "需要先完成 NLP 语义分析";
+            if (!HasEnrichedData) return "请先运行 Enrich（实体富化）";
             return "运行术语发现加工";
         }
     }
@@ -121,11 +123,12 @@ public sealed partial class DocumentViewModel
     {
         get
         {
+            if (_termStatusText is not null) return _termStatusText;
             if (IsTermProcessing) return "术语发现处理中...";
             if (_termResults is not null)
                 return $"术语发现完成: {_termResults.Terms.Count} terms, {_termResults.Relations.Count} relations";
             if (HasTermData) return "术语数据已生成 · 点击术语列切换按钮加载";
-            if (!HasSemanticResults) return "需要先完成 NLP 语义分析";
+            if (!HasEnrichedData) return "请先运行 Enrich（实体富化），再生成术语数据";
             return "点击 Term Process 进行术语发现";
         }
     }
@@ -219,6 +222,28 @@ public sealed partial class DocumentViewModel
     {
         _enrichStatusText = text;
         OnPropertyChanged(nameof(EnrichStatusText));
+    }
+
+    private string? _termStatusText;
+
+    /// <summary>Sets the term status text override (called from UI for error messages).</summary>
+    public void SetTermStatus(string text)
+    {
+        _termStatusText = text;
+        OnPropertyChanged(nameof(TermStatusText));
+    }
+
+    /// <summary>
+    /// Loads existing term data from disk (term_result.json) without regenerating it.
+    /// Called when user chooses "Load Existing" in the term process choice dialog.
+    /// </summary>
+    public void LoadExistingTermData()
+    {
+        TryLoadTermData();
+        _termStatusText = null;
+        OnPropertyChanged(nameof(TermStatusText));
+        OnPropertyChanged(nameof(HasTermData));
+        OnPropertyChanged(nameof(TermButtonTooltip));
     }
 
     private CancellationTokenSource? _semanticCts;
@@ -454,6 +479,10 @@ public sealed partial class DocumentViewModel
             if (hasStaleBlocks)
             {
                 SetEnrichStatus("Enrich 数据可能过期 (empty BlockIds)，建议重新加工");
+                // Notify Term-related properties that enriched data is available (even if stale)
+                OnPropertyChanged(nameof(CanProcessTerm));
+                OnPropertyChanged(nameof(TermButtonTooltip));
+                OnPropertyChanged(nameof(TermStatusText));
                 System.Diagnostics.Debug.WriteLine("[Semantic] Loaded enriched data with stale blocks (empty BlockIds)");
             }
             else
@@ -461,6 +490,10 @@ public sealed partial class DocumentViewModel
                 // Clear status override so computed EnrichStatusText takes effect
                 _enrichStatusText = null;
                 OnPropertyChanged(nameof(EnrichStatusText));
+                // Notify Term-related properties that enriched data is now available
+                OnPropertyChanged(nameof(CanProcessTerm));
+                OnPropertyChanged(nameof(TermButtonTooltip));
+                OnPropertyChanged(nameof(TermStatusText));
                 System.Diagnostics.Debug.WriteLine("[Semantic] Loaded enriched data successfully");
             }
         }
@@ -518,6 +551,8 @@ public sealed partial class DocumentViewModel
         OnPropertyChanged(nameof(HasSemanticResults));
         OnPropertyChanged(nameof(CanEnrich));
         OnPropertyChanged(nameof(CanProcessTerm));
+        OnPropertyChanged(nameof(TermButtonTooltip));
+        OnPropertyChanged(nameof(TermStatusText));
         // Critical: notify that SemanticBlockViewModels has changed so the ItemsControl re-reads the property
         OnPropertyChanged(nameof(SemanticBlockViewModels));
     }
@@ -586,34 +621,129 @@ public sealed partial class DocumentViewModel
             TryLoadTermData();
     }
 
+    /// <summary>
+    /// Build term discovery results from already-enriched data.
+    /// Does NOT re-run the enrichment pipeline — only builds term_result.json
+    /// from the existing enriched_result.json on disk.
+    /// Requires Enrich to have been run first.
+    /// </summary>
     [RelayCommand]
     private async Task ProcessTermAsync()
     {
-        if (!HasSemanticResults || IsTermProcessing) return;
+        if (!HasEnrichedData)
+        {
+            SetTermStatus("请先运行 Enrich（实体富化），再生成术语数据");
+            return;
+        }
+
+        if (IsTermProcessing) return;
 
         // 确保术语列显示
         ShowTermColumn = true;
-        
+
         IsTermProcessing = true;
+        SetTermStatus("正在构建术语数据...");
         try
         {
-            // Always re-run the enrichment pipeline to regenerate term_result.json.
-            // The existing enriched_result.json may be from an older version that didn't
-            // properly generate term data, so we need to regenerate both.
-            var outputDir = Path.Combine(ProjectPath!, "semantic");
-            var enrichedResult = await RunEnrichmentPipelineAsync(SemanticResults!, outputDir, CancellationToken.None);
-            if (enrichedResult != null)
+            var outputDir = GetSemanticOutputDir();
+
+            // ── 1. Load enriched_result.json from disk ──
+            var enrichedPath = Path.Combine(outputDir, "enriched_result.json");
+            if (!File.Exists(enrichedPath))
             {
-                EnrichedResults = enrichedResult;
+                SetTermStatus("错误: enriched_result.json 不存在，请先运行 Enrich");
+                return;
             }
+
+            var enrichedJson = await File.ReadAllTextAsync(enrichedPath);
+            var enrichedResult = System.Text.Json.JsonSerializer.Deserialize<EnrichedResultFile>(
+                enrichedJson, Caly.Core.Services.SourceGenerationContext.Default.EnrichedResultFile);
+
+            if (enrichedResult is null)
+            {
+                SetTermStatus("错误: enriched_result.json 解析失败");
+                return;
+            }
+
+            // ── 2. Load semantic_result.json from disk ──
+            var semanticPath = Path.Combine(outputDir, "semantic_result.json");
+            SemanticResultFile? semanticResult = null;
+            if (File.Exists(semanticPath))
+            {
+                try
+                {
+                    semanticResult = SemanticAnalysisService.LoadFromFile(semanticPath);
+                }
+                catch
+                {
+                    // Fallback deserialization
+                    var semanticJson = await File.ReadAllTextAsync(semanticPath);
+                    var options = new System.Text.Json.JsonSerializerOptions
+                    {
+                        TypeInfoResolver = Caly.Core.Services.SourceGenerationContext.Default,
+                        PropertyNameCaseInsensitive = true,
+                        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+                    };
+                    semanticResult = System.Text.Json.JsonSerializer.Deserialize(
+                        semanticJson, typeof(SemanticResultFile), options) as SemanticResultFile;
+                }
+            }
+
+            if (semanticResult is null)
+            {
+                // Fallback: use in-memory SemanticResults if disk file unavailable
+                semanticResult = SemanticResults;
+            }
+
+            if (semanticResult is null)
+            {
+                SetTermStatus("错误: semantic_result.json 不存在，无法构建术语数据");
+                return;
+            }
+
+            // ── 3. Collect entity metadata from enriched entities ──
+            var entityMetadata = new Dictionary<string, Dictionary<string, object>>();
+            foreach (var block in semanticResult.Blocks)
+            {
+                foreach (var entity in block.Entities)
+                {
+                    if (entity.EnrichedMetadata.Count > 0)
+                        entityMetadata[entity.Text] = entity.EnrichedMetadata;
+                }
+            }
+
+            // ── 4. Build term result ──
+            var termResult = TermResultBuilder.Build(enrichedResult, semanticResult, outputDir, entityMetadata);
+
+            // ── 5. Save term_result.json ──
+            var termPath = Path.Combine(outputDir, "term_result.json");
+            var termJson = System.Text.Json.JsonSerializer.Serialize(
+                termResult,
+                Caly.Core.Services.SourceGenerationContext.Default.TermResultFile);
+            await File.WriteAllTextAsync(termPath, termJson);
+
+            System.Diagnostics.Debug.WriteLine(
+                $"[Term] Saved term_result.json ({termResult.Terms.Count} terms, {termResult.Relations.Count} relations, {termResult.TermTree.Count} root nodes)");
+
+            // ── 6. Load into memory ──
+            TryLoadTermData();
+
+            // Clear override so computed TermStatusText takes effect
+            _termStatusText = null;
+            OnPropertyChanged(nameof(TermStatusText));
+        }
+        catch (Exception ex)
+        {
+            SetTermStatus($"术语加工错误: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"[Term] ProcessTermAsync error: {ex.Message}");
         }
         finally
         {
             IsTermProcessing = false;
+            OnPropertyChanged(nameof(HasTermData));
+            OnPropertyChanged(nameof(CanProcessTerm));
+            OnPropertyChanged(nameof(TermButtonTooltip));
         }
-
-        // Try loading the term result
-        TryLoadTermData();
     }
 
     private async Task ProcessWithEnrichmentAsync()
@@ -923,31 +1053,9 @@ public sealed partial class DocumentViewModel
             System.Diagnostics.Debug.WriteLine($"[Semantic] Saved enriched_result.json ({enrichedResult.Blocks.Count} blocks)");
 
             // ── Build and save term discovery results ──
-            try
-            {
-                // Collect entity metadata from semantic entities
-                var entityMetadata = new Dictionary<string, Dictionary<string, object>>();
-                foreach (var block in result.Blocks)
-                {
-                    foreach (var entity in block.Entities)
-                    {
-                        if (entity.EnrichedMetadata.Count > 0)
-                            entityMetadata[entity.Text] = entity.EnrichedMetadata;
-                    }
-                }
-
-                var termResult = TermResultBuilder.Build(enrichedResult, result, outputDir, entityMetadata);
-                var termPath = Path.Combine(outputDir, "term_result.json");
-                var termJson = System.Text.Json.JsonSerializer.Serialize(
-                    termResult,
-                    SourceGenerationContext.Default.TermResultFile);
-                await File.WriteAllTextAsync(termPath, termJson);
-                System.Diagnostics.Debug.WriteLine($"[Semantic] Saved term_result.json ({termResult.Terms.Count} terms, {termResult.Relations.Count} relations, {termResult.TermTree.Count} root nodes)");
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[Semantic] Failed to build term_result.json: {ex.Message}");
-            }
+            // NOTE: Term processing has been decoupled from enrichment.
+            // Users should click the Term Process button separately to generate term_result.json.
+            // This keeps Enrich focused on entity enrichment only.
         }
         return enrichedResult;
     }

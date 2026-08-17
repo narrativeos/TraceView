@@ -521,19 +521,33 @@ public sealed partial class DocumentsTabsControl : UserControl
         if (DataContext is not MainViewModel mainVm || mainVm.SelectedDocument is not DocumentViewModel docVm)
             return;
 
+        if (!docVm.HasEnrichedData)
+        {
+            docVm.SetTermStatus("请先运行 Enrich（实体富化），再生成术语数据");
+            return;
+        }
+
         if (docVm.HasTermData)
         {
             var dialogService = DialogService;
             if (dialogService is not null)
             {
-                var confirmed = await dialogService.ShowConfirmationDialogAsync(
-                    "确认重新加工",
-                    "术语发现数据已存在，重新加工将覆盖现有数据。是否继续？");
-                if (!confirmed)
+                var choice = await dialogService.ShowTermProcessChoiceDialogAsync(
+                    "术语加工",
+                    "术语发现数据已存在，请选择处理方式：");
+
+                if (choice == TermProcessChoice.Cancel)
                 {
                     e.Handled = true;
                     return;
                 }
+                else if (choice == TermProcessChoice.LoadExisting)
+                {
+                    docVm.LoadExistingTermData();
+                    e.Handled = true;
+                    return;
+                }
+                // choice == Regenerate: fall through to ProcessTermCommand
             }
         }
 

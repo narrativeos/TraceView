@@ -100,5 +100,13 @@ namespace Caly.Core.Services.Interfaces
         /// Returns the user's choice as a GeoLibreRegenerateChoice enum.
         /// </summary>
         Task<GeoLibreRegenerateChoice> ShowGeoLibreRegenerateChoiceDialogAsync(string title, string message);
+
+        /// <summary>
+        /// Shows a choice dialog for term processing, allowing the user to choose
+        /// between cancelling, loading existing data, or regenerating term data.
+        /// Returns the user's choice as a TermProcessChoice enum.
+        /// </summary>
+        Task<TermProcessChoice> ShowTermProcessChoiceDialogAsync(string title, string message);
+
     }
 }
