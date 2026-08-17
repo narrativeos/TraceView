@@ -1638,7 +1638,7 @@ public sealed class GeoJsonService
         // ── Phase 5: Assemble ──
         return new Dictionary<string, object>
         {
-            { "title", "知识图谱（富化）" },
+            { "title", "知识图谱" },
             { "description", "基于实体处理器验证和富化的知识图谱，含 Wikidata、Nominatim、年号表等外部数据" },
             { "source", $"enriched_result.json v{enrichedResult.Version}" },
             { "timestamp", enrichedResult.Timestamp },
