@@ -122,6 +122,24 @@ public static class EnrichedResultBuilder
                     ? "valid"
                     : "unknown";
 
+        var enrichedText = GetEnrichmentField(entity, "enriched_text") as string ?? entity.Text;
+        var source = GetEnrichmentField(entity, "source") as string ?? "";
+        var externalId = GetEnrichmentField(entity, "external_id") as string ?? "";
+        var confidence = GetEnrichmentField(entity, "confidence") is double d ? d : 0.0;
+
+        // Determine enrichment type:
+        // - "external": text changed OR external ID found (real enrichment with external knowledge)
+        // - "validation": source exists but text unchanged and no external ID (only validated/normalized)
+        // - "none": no enrichment source at all
+        var textChanged = !string.IsNullOrEmpty(enrichedText) && enrichedText != entity.Text;
+        var hasExternalId = !string.IsNullOrEmpty(externalId);
+        var enrichmentType = source switch
+        {
+            _ when string.IsNullOrEmpty(source) => "none",
+            _ when (textChanged || hasExternalId) => "external",
+            _ => "validation"
+        };
+
         var entry = new EnrichedEntityEntry
         {
             Id = entity.Id,
@@ -130,10 +148,11 @@ public static class EnrichedResultBuilder
             Normalized = entity.Normalized ?? "",
             ValidationStatus = validationStatus,
             ValidationReason = GetValidationField(entity, "reason") as string ?? "",
-            EnrichedText = GetEnrichmentField(entity, "enriched_text") as string ?? entity.Text,
-            ExternalId = GetEnrichmentField(entity, "external_id") as string ?? "",
-            EnrichmentSource = GetEnrichmentField(entity, "source") as string ?? "",
-            EnrichmentConfidence = GetEnrichmentField(entity, "confidence") is double d ? d : 0.0
+            EnrichedText = enrichedText,
+            ExternalId = externalId,
+            EnrichmentSource = source,
+            EnrichmentConfidence = confidence,
+            EnrichmentType = enrichmentType
         };
 
         // Flatten type-specific metadata from enrichment

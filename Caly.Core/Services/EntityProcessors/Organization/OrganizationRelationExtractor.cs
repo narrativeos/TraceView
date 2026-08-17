@@ -18,6 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Caly.Core.Models;
@@ -112,7 +113,41 @@ public static class OrganizationRelationExtractor
             }
         }
 
-        return relations;
+        // Filter out low-quality relations
+        var filtered = relations.Where(r =>
+            IsLikelyOrgEntity(r.SourceEntityId) &&
+            IsLikelyOrgEntity(r.TargetEntityId) &&
+            r.Confidence >= 0.5 &&
+            r.SourceEntityId.Length >= 2 &&
+            r.TargetEntityId.Length >= 2
+        ).ToList();
+
+        return filtered;
+    }
+
+    /// <summary>
+    /// Checks if the text is likely a genuine organization name rather than noise.
+    /// </summary>
+    private static bool IsLikelyOrgEntity(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return false;
+
+        if (text.Contains('_'))
+            return false;
+
+        if (text.Contains('\n') || text.Contains('\r'))
+            return false;
+
+        // Filter out known non-org patterns
+        var nonOrgPatterns = new[] { "km/h", "G101", "T12", "Z100" };
+        foreach (var pattern in nonOrgPatterns)
+        {
+            if (text.Equals(pattern, StringComparison.OrdinalIgnoreCase))
+                return false;
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -159,6 +194,9 @@ public static class OrganizationRelationExtractor
             foreach (var mention in orgMentions)
             {
                 if (mention == canonicalName) continue;
+                if (!IsLikelyOrgEntity(mention) || !IsLikelyOrgEntity(canonicalName)) continue;
+                if (chain.Confidence < 0.5) continue;
+
                 relations.Add(new EntityRelation
                 {
                     RelationType = OrganizationRelationType.Coreference.ToString(),

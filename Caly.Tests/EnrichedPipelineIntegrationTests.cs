@@ -30,6 +30,9 @@ using Caly.Core.Services.EntityProcessors.Location;
 using Caly.Core.Services.EntityProcessors.Person;
 using Caly.Core.Services.EntityProcessors.Temporal;
 using Caly.Core.Services.EntityProcessors.Organization;
+using Caly.Core.Services.EntityProcessors.Numeric;
+using Caly.Core.Services.EntityProcessors.Facility;
+using Caly.Core.Services.EntityProcessors.Unknown;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -106,6 +109,9 @@ public class EnrichedPipelineIntegrationTests
         pipeline.AddProcessor(new TemporalProcessor());
         pipeline.AddProcessor(new PersonProcessor());
         pipeline.AddProcessor(new OrganizationProcessor());
+        pipeline.AddProcessor(new NumericProcessor());
+        pipeline.AddProcessor(new FacilityProcessor());
+        pipeline.AddProcessor(new UnknownProcessor());
 
         _output.WriteLine("\nRunning pipeline...");
         var enrichedResult = await pipeline.ProcessAsync(semanticResult);

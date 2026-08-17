@@ -18,6 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Caly.Core.Models;
@@ -116,7 +117,40 @@ public static class PersonRelationExtractor
             }
         }
 
-        return relations;
+        // Filter out low-quality relations
+        var filtered = relations.Where(r =>
+            IsLikelyPersonEntity(r.SourceEntityId) &&
+            IsLikelyPersonEntity(r.TargetEntityId) &&
+            r.Confidence >= 0.5 &&
+            r.SourceEntityId.Length >= 1 &&
+            r.TargetEntityId.Length >= 1
+        ).ToList();
+
+        return filtered;
+    }
+
+    /// <summary>
+    /// Checks if the text is likely a genuine person name rather than noise.
+    /// </summary>
+    private static bool IsLikelyPersonEntity(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return false;
+
+        // Filter out text containing underscores (segmentation artifacts)
+        if (text.Contains('_'))
+            return false;
+
+        // Filter out text with newlines (segmentation artifacts)
+        if (text.Contains('\n') || text.Contains('\r'))
+            return false;
+
+        // Filter out known non-name English words
+        var nonNameWords = new[] { "Journey", "Cuisine", "Mayura", "Travel", "Food" };
+        if (nonNameWords.Contains(text, StringComparer.OrdinalIgnoreCase))
+            return false;
+
+        return true;
     }
 
     /// <summary>
@@ -173,6 +207,12 @@ public static class PersonRelationExtractor
             foreach (var mention in personMentions)
             {
                 if (mention == canonicalName) continue;
+
+                // Filter out low-quality coreference relations
+                if (!IsLikelyPersonEntity(mention) || !IsLikelyPersonEntity(canonicalName))
+                    continue;
+                if (chain.Confidence < 0.5)
+                    continue;
 
                 relations.Add(new EntityRelation
                 {

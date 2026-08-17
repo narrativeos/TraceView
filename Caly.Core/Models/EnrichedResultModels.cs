@@ -63,6 +63,14 @@ public class EnrichedEntityEntry
     [JsonPropertyName("enrichment_confidence")]
     public double EnrichmentConfidence { get; set; }
 
+    /// <summary>
+    /// Distinguishes between real enrichment (external knowledge added),
+    /// validation-only (text unchanged, just verified), and no processing.
+    /// Values: "external" | "validation" | "none"
+    /// </summary>
+    [JsonPropertyName("enrichment_type")]
+    public string EnrichmentType { get; set; } = "none";
+
     // ── Type-specific metadata (flat key=value pairs, AOT-safe) ──
 
     [JsonPropertyName("metadata")]
@@ -71,9 +79,16 @@ public class EnrichedEntityEntry
     // ── Computed properties for UI display ──
 
     /// <summary>
-    /// Whether this entity has been enriched (has a source).
+    /// Whether this entity has been truly enriched with external knowledge
+    /// (text changed or external ID found). Validation-only does NOT count.
     /// </summary>
-    public bool IsEnriched => !string.IsNullOrEmpty(EnrichmentSource);
+    public bool IsEnriched => EnrichmentType == "external";
+
+    /// <summary>
+    /// Whether this entity was validated but not externally enriched
+    /// (text unchanged, source is a validator).
+    /// </summary>
+    public bool IsOnlyValidated => EnrichmentType == "validation";
 
     /// <summary>
     /// Status icon for display: ✓ valid, ⚠ ambiguous, ✗ invalid, ? unknown.
@@ -174,28 +189,31 @@ public class EnrichedEntityEntry
     {
         get
         {
-            if (IsEnriched && !string.IsNullOrEmpty(EnrichedText) && EnrichedText != Text)
+            if (!string.IsNullOrEmpty(EnrichedText) && EnrichedText != Text)
                 return $"{Text} → {EnrichedText}";
             return Text;
         }
     }
 
     /// <summary>
-    /// Whether the entity text changed after enrichment.
+    /// Whether the entity text changed after enrichment (regardless of type).
     /// </summary>
-    public bool TextChanged => IsEnriched && !string.IsNullOrEmpty(EnrichedText) && EnrichedText != Text;
+    public bool TextChanged => !string.IsNullOrEmpty(EnrichedText) && EnrichedText != Text;
 
     /// <summary>
     /// One-line summary for quick display: "source · confidence · external_id"
+    /// Shows "(verified)" for validation-only results.
     /// </summary>
     public string QuickSummary
     {
         get
         {
             var parts = new List<string>();
-            if (IsEnriched)
+            if (!string.IsNullOrEmpty(EnrichmentSource))
             {
                 parts.Add(EnrichmentSource);
+                if (EnrichmentType == "validation")
+                    parts.Add("(verified)");
                 if (EnrichmentConfidence > 0)
                     parts.Add($"{(EnrichmentConfidence * 100):F0}%");
                 if (!string.IsNullOrEmpty(ExternalId))

@@ -66,7 +66,8 @@ public sealed class OrganizationDisambiguationService : IDisposable
 
             var encoded = Uri.EscapeDataString(name);
             var url = $"https://www.wikidata.org/w/api.php?action=wbsearchentities" +
-                      $"&search={encoded}&language=zh&format=json&limit=5";
+                      $"&search={encoded}&language=zh&format=json&limit=5" +
+                      "&origin=*";
 
             var response = await _httpClient.GetAsync(url, ct);
             response.EnsureSuccessStatusCode();

@@ -127,7 +127,37 @@ public static class TemporalRelationExtractor
             }
         }
 
-        return relations;
+        // Filter out low-quality relations
+        var filtered = relations.Where(r =>
+            IsLikelyTemporalEntity(r.SourceEntityId) &&
+            IsLikelyTemporalEntity(r.TargetEntityId) &&
+            r.Confidence >= 0.5 &&
+            r.SourceEntityId.Length >= 2 &&
+            r.TargetEntityId.Length >= 2
+        ).ToList();
+
+        return filtered;
+    }
+
+    /// <summary>
+    /// Checks if the text is likely a genuine temporal expression rather than noise.
+    /// </summary>
+    private static bool IsLikelyTemporalEntity(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return false;
+
+        if (text.Contains('_'))
+            return false;
+
+        if (text.Contains('\n') || text.Contains('\r'))
+            return false;
+
+        // Filter out extremely short fragments that are unlikely to be temporal
+        if (text.Length <= 1)
+            return false;
+
+        return true;
     }
 
     /// <summary>
@@ -191,7 +221,14 @@ public static class TemporalRelationExtractor
             }
         }
 
-        return relations;
+        // Filter out low-quality relations
+        var filtered = relations.Where(r =>
+            IsLikelyTemporalEntity(r.SourceEntityId) &&
+            IsLikelyTemporalEntity(r.TargetEntityId) &&
+            r.Confidence >= 0.5
+        ).ToList();
+
+        return filtered;
     }
 
     // ── Private helpers ─────────────────────────────────────────────

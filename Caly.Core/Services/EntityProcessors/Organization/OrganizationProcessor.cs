@@ -109,7 +109,9 @@ public sealed class OrganizationProcessor : IEntityProcessor, IDisposable
                 var best = searchResults[0];
                 result.Source = "Wikidata";
                 result.ExternalId = best.QId;
-                result.EnrichedText = best.Label;
+                // Wikidata may return JSON-encoded labels like '{"value":"China State Railway Group"}'
+                // Parse them to extract the clean string value.
+                result.EnrichedText = UnwrapJsonValue(best.Label) ?? best.Label;
                 // Wikidata API confidence is authoritative; use it directly rather than
                 // taking the max with the local heuristic. This ensures that a high-quality
                 // Wikidata match properly elevates the overall confidence.
@@ -133,6 +135,33 @@ public sealed class OrganizationProcessor : IEntityProcessor, IDisposable
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Unwrap a JSON-encoded string value (e.g., '{"value":"China State Railway Group"}')
+    /// into a plain string. Returns null if the input is not valid JSON with a "value" field.
+    /// </summary>
+    private static string? UnwrapJsonValue(string? input)
+    {
+        if (string.IsNullOrEmpty(input))
+            return null;
+
+        var trimmed = input.Trim();
+        if (trimmed.Length < 2 || trimmed[0] != '{')
+            return input; // Not JSON, return as-is
+
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(trimmed);
+            if (doc.RootElement.TryGetProperty("value", out var val) && val.ValueKind == System.Text.Json.JsonValueKind.String)
+                return val.GetString();
+        }
+        catch
+        {
+            // Not valid JSON, return as-is
+        }
+
+        return input;
     }
 
     /// <inheritdoc/>

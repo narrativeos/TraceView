@@ -209,7 +209,16 @@ public static class LocationRelationExtractor
             }
         }
 
-        return relations;
+        // Filter out low-quality relations: short fragments, non-entity text, very low confidence
+        var filtered = relations.Where(r =>
+            IsLikelyIndependentLocation(r.SourceLocation) &&
+            IsLikelyIndependentLocation(r.TargetLocation) &&
+            r.Confidence >= 0.5 &&
+            r.SourceLocation.Length >= 2 &&
+            r.TargetLocation.Length >= 2
+        ).ToList();
+
+        return filtered;
     }
 
     /// <summary>
@@ -265,6 +274,14 @@ public static class LocationRelationExtractor
             {
                 if (mention == canonicalName) continue;
 
+                // Filter out low-quality coreference relations
+                if (!IsLikelyIndependentLocation(mention) || !IsLikelyIndependentLocation(canonicalName))
+                    continue;
+                if (mention.Length < 2 || canonicalName.Length < 2)
+                    continue;
+                if (chain.Confidence < 0.5)
+                    continue;
+
                 relations.Add(new LocationRelation
                 {
                     RelationType = LocationRelationType.Coreference,
@@ -304,6 +321,27 @@ public static class LocationRelationExtractor
         if (text.Length <= 1) return false;
         if (!System.Text.RegularExpressions.Regex.IsMatch(text, @"[\u4e00-\u9fff]")) return false;
         if (text.All(c => char.IsPunctuation(c) || char.IsWhiteSpace(c))) return false;
+
+        // Filter out text containing underscores (segmentation artifacts)
+        if (text.Contains('_')) return false;
+
+        // Filter out text with newlines (segmentation artifacts)
+        if (text.Contains('\n') || text.Contains('\r')) return false;
+
+        // Filter out common non-location patterns
+        var nonLocationPatterns = new[]
+        {
+            "这趟", "下一场", "中国高铁看", "更让", "让旅客",
+            "出行更", "美好", "印记", "文脉", "笔下",
+            "晨钟暮鼓", "活虾", "有限公司", "股份"
+        };
+
+        foreach (var pattern in nonLocationPatterns)
+        {
+            if (text.Contains(pattern))
+                return false;
+        }
+
         return true;
     }
 

@@ -92,7 +92,7 @@ public sealed class LocationProcessor : IEntityProcessor, IDisposable
         var lookup = context.GeoJsonLookup;
         if (lookup != null && lookup.TryGetValue(entity.Text, out var feature) && feature.Status == "success")
         {
-            return BuildResultFromGeoJsonFeature(feature);
+            return BuildResultFromGeoJsonFeature(feature, entity, context.Block);
         }
 
         // Stage 2: Fallback — live Nominatim API via GeocodingService
@@ -103,7 +103,7 @@ public sealed class LocationProcessor : IEntityProcessor, IDisposable
                 var geocodeResult = await _geocodingService.GeocodeAsync(entity.Text, ct).ConfigureAwait(false);
                 if (geocodeResult != null)
                 {
-                    return BuildResultFromGeocoding(geocodeResult);
+                    return BuildResultFromGeocoding(geocodeResult, entity);
                 }
             }
             catch (OperationCanceledException)
@@ -133,17 +133,33 @@ public sealed class LocationProcessor : IEntityProcessor, IDisposable
 
     /// <summary>
     /// Builds an enrichment result from a pre-parsed GeoJSON feature.
+    /// Uses the canonical name (not the full address chain) as EnrichedText,
+    /// and stores the full display name in metadata for reference.
+    /// Applies context-aware confidence adjustment to reduce false matches.
     /// </summary>
-    private static EntityEnrichmentResult BuildResultFromGeoJsonFeature(GeoJsonFeature feature)
+    private static EntityEnrichmentResult BuildResultFromGeoJsonFeature(GeoJsonFeature feature, SemanticEntity entity, SemanticBlockResult block)
     {
+        var canonicalName = ExtractCanonicalName(feature.DisplayName);
+
+        // Context-aware confidence adjustment
+        var adjustedConfidence = feature.Confidence;
+        if (!IsLikelyLocationEntity(entity.Text))
+        {
+            adjustedConfidence *= 0.3;
+        }
+        else if (canonicalName != entity.Text && !entity.Text.Contains(canonicalName) && !canonicalName.Contains(entity.Text))
+        {
+            adjustedConfidence *= 0.5;
+        }
+
         var result = new EntityEnrichmentResult
         {
             Source = "locations.geojson",
-            EnrichedText = feature.DisplayName,
+            EnrichedText = canonicalName,
             ExternalId = !string.IsNullOrEmpty(feature.OsmType) && feature.OsmId > 0
                 ? $"{feature.OsmType}/{feature.OsmId}"
                 : null,
-            Confidence = feature.Confidence,
+            Confidence = adjustedConfidence,
             Metadata = new Dictionary<string, object>
             {
                 ["latitude"] = feature.Latitude ?? 0.0,
@@ -156,6 +172,7 @@ public sealed class LocationProcessor : IEntityProcessor, IDisposable
                 ["place_rank"] = feature.PlaceRank,
                 ["importance"] = feature.Importance,
                 ["display_name"] = feature.DisplayName,
+                ["canonical_name"] = canonicalName,
                 ["match_type"] = feature.MatchType,
                 ["query_text"] = feature.QueryText
             }
@@ -174,17 +191,26 @@ public sealed class LocationProcessor : IEntityProcessor, IDisposable
 
     /// <summary>
     /// Builds an enrichment result from a live GeocodingService API call.
+    /// Uses the canonical name from display_name rather than the full address chain.
     /// </summary>
-    private static EntityEnrichmentResult BuildResultFromGeocoding(GeocodingResult geocodeResult)
+    private static EntityEnrichmentResult BuildResultFromGeocoding(GeocodingResult geocodeResult, SemanticEntity entity)
     {
+        var canonicalName = ExtractCanonicalName(geocodeResult.DisplayName);
+
+        var adjustedConfidence = geocodeResult.Confidence;
+        if (!IsLikelyLocationEntity(entity.Text))
+        {
+            adjustedConfidence *= 0.3;
+        }
+
         var result = new EntityEnrichmentResult
         {
             Source = "Nominatim",
-            EnrichedText = geocodeResult.DisplayName,
+            EnrichedText = canonicalName,
             ExternalId = !string.IsNullOrEmpty(geocodeResult.OsmType) && geocodeResult.OsmId > 0
                 ? $"{geocodeResult.OsmType}/{geocodeResult.OsmId}"
                 : null,
-            Confidence = geocodeResult.Confidence,
+            Confidence = adjustedConfidence,
             Metadata = new Dictionary<string, object>
             {
                 ["latitude"] = geocodeResult.Latitude,
@@ -197,6 +223,7 @@ public sealed class LocationProcessor : IEntityProcessor, IDisposable
                 ["place_rank"] = geocodeResult.PlaceRank,
                 ["importance"] = geocodeResult.Importance,
                 ["display_name"] = geocodeResult.DisplayName,
+                ["canonical_name"] = canonicalName,
                 ["match_type"] = geocodeResult.MatchType,
                 ["query_text"] = geocodeResult.QueryText
             }
@@ -212,6 +239,58 @@ public sealed class LocationProcessor : IEntityProcessor, IDisposable
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Extracts the canonical (short) name from a full display name.
+    /// E.g., "五四大街, 皇城根北街社区, 景山街道, ..." → "五四大街"
+    /// </summary>
+    private static string ExtractCanonicalName(string displayName)
+    {
+        if (string.IsNullOrEmpty(displayName))
+            return displayName;
+
+        var parts = displayName.Split(new[] { ',', '，' }, StringSplitOptions.RemoveEmptyEntries);
+        foreach (var part in parts)
+        {
+            var trimmed = part.Trim();
+            if (!string.IsNullOrEmpty(trimmed))
+                return trimmed;
+        }
+        return displayName.Trim();
+    }
+
+    /// <summary>
+    /// Checks if the entity text is likely a genuine location entity
+    /// rather than a sentence fragment, literary expression, or non-entity text.
+    /// </summary>
+    private static bool IsLikelyLocationEntity(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return false;
+
+        // Filter out text containing underscores or mixed alphanumeric patterns
+        if (text.Contains('_'))
+            return false;
+
+        // Filter out text with newlines (segmentation artifacts)
+        if (text.Contains('\n') || text.Contains('\r'))
+            return false;
+
+        // Filter out text that contains common non-location indicators
+        var nonLocationPatterns = new[]
+        {
+            "这趟", "下一场", "中国高铁看", "更让", "让旅客",
+            "出行更", "美好 京", "印记", "文脉", "笔下"
+        };
+
+        foreach (var pattern in nonLocationPatterns)
+        {
+            if (text.Contains(pattern))
+                return false;
+        }
+
+        return true;
     }
 
     /// <inheritdoc/>
