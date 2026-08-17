@@ -82,17 +82,20 @@ public class EnrichedEntityEntry
     /// Whether this entity has been truly enriched with external knowledge
     /// (text changed or external ID found). Validation-only does NOT count.
     /// </summary>
+    [JsonIgnore]
     public bool IsEnriched => EnrichmentType == "external";
 
     /// <summary>
     /// Whether this entity was validated but not externally enriched
     /// (text unchanged, source is a validator).
     /// </summary>
+    [JsonIgnore]
     public bool IsOnlyValidated => EnrichmentType == "validation";
 
     /// <summary>
     /// Status icon for display: ✓ valid, ⚠ ambiguous, ✗ invalid, ? unknown.
     /// </summary>
+    [JsonIgnore]
     public string StatusIcon => ValidationStatus switch
     {
         "valid" => "✓",
@@ -104,6 +107,7 @@ public class EnrichedEntityEntry
     /// <summary>
     /// Status color for display.
     /// </summary>
+    [JsonIgnore]
     public string StatusColor => ValidationStatus switch
     {
         "valid" => "#4CAF50",
@@ -115,6 +119,7 @@ public class EnrichedEntityEntry
     /// <summary>
     /// Category color hex for border/icon (matches Semantic column colors).
     /// </summary>
+    [JsonIgnore]
     public string CategoryColorHex => Category switch
     {
         "LOCATION" => "#4CAF50",
@@ -129,6 +134,7 @@ public class EnrichedEntityEntry
     /// <summary>
     /// Category background color for the entity card.
     /// </summary>
+    [JsonIgnore]
     public string CategoryBackground => Category switch
     {
         "LOCATION" => "#4CAF5018",
@@ -143,6 +149,7 @@ public class EnrichedEntityEntry
     /// <summary>
     /// Category border color with opacity.
     /// </summary>
+    [JsonIgnore]
     public string CategoryBorder => Category switch
     {
         "LOCATION" => "#4CAF5055",
@@ -157,6 +164,7 @@ public class EnrichedEntityEntry
     /// <summary>
     /// Category text color (light version for text).
     /// </summary>
+    [JsonIgnore]
     public string CategoryTextColor => Category switch
     {
         "LOCATION" => "#C8E6C9",
@@ -171,6 +179,7 @@ public class EnrichedEntityEntry
     /// <summary>
     /// Chinese category name for display.
     /// </summary>
+    [JsonIgnore]
     public string CategoryDisplay => Category switch
     {
         "LOCATION" => "地点",
@@ -185,6 +194,7 @@ public class EnrichedEntityEntry
     /// <summary>
     /// Display text to show: if enriched shows "original → enriched", otherwise just original.
     /// </summary>
+    [JsonIgnore]
     public string ArrowDisplayText
     {
         get
@@ -198,12 +208,14 @@ public class EnrichedEntityEntry
     /// <summary>
     /// Whether the entity text changed after enrichment (regardless of type).
     /// </summary>
+    [JsonIgnore]
     public bool TextChanged => !string.IsNullOrEmpty(EnrichedText) && EnrichedText != Text;
 
     /// <summary>
     /// One-line summary for quick display: "source · confidence · external_id"
     /// Shows "(verified)" for validation-only results.
     /// </summary>
+    [JsonIgnore]
     public string QuickSummary
     {
         get
