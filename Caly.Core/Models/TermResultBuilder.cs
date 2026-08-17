@@ -63,7 +63,7 @@ public static class TermResultBuilder
             {
                 if (entry.ValidationStatus == "invalid") continue;
 
-                var text = !string.IsNullOrEmpty(entry.EnrichedText) ? entry.EnrichedText : entry.Text;
+                var text = IsCleanEnrichedText(entry.EnrichedText) ? entry.EnrichedText : entry.Text;
 
                 freqCounts[text] = freqCounts.TryGetValue(text, out var f) ? f + 1 : 1;
 
@@ -81,7 +81,7 @@ public static class TermResultBuilder
             {
                 if (entry.ValidationStatus == "invalid") continue;
 
-                var text = !string.IsNullOrEmpty(entry.EnrichedText) ? entry.EnrichedText : entry.Text;
+                var text = IsCleanEnrichedText(entry.EnrichedText) ? entry.EnrichedText : entry.Text;
                 if (textToEntry.ContainsKey(text)) continue;
 
                 var termEntry = new TermEntry
@@ -238,5 +238,33 @@ public static class TermResultBuilder
     {
         if (nodes.Count == 0) return currentDepth;
         return nodes.Max(n => GetMaxDepth(n.Children, n.Depth));
+    }
+
+    /// <summary>
+    /// Checks whether an enriched text value is clean and suitable for use as a term's canonical text.
+    /// Returns false for JSON-encoded strings, text with noise prefixes (e.g., "的", "了"),
+    /// or text with suspicious segmentation artifacts (embedded spaces in CJK text).
+    /// </summary>
+    private static bool IsCleanEnrichedText(string? enrichedText)
+    {
+        if (string.IsNullOrEmpty(enrichedText))
+            return false;
+
+        var trimmed = enrichedText.Trim();
+
+        // Reject JSON-encoded strings (e.g., '{"value":"Lao She"}')
+        if (trimmed.StartsWith("{"))
+            return false;
+
+        // Reject text with noise prefixes (common Chinese function words)
+        if (trimmed.StartsWith("的") || trimmed.StartsWith("了"))
+            return false;
+
+        // Reject text with embedded spaces mixed with CJK characters (segmentation artifacts)
+        // e.g., "美好 京沪高速铁路股份有限公司" or "的齐鲁"
+        if (trimmed.Contains(" ") && trimmed.Any(c => c >= '\u4E00' && c <= '\u9FFF'))
+            return false;
+
+        return true;
     }
 }

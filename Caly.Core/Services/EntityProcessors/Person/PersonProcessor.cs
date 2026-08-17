@@ -32,16 +32,15 @@ namespace Caly.Core.Services.EntityProcessors.Person;
 /// <summary>
 /// Person entity processor — implements <see cref="IEntityProcessor"/> for the "PERSON" entity type.
 ///
-/// Pure rule engine (Phase C v1 — no external Wikidata API):
+/// Hybrid approach:
 /// - Validates via <see cref="PersonValidator"/> (name structure + surname check + title filter).
-/// - Enriches with extracted core name and name type metadata.
+/// - Enriches via <see cref="PersonDisambiguationService"/> (Wikidata API with RateLimiter).
 /// - Extracts intra-block relations via <see cref="PersonRelationExtractor"/> (alias, family, colleague, title).
 /// - Resolves cross-block coreference chains.
-///
-/// Wikidata disambiguation service is planned for Phase C+ (v2).
 /// </summary>
-public sealed class PersonProcessor : IEntityProcessor
+public sealed class PersonProcessor : IEntityProcessor, IDisposable
 {
+    private readonly PersonDisambiguationService _wikidataService = new();
     /// <inheritdoc/>
     public string EntityType => "PERSON";
 
@@ -78,24 +77,26 @@ public sealed class PersonProcessor : IEntityProcessor
     }
 
     /// <inheritdoc/>
-    public Task<EntityEnrichmentResult> EnrichAsync(
+    public async Task<EntityEnrichmentResult> EnrichAsync(
         SemanticEntity entity,
         EntityContext context,
         CancellationToken ct)
     {
         var (_, nameType, coreName, _) = PersonValidator.Validate(entity);
 
+        var localConfidence = nameType switch
+        {
+            PersonNameType.FullChineseName => 0.90,
+            PersonNameType.TitleSuffixed => 0.80,
+            PersonNameType.ForeignName => 0.85,
+            PersonNameType.SingleName => 0.40,
+            _ => 0.30
+        };
+
         var result = new EntityEnrichmentResult
         {
             Source = "PersonValidator",
-            Confidence = nameType switch
-            {
-                PersonNameType.FullChineseName => 0.90,
-                PersonNameType.TitleSuffixed => 0.80,
-                PersonNameType.ForeignName => 0.85,
-                PersonNameType.SingleName => 0.40,
-                _ => 0.30
-            },
+            Confidence = localConfidence,
             EnrichedText = coreName ?? entity.Text,
             Metadata = new Dictionary<string, object>
             {
@@ -104,14 +105,71 @@ public sealed class PersonProcessor : IEntityProcessor
                 ["original_text"] = entity.Text,
                 ["has_title_suffix"] = nameType == PersonNameType.TitleSuffixed,
                 ["has_known_surname"] = coreName != null && PersonValidator.IsKnownSurname(coreName.Length >= 1 ? coreName[..1] : ""),
-                // Wikidata fields (populated in Phase C+)
                 ["wikidata_qid"] = "",
                 ["wikidata_label"] = "",
                 ["wikidata_description"] = ""
             }
         };
 
-        return Task.FromResult(result);
+        // Wikidata lookup (non-fatal) — when found, it becomes the authoritative source
+        try
+        {
+            var searchResults = await _wikidataService.SearchAsync(entity.Text, ct);
+            if (searchResults.Count > 0)
+            {
+                var best = searchResults[0];
+                result.Source = "Wikidata";
+                result.ExternalId = best.QId;
+                // Wikidata may return JSON-encoded labels like '{"value":"Lao She"}'
+                // Parse them to extract the clean string value.
+                result.EnrichedText = UnwrapJsonValue(best.Label) ?? best.Label;
+                result.Confidence = best.Confidence;
+
+                result.Metadata["wikidata_qid"] = best.QId;
+                result.Metadata["wikidata_label"] = best.Label;
+                result.Metadata["wikidata_description"] = best.Description;
+            }
+        }
+        catch (OperationCanceledException ex)
+        {
+            // Timeout or cancellation — treat as non-fatal, keep local validation result
+            System.Diagnostics.Debug.WriteLine($"[PersonProcessor] Wikidata query timed out/cancelled for '{entity.Text}': {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            // Log internally but don't leak details to the output
+            System.Diagnostics.Debug.WriteLine($"[PersonProcessor] Wikidata query failed for '{entity.Text}': {ex.Message}");
+            // Keep local validation result as fallback
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Unwrap a JSON-encoded string value (e.g., '{"value":"Lao She"}')
+    /// into a plain string. Returns null if the input is not valid JSON with a "value" field.
+    /// </summary>
+    private static string? UnwrapJsonValue(string? input)
+    {
+        if (string.IsNullOrEmpty(input))
+            return null;
+
+        var trimmed = input.Trim();
+        if (trimmed.Length < 2 || trimmed[0] != '{')
+            return input; // Not JSON, return as-is
+
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(trimmed);
+            if (doc.RootElement.TryGetProperty("value", out var val) && val.ValueKind == System.Text.Json.JsonValueKind.String)
+                return val.GetString();
+        }
+        catch
+        {
+            // Not valid JSON, return as-is
+        }
+
+        return input;
     }
 
     /// <inheritdoc/>
@@ -128,5 +186,10 @@ public sealed class PersonProcessor : IEntityProcessor
         IReadOnlyList<SemanticBlockResult> allBlocks)
     {
         return PersonRelationExtractor.ResolveCrossBlock(allEntities, allBlocks);
+    }
+
+    public void Dispose()
+    {
+        _wikidataService.Dispose();
     }
 }
