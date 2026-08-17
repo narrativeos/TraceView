@@ -434,9 +434,8 @@ public sealed class PopoService : IDisposable
 
     /// <summary>
     /// Finds the MinerU extracted images directory for a given document ID.
-    /// The directory structure is: ~/.TraceView/{docId}/mineru/{docId}/hybrid_auto/
-    /// The ZIP contains {docId}/hybrid_auto/... which extracts to {mineru}/{docId}/hybrid_auto/...
-    /// This is the directory where popo_result.json's img_path (e.g., "images/xxx.jpg") is relative to.
+    /// Scans all subdirectories in the mineru folder for hybrid_auto since the ZIP internal
+    /// folder name may differ from the project docId (e.g., project ejij_4 but ZIP contains ejij/).
     /// </summary>
     private string? FindMinerUImagesDirectory(string docId)
     {
@@ -448,34 +447,36 @@ public sealed class PopoService : IDisposable
             if (!Directory.Exists(mineruCacheDir))
                 return null;
 
-            // The ZIP extracts {docId}/hybrid_auto/ to {mineru}/{docId}/hybrid_auto/
-            var artifactsDir = Path.Combine(mineruCacheDir, docId);
-
-            if (!Directory.Exists(artifactsDir))
-                return null;
-
-            var hybridAutoDir = Path.Combine(artifactsDir, "hybrid_auto");
-
-            if (Directory.Exists(hybridAutoDir))
+            // Scan all subdirectories for hybrid_auto (ZIP internal name may differ from docId)
+            foreach (var subDir in Directory.GetDirectories(mineruCacheDir))
             {
-                // Verify there are actually images in the images subdirectory
-                var imagesDir = Path.Combine(hybridAutoDir, "images");
-                if (Directory.Exists(imagesDir))
+                var hybridAutoDir = Path.Combine(subDir, "hybrid_auto");
+
+                if (Directory.Exists(hybridAutoDir))
                 {
-                    var imageFilesInHybrid = Directory.GetFiles(imagesDir, "*.*", SearchOption.TopDirectoryOnly)
-                        .Where(f => Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
-                        .ToList();
-                    if (imageFilesInHybrid.Count > 0)
-                        return hybridAutoDir;
+                    // Verify there are actually images in the images subdirectory
+                    var imagesDir = Path.Combine(hybridAutoDir, "images");
+                    if (Directory.Exists(imagesDir))
+                    {
+                        var imageFilesInHybrid = Directory.GetFiles(imagesDir, "*.*", SearchOption.TopDirectoryOnly)
+                            .Where(f => Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
+                            .ToList();
+                        if (imageFilesInHybrid.Count > 0)
+                            return hybridAutoDir;
+                    }
                 }
             }
 
-            // Fallback: search the entire artifacts directory for images
-            var imageFiles = Directory.GetFiles(artifactsDir, "*.*", SearchOption.AllDirectories)
+            // Fallback: search the entire mineru directory for images
+            var imageFiles = Directory.GetFiles(mineruCacheDir, "*.*", SearchOption.AllDirectories)
                 .Where(f => Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
                 .ToList();
             if (imageFiles.Count > 0)
-                return artifactsDir;
+            {
+                var imageDir = Path.GetDirectoryName(imageFiles[0]);
+                if (imageDir is not null)
+                    return imageDir;
+            }
         }
         catch
         {

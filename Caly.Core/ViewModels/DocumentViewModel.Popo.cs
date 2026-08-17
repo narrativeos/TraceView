@@ -397,61 +397,46 @@ public sealed partial class DocumentViewModel
         string? artifactsDir = null;
         if (ProjectPath is not null)
         {
-            // Get docId from LocalPath or fallback to ZIP filename
-            string? docId = LocalPath is not null
-                ? System.IO.Path.GetFileNameWithoutExtension(LocalPath)
-                : null;
+            var mineruDir = Path.Combine(ProjectPath, "mineru");
 
-            if (docId is null)
+            // 1: Scan mineru directory for hybrid_auto (handles ZIP internal folder name != project docId)
+            // The ZIP may extract to {mineru}/{internal_name}/hybrid_auto/ where internal_name differs from docId
+            // e.g., project is ejij_4 but ZIP contains ejij/hybrid_auto/
+            if (Directory.Exists(mineruDir))
             {
-                var mineruDir = Path.Combine(ProjectPath, "mineru");
-                if (Directory.Exists(mineruDir))
+                // First try all subdirectories for hybrid_auto
+                foreach (var subDir in Directory.GetDirectories(mineruDir))
                 {
-                    var zipFiles = Directory.GetFiles(mineruDir, "*.zip");
-                    if (zipFiles.Length > 0)
+                    var hybridAutoDir = Path.Combine(subDir, "hybrid_auto");
+                    if (Directory.Exists(hybridAutoDir))
                     {
-                        // ZIP filename is now simply {docId}.zip
-                        docId = Path.GetFileNameWithoutExtension(zipFiles[0]);
-                    }
-                }
-            }
-
-            // 1: Try MinerU cache hybrid_auto directory (~/.TraceView/{docId}/mineru/{docId}/hybrid_auto/)
-            // The ZIP contains {docId}/hybrid_auto/... which extracts to {mineru}/{docId}/hybrid_auto/...
-            if (docId is not null)
-            {
-                var cacheBase = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".TraceView", docId);
-                var mineruCacheDir = Path.Combine(cacheBase, "mineru");
-
-                // The ZIP extracts to: {mineru}/{docId}/hybrid_auto/
-                var hybridAutoDir = Path.Combine(mineruCacheDir, docId, "hybrid_auto");
-
-                if (Directory.Exists(hybridAutoDir))
-                {
-                    var imagesDir = Path.Combine(hybridAutoDir, "images");
-                    if (Directory.Exists(imagesDir))
-                    {
-                        var imageFiles = System.IO.Directory.GetFiles(imagesDir, "*.*", System.IO.SearchOption.TopDirectoryOnly)
-                            .Where(f => System.IO.Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
-                            .ToList();
-                        if (imageFiles.Count > 0)
+                        var imagesDir = Path.Combine(hybridAutoDir, "images");
+                        if (Directory.Exists(imagesDir))
                         {
-                            artifactsDir = hybridAutoDir;
+                            var imageFiles = System.IO.Directory.GetFiles(imagesDir, "*.*", System.IO.SearchOption.TopDirectoryOnly)
+                                .Where(f => System.IO.Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
+                                .ToList();
+                            if (imageFiles.Count > 0)
+                            {
+                                artifactsDir = hybridAutoDir;
+                                break;
+                            }
                         }
                     }
                 }
 
-                // Fallback: try the extracted directory directly (some ZIP structures may be flat)
+                // Fallback: search the entire mineru directory for images
                 if (artifactsDir is null)
                 {
-                    var extractedDir = Path.Combine(mineruCacheDir, docId);
-                    if (Directory.Exists(extractedDir))
+                    var imageFiles = System.IO.Directory.GetFiles(mineruDir, "*.*", System.IO.SearchOption.AllDirectories)
+                        .Where(f => System.IO.Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
+                        .ToList();
+                    if (imageFiles.Count > 0)
                     {
-                        var imageFiles = System.IO.Directory.GetFiles(extractedDir, "*.*", System.IO.SearchOption.AllDirectories)
-                            .Where(f => System.IO.Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
-                            .ToList();
-                        if (imageFiles.Count > 0)
-                            artifactsDir = extractedDir;
+                        // Find the parent directory containing the images
+                        var imageDir = Path.GetDirectoryName(imageFiles[0]);
+                        if (imageDir is not null)
+                            artifactsDir = imageDir;
                     }
                 }
             }
