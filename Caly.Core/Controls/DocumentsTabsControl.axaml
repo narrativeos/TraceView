@@ -1842,7 +1842,7 @@
                                                         Data="{StaticResource spinner_regular}"
                                                         Foreground="{DynamicResource SystemAccentColor}"
                                                         HorizontalAlignment="Center"/>
-                                              <TextBlock Text="Enriching entities..."
+                                              <TextBlock Text="{Binding EnrichStatusText}"
                                                          FontSize="13"
                                                          HorizontalAlignment="Center"
                                                          TextAlignment="Center"/>

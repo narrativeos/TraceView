@@ -26,6 +26,9 @@ using Caly.Core.Services.EntityProcessors.Location;
 using Caly.Core.Services.EntityProcessors.Temporal;
 using Caly.Core.Services.EntityProcessors.Person;
 using Caly.Core.Services.EntityProcessors.Organization;
+using Caly.Core.Services.EntityProcessors.Numeric;
+using Caly.Core.Services.EntityProcessors.Facility;
+using Caly.Core.Services.EntityProcessors.Unknown;
 using Caly.Core.Services.EntityProcessors.Term;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -189,6 +192,12 @@ public sealed partial class DocumentViewModel
     [ObservableProperty]
     private bool _isEnrichProcessing;
 
+    /// <summary>
+    /// Progress percentage (0-100) for entity enrichment.
+    /// </summary>
+    [ObservableProperty]
+    private int _enrichProgress;
+
     partial void OnIsEnrichProcessingChanged(bool value)
     {
         OnPropertyChanged(nameof(EnrichButtonTooltip));
@@ -204,6 +213,10 @@ public sealed partial class DocumentViewModel
         {
             if (_enrichStatusText is not null)
                 return _enrichStatusText;
+            if (IsEnrichProcessing)
+            {
+                return $"Enriching entities... {EnrichProgress}%";
+            }
             if (HasEnrichedData)
             {
                 var count = EnrichedEntityCount;
@@ -752,6 +765,7 @@ public sealed partial class DocumentViewModel
         try
         {
             IsEnrichProcessing = true;
+            EnrichProgress = 0;
             SetEnrichStatus("Enriching entities...");
             var outputDir = Path.Combine(ProjectPath!, "semantic");
             var enrichedResult = await RunEnrichmentPipelineAsync(SemanticResults, outputDir, CancellationToken.None);
@@ -914,6 +928,7 @@ public sealed partial class DocumentViewModel
 
         _semanticCts = new CancellationTokenSource();
         IsEnrichProcessing = true;
+        EnrichProgress = 0;
         ShowEnrichedColumn = true;
         SetEnrichStatus("Starting entity enrichment...");
 
@@ -1041,7 +1056,14 @@ public sealed partial class DocumentViewModel
             System.Diagnostics.Debug.WriteLine("[Semantic] locations.geojson not found — LOCATION entities will not be geocoded");
         }
 
-        var pipeline = CreateDefaultPipeline();
+        var pipeline = CreateDefaultPipeline((current, total, entityText, entityType) =>
+        {
+            Dispatcher.UIThread.Invoke(() =>
+            {
+                EnrichProgress = (int)((current * 100.0) / total);
+                SetEnrichStatus($"Enriching entities... {EnrichProgress}% ({entityText})");
+            });
+        });
         var enrichedResult = await pipeline.ProcessAsync(result, ct, geoLookup);
         if (enrichedResult != null)
         {
@@ -1096,13 +1118,20 @@ public sealed partial class DocumentViewModel
     /// Creates a pipeline with all default entity processors registered.
     /// Extracted as a factory method so processor registration is in one place.
     /// </summary>
-    static EntityProcessorPipeline CreateDefaultPipeline()
+    EntityProcessorPipeline CreateDefaultPipeline(Action<int, int, string, string>? onProgress = null)
     {
         var pipeline = new EntityProcessorPipeline();
+        if (onProgress is not null)
+        {
+            pipeline.ReportProgress(onProgress);
+        }
         pipeline.AddProcessor(new LocationProcessor());
         pipeline.AddProcessor(new TemporalProcessor());
         pipeline.AddProcessor(new PersonProcessor());
         pipeline.AddProcessor(new OrganizationProcessor());
+        pipeline.AddProcessor(new NumericProcessor());
+        pipeline.AddProcessor(new FacilityProcessor());
+        pipeline.AddProcessor(new UnknownProcessor());
         pipeline.AddProcessor(new TermProcessor());
         return pipeline;
     }
