@@ -124,7 +124,7 @@ public sealed class GeoJsonService
                 geocodingResults.TryGetValue(strategy.ContextLocationName, out var parentRes))
             {
                 parentBbox = GeocodingService.GeocodingBbox.FromResult(parentRes.FirstOrDefault());
-                System.Diagnostics.Debug.WriteLine(
+                Console.WriteLine(
                     $"[Geo] SpatialBias for '{locationName}': using parent '{strategy.ContextLocationName}' bbox");
             }
 
@@ -394,13 +394,15 @@ public sealed class GeoJsonService
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <param name="popoTreeRoot">Optional Popo document tree root for building GeoStory chapters.</param>
     /// <param name="documentName">Optional document name used as the GeoStory title.</param>
+    /// <param name="nlpService">Optional NLP service for generating story title from chapter titles.</param>
     public async Task<string?> GenerateGeoLibreJsonStringAsync(
         SemanticResultFile? semanticResults,
         string? geoJsonPath = null,
         Action<string>? onProgress = null,
         CancellationToken cancellationToken = default,
         AnalysisTreeNode? popoTreeRoot = null,
-        string? documentName = null)
+        string? documentName = null,
+        SemanticAnalysisService? nlpService = null)
     {
         if (semanticResults is null || semanticResults.Blocks.Count == 0)
             return null;
@@ -432,14 +434,14 @@ public sealed class GeoJsonService
         if (!string.IsNullOrEmpty(geoJsonPath) && File.Exists(geoJsonPath))
         {
             cacheLoaded = TryLoadFromGeoJsonCache(geoJsonPath, locationByName, locationNames, ref geocodingResults, onProgress);
-            System.Diagnostics.Debug.WriteLine($"[GeoLibre] Cache loaded: {cacheLoaded}, got {geocodingResults.Count} results from {locationNames.Count} locations");
+            Console.WriteLine($"[GeoLibre] Cache loaded: {cacheLoaded}, got {geocodingResults.Count} results from {locationNames.Count} locations");
         }
 
         // Only call API if cache was not available or did not cover all locations
         if (!cacheLoaded)
         {
             onProgress?.Invoke("调用地理编码 API...");
-            System.Diagnostics.Debug.WriteLine($"[GeoLibre] No cache available, calling geocoding API for {locationNames.Count} locations");
+            Console.WriteLine($"[GeoLibre] No cache available, calling geocoding API for {locationNames.Count} locations");
             
             // Geocode all locations using the confidence-based parallel method
             geocodingResults = await _geocodingService.GeocodeManyWithConfidenceAsync(
@@ -452,7 +454,7 @@ public sealed class GeoJsonService
                 },
                 onFailed: (name, error, failureType) => {
                     // Failed locations are ignored in GeoLibre output (only successful locations are included)
-                    System.Diagnostics.Debug.WriteLine($"[GeoLibre] Geocoding failed for '{name}': {error} ({failureType})");
+                    Console.WriteLine($"[GeoLibre] Geocoding failed for '{name}': {error} ({failureType})");
                     onProgress?.Invoke($"失败: {name}");
                 },
                 cancellationToken: cancellationToken);
@@ -696,8 +698,13 @@ public sealed class GeoJsonService
             }
 
             var storyBuilder = new GeoStoryBuilder();
-            var storyConfig = storyBuilder.Build(popoTreeRoot, geoFeatures,
-                documentName ?? "Document Story");
+            System.Diagnostics.Debug.WriteLine($"[GeoJsonService] Calling BuildAsync with nlpService={(nlpService != null ? "present" : "null")}, documentName=\"{documentName}\"");
+            var storyConfig = await storyBuilder.BuildAsync(
+                popoTreeRoot, geoFeatures,
+                documentName ?? "Document Story",
+                nlpService,
+                cancellationToken);
+            System.Diagnostics.Debug.WriteLine($"[GeoJsonService] BuildAsync returned, story title=\"{storyConfig?.Title}\"");
 
             var storyDict = GeoStoryBuilder.GeoStoryConfigToDict(storyConfig);
             if (storyDict is not null)
@@ -800,7 +807,7 @@ public sealed class GeoJsonService
             collection.Relations.AddRange(semanticResults.CrossBlockRelations);
         }
 
-        System.Diagnostics.Debug.WriteLine(
+        Console.WriteLine(
             $"[GeoJson] Built relation collection: {collection.Relations.Count} total relations ({collection.Summary})");
 
         return collection;
@@ -2181,7 +2188,7 @@ public sealed class GeoJsonService
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[GeoLibre] Failed to load from cache: {ex.Message}");
+            Console.WriteLine($"[GeoLibre] Failed to load from cache: {ex.Message}");
             return false;
         }
     }

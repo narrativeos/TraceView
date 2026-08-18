@@ -58,6 +58,8 @@ namespace Caly.Core.Services;
 [JsonSerializable(typeof(HanLPToken), GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(HanLPEntity), GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(HanLPRelation), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(SemanticAnalysisService.TitleRequest), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(SemanticAnalysisService.TitleResponse), GenerationMode = JsonSourceGenerationMode.Metadata)]
 // Table of Contents models
 [JsonSerializable(typeof(TocEntry), GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(List<TocEntry>), GenerationMode = JsonSourceGenerationMode.Metadata)]

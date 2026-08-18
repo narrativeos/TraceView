@@ -25,6 +25,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -40,6 +41,11 @@ public sealed class SemanticAnalysisService : IDisposable
 {
     private readonly HttpClient _httpClient;
     private readonly string _baseUrl;
+    
+    private static void Log(string message)
+    {
+        System.Diagnostics.Debug.WriteLine(message);
+    }
 
     public SemanticAnalysisService(string? baseUrl = null)
     {
@@ -57,6 +63,99 @@ public sealed class SemanticAnalysisService : IDisposable
         _httpClient.Dispose();
     }
 
+    /// <summary>
+    /// Request for the /analyze/title endpoint.
+    /// </summary>
+    public class TitleRequest
+    {
+        [JsonPropertyName("text")]
+        public string Text { get; set; } = string.Empty;
+        
+        [JsonPropertyName("target_chars")]
+        public int TargetChars { get; set; } = 14;
+    }
+    
+    /// <summary>
+    /// Response from the /analyze/title endpoint.
+    /// </summary>
+    public class TitleResponse
+    {
+        [JsonPropertyName("title_text")]
+        public string? TitleText { get; set; }
+        
+        [JsonPropertyName("method")]
+        public string? Method { get; set; }
+        
+        [JsonPropertyName("score")]
+        public double Score { get; set; }
+    }
+    
+    /// <summary>
+    /// Calls /analyze/title to generate a concise title from the given text.
+    /// Uses TextRank-based extraction with configurable target length.
+    /// Returns null if the API call fails or the text is empty.
+    /// </summary>
+    /// <param name="text">Source text to generate title from.</param>
+    /// <param name="targetChars">Target character length for the title (default: 14).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    public async Task<string?> GenerateTitleAsync(
+        string text,
+        int targetChars = 14,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            Log("[SemanticAnalysisService] GenerateTitleAsync: text is empty/null");
+            return null;
+        }
+        
+        Log($"[SemanticAnalysisService] GenerateTitleAsync called, baseUrl={_baseUrl}, text_len={text.Length}, targetChars={targetChars}");
+        
+        try
+        {
+            var request = new TitleRequest
+            {
+                Text = text,
+                TargetChars = targetChars
+            };
+            
+            var json = JsonSerializer.Serialize(request, SourceGenerationContext.Default.TitleRequest);
+            Log($"[SemanticAnalysisService] Serialized request: {json.Substring(0, Math.Min(200, json.Length))}");
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+            
+            Log($"[SemanticAnalysisService] Sending POST to {_baseUrl}/analyze/title");
+            var response = await _httpClient.PostAsync("analyze/title", content, cancellationToken);
+            Log($"[SemanticAnalysisService] Response status: {response.StatusCode}");
+            
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                Log($"[SemanticAnalysisService] /analyze/title failed: {response.StatusCode} - {errorBody.Substring(0, Math.Min(200, errorBody.Length))}");
+                return null;
+            }
+            
+            var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
+            Log($"[SemanticAnalysisService] Response JSON: {responseJson.Substring(0, Math.Min(300, responseJson.Length))}");
+            
+            // Use source generation context for deserialization
+            var titleResponse = (TitleResponse?)JsonSerializer.Deserialize(responseJson, SourceGenerationContext.Default.TitleResponse);
+            
+            if (titleResponse is not null && !string.IsNullOrEmpty(titleResponse.TitleText))
+            {
+                Log($"[SemanticAnalysisService] /analyze/title SUCCESS: \"{titleResponse.TitleText}\" (score={titleResponse.Score})");
+                return titleResponse.TitleText;
+            }
+            
+            Log($"[SemanticAnalysisService] /analyze/title returned null or empty title_text, titleResponse={titleResponse?.ToString()}, TitleText={titleResponse?.TitleText}");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            Log($"[SemanticAnalysisService] /analyze/title EXCEPTION: {ex.GetType().Name}: {ex.Message}");
+            return null;
+        }
+    }
+    
     /// <summary>
     /// Removes OCR connection markers from text before sending to HanLP.
     /// Removes patterns like <|txt_split|>, <|line_break|>, etc.

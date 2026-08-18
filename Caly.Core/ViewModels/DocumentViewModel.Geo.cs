@@ -663,6 +663,7 @@ public sealed partial class DocumentViewModel
         try
         {
             var geoJsonService = new GeoJsonService();
+            var nlpService = new SemanticAnalysisService();
 
             // Get the cached GeoJSON file path (if it exists)
             var outputDir = GetSemanticOutputDir();
@@ -679,7 +680,9 @@ public sealed partial class DocumentViewModel
                 },
                 cancellationToken: _geoLibreCts.Token,
                 popoTreeRoot: StructureDocument?.TreeRoot,
-                documentName: this.GetBestDocumentTitle());
+                documentName: this.GetBestDocumentTitle(),
+                nlpService: nlpService);
+            nlpService.Dispose();
         }
         catch (OperationCanceledException)
         {

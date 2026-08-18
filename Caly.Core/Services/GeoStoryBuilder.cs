@@ -21,6 +21,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Caly.Core.Models;
 
 namespace Caly.Core.Services;
@@ -106,17 +108,21 @@ public class GeoStoryBuilder
     /// </summary>
     /// <param name="popoRoot">Root node of the Popo document tree.</param>
     /// <param name="features">GeoFeature list extracted from geocoding results.</param>
-    /// <param name="documentTitle">Document name used as the story title.</param>
+    /// <param name="documentTitle">Document name used as the story title (fallback).</param>
+    /// <param name="nlpService">Optional NLP service for generating title from chapter titles.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>GeoStoryConfig ready to embed in geolibre.json, or null if no valid chapters.</returns>
-    public GeoStoryConfig? Build(
+    public async Task<GeoStoryConfig?> BuildAsync(
         AnalysisTreeNode? popoRoot,
         List<GeoFeature> features,
-        string documentTitle)
+        string documentTitle,
+        SemanticAnalysisService? nlpService = null,
+        CancellationToken cancellationToken = default)
     {
         if (popoRoot is null || features.Count == 0)
             return null;
 
-        // 1. Build UUID → GeoFeature index for O(1) lookup
+        // 1. Build UUID \u2192 GeoFeature index for O(1) lookup
         var uuidToFeature = new Dictionary<string, GeoFeature>();
         foreach (var feature in features)
         {
@@ -154,14 +160,64 @@ public class GeoStoryBuilder
             chapters.Add(BuildChapter(selected[i], i));
         }
 
+        // 7. Generate story title using NLP /analyze/title API
+        //    Data source: first few chapter titles (limited to avoid overly long input)
+        string storyTitle = documentTitle;
+        if (nlpService is not null && chapters.Count > 0)
+        {
+            // Use only the first 5 chapter titles to keep input concise
+            var titlesToUse = chapters.Take(5).Select(c => c.Title);
+            var chapterTitlesText = string.Join("\uff0c", titlesToUse);
+            System.Diagnostics.Debug.WriteLine($"[GeoStoryBuilder] Generating title from chapter titles: \"{chapterTitlesText}\"");
+            try
+            {
+                var generatedTitle = await nlpService.GenerateTitleAsync(
+                    chapterTitlesText,
+                    targetChars: 20,
+                    cancellationToken: cancellationToken);
+                if (!string.IsNullOrEmpty(generatedTitle))
+                {
+                    storyTitle = generatedTitle;
+                    System.Diagnostics.Debug.WriteLine($"[GeoStoryBuilder] Using NLP-generated title: \"{storyTitle}\"");
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine($"[GeoStoryBuilder] NLP returned null, using fallback title: \"{storyTitle}\"");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[GeoStoryBuilder] Title generation failed, using fallback: {ex.Message}");
+            }
+        }
+        else
+        {
+            if (nlpService is null)
+                System.Diagnostics.Debug.WriteLine($"[GeoStoryBuilder] nlpService is null, using fallback title: \"{storyTitle}\"");
+            else
+                System.Diagnostics.Debug.WriteLine($"[GeoStoryBuilder] No chapters ({chapters.Count}), using fallback title: \"{storyTitle}\"");
+        }
+
         return new GeoStoryConfig
         {
-            Title = documentTitle,
+            Title = storyTitle,
             Theme = "light",
             ShowMarkers = true,
             Chapters = chapters
         };
     }
+
+    /// <summary>
+    /// Synchronous wrapper for BuildAsync (for backward compatibility).
+    /// </summary>
+    public GeoStoryConfig? Build(
+        AnalysisTreeNode? popoRoot,
+        List<GeoFeature> features,
+        string documentTitle)
+    {
+        return BuildAsync(popoRoot, features, documentTitle, null, CancellationToken.None).GetAwaiter().GetResult();
+    }
+
 
     /// <summary>
     /// Depth-first walk of the Popo tree, collecting candidates at every node
