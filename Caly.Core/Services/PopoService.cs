@@ -360,21 +360,50 @@ public sealed class PopoService : IDisposable
         Directory.CreateDirectory(_cacheDirectory);
         File.WriteAllText(jsonPath, json);
 
-        // Parse the wrapped response
-        // Use StructureDocumentOptions (reflection-based) because AnalysisTreeNode also uses
-        // [ObservableProperty] — the JSON source generator can't see its generated properties.
-        var resultResponse = JsonSerializer.Deserialize<PopoTaskResultResponse>(json, PopoJsonService.StructureDocumentOptions);
-        if (resultResponse?.Result?.Tree is null)
+        // Parse the wrapped response using JsonDocument + manual tree parsing.
+        // IMPORTANT: Do NOT use JsonSerializer.Deserialize<PopoTaskResultResponse> with
+        // reflection-based resolver (DefaultJsonTypeInfoResolver) because it fails to
+        // correctly deserialize nested AnalysisTreeNode properties like img_path.
+        // This is the same approach used by TryParsePopoResultJson for consistency.
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        string taskIdResult = string.Empty;
+        if (root.TryGetProperty("task_id", out var taskIdElem))
+            taskIdResult = taskIdElem.GetString() ?? string.Empty;
+
+        if (!root.TryGetProperty("result", out var resultElem))
+        {
+            throw new PopoServiceException("Popo result missing 'result' field.");
+        }
+
+        // Get status and error from result
+        string status = string.Empty;
+        string? error = null;
+        if (resultElem.TryGetProperty("status", out var statusElem))
+            status = statusElem.GetString() ?? string.Empty;
+        if (resultElem.TryGetProperty("error", out var errorElem))
+            error = errorElem.GetString();
+
+        // Parse tree using ParseTreeNode (same as TryParsePopoResultJson)
+        if (!resultElem.TryGetProperty("tree", out var treeElem))
         {
             throw new PopoServiceException(
-                $"Popo result missing tree. Status: {resultResponse?.Result?.Status}, Error: {resultResponse?.Error}");
+                $"Popo result missing tree. Status: {status}, Error: {error}");
+        }
+
+        var treeRoot = PopoJsonService.ParseTreeNode(treeElem);
+        if (treeRoot is null)
+        {
+            throw new PopoServiceException(
+                $"Popo result tree is null. Status: {status}, Error: {error}");
         }
 
         // Build StructureDocument from the API tree
         var minerUDoc = PopoJsonService.BuildStructureDocumentFromTree(
-            resultResponse.Result.Tree,
+            treeRoot,
             sourceDocId,
-            resultResponse.TaskId);
+            taskIdResult);
 
         return minerUDoc;
     }
@@ -396,7 +425,8 @@ public sealed class PopoService : IDisposable
         Action<PopoProcessStatus, int>? onProgress = null,
         IPopoProgressCallback? detailedCallback = null,
         TimeSpan? timeout = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string? projectPath = null)
     {
         // Step 1: Submit task
         onProgress?.Invoke(PopoProcessStatus.Submitting, 10);
@@ -416,8 +446,34 @@ public sealed class PopoService : IDisposable
         // The popo_result.json contains img_path like "images/xxx.jpg", which is relative to the
         // hybrid_auto directory. By pointing to the MinerU extract directory, we avoid duplicating
         // image files and save disk space.
-        // Directory structure: ~/.TraceView/{docId}/mineru/{docId}/hybrid_auto/images/
-        var artifactsDir = FindMinerUImagesDirectory(sourceDocId);
+        // Directory structure: {projectPath}/mineru/{docId}/hybrid_auto/images/
+        var artifactsDir = FindMinerUImagesDirectory(sourceDocId, projectPath);
+
+        // Step 5: Save popo_result.json to project directory for persistence.
+        // DownloadAndParseResultAsync saves to cache directory, but TryLoadPopoData reads from
+        // project directory. Without this copy, reloading the project won't find popo_result.json
+        // and will fall back to other parsing methods that may not have img_path populated.
+        // Use read-then-write instead of File.Copy to avoid file lock issues on macOS.
+        if (!string.IsNullOrEmpty(projectPath))
+        {
+            try
+            {
+                var projectPopoDir = Path.Combine(projectPath, "popo");
+                var projectResultPath = Path.Combine(projectPopoDir, "popo_result.json");
+                var cacheResultPath = Path.Combine(_cacheDirectory, "popo_result.json");
+                if (File.Exists(cacheResultPath))
+                {
+                    Directory.CreateDirectory(projectPopoDir);
+                    var content = File.ReadAllText(cacheResultPath);
+                    File.WriteAllText(projectResultPath, content);
+                    System.Diagnostics.Debug.WriteLine($"[Popo] Saved popo_result.json to project: {projectResultPath}");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[Popo] Failed to save popo_result.json to project: {ex.Message}");
+            }
+        }
 
         onProgress?.Invoke(PopoProcessStatus.Completed, 100);
 
@@ -437,50 +493,114 @@ public sealed class PopoService : IDisposable
     /// Scans all subdirectories in the mineru folder for hybrid_auto since the ZIP internal
     /// folder name may differ from the project docId (e.g., project ejij_4 but ZIP contains ejij/).
     /// </summary>
-    private string? FindMinerUImagesDirectory(string docId)
+    /// <param name="docId">Document ID.</param>
+    /// <param name="projectPath">Optional project path. If provided, searches {projectPath}/mineru/ first.</param>
+    private string? FindMinerUImagesDirectory(string docId, string? projectPath = null)
     {
         try
         {
-            var cacheBase = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".TraceView", docId);
-            var mineruCacheDir = Path.Combine(cacheBase, "mineru");
+            System.Diagnostics.Debug.WriteLine($"[Popo] FindMinerUImagesDirectory: docId={docId}, projectPath={projectPath}");
 
-            if (!Directory.Exists(mineruCacheDir))
-                return null;
-
-            // Scan all subdirectories for hybrid_auto (ZIP internal name may differ from docId)
-            foreach (var subDir in Directory.GetDirectories(mineruCacheDir))
+            // 1: If projectPath is provided, search the project's mineru/ directory first
+            // This is where MinerUService extracts the ZIP when a project is open.
+            if (!string.IsNullOrEmpty(projectPath))
             {
-                var hybridAutoDir = Path.Combine(subDir, "hybrid_auto");
+                var mineruDir = Path.Combine(projectPath, "mineru");
+                System.Diagnostics.Debug.WriteLine($"[Popo] Searching project mineru dir: {mineruDir}, exists={Directory.Exists(mineruDir)}");
 
-                if (Directory.Exists(hybridAutoDir))
+                if (Directory.Exists(mineruDir))
                 {
-                    // Verify there are actually images in the images subdirectory
-                    var imagesDir = Path.Combine(hybridAutoDir, "images");
-                    if (Directory.Exists(imagesDir))
+                    var subDirs = Directory.GetDirectories(mineruDir);
+                    System.Diagnostics.Debug.WriteLine($"[Popo] Found {subDirs.Length} subdirectories in {mineruDir}");
+
+                    // Scan all subdirectories for hybrid_auto (ZIP internal name may differ from docId)
+                    foreach (var subDir in subDirs)
                     {
-                        var imageFilesInHybrid = Directory.GetFiles(imagesDir, "*.*", SearchOption.TopDirectoryOnly)
-                            .Where(f => Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
-                            .ToList();
-                        if (imageFilesInHybrid.Count > 0)
-                            return hybridAutoDir;
+                        System.Diagnostics.Debug.WriteLine($"[Popo] Checking subDir: {subDir}");
+                        var hybridAutoDir = Path.Combine(subDir, "hybrid_auto");
+                        if (Directory.Exists(hybridAutoDir))
+                        {
+                            System.Diagnostics.Debug.WriteLine($"[Popo] Found hybrid_auto: {hybridAutoDir}");
+                            var imagesDir = Path.Combine(hybridAutoDir, "images");
+                            if (Directory.Exists(imagesDir))
+                            {
+                                var imageFiles = Directory.GetFiles(imagesDir, "*.*", SearchOption.TopDirectoryOnly)
+                                    .Where(f => Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
+                                    .ToList();
+                                System.Diagnostics.Debug.WriteLine($"[Popo] Found {imageFiles.Count} image files in {imagesDir}");
+                                if (imageFiles.Count > 0)
+                                {
+                                    System.Diagnostics.Debug.WriteLine($"[Popo] SUCCESS: Returning {hybridAutoDir}");
+                                    return hybridAutoDir;
+                                }
+                            }
+                        }
+                    }
+
+                    // Fallback: search the entire mineru directory for images
+                    var allImageFiles = Directory.GetFiles(mineruDir, "*.*", SearchOption.AllDirectories)
+                        .Where(f => Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
+                        .ToList();
+                    System.Diagnostics.Debug.WriteLine($"[Popo] Fallback search found {allImageFiles.Count} image files in {mineruDir}");
+                    if (allImageFiles.Count > 0)
+                    {
+                        var imageDir = Path.GetDirectoryName(allImageFiles[0]);
+                        if (imageDir is not null)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"[Popo] SUCCESS (fallback): Returning {imageDir}");
+                            return imageDir;
+                        }
                     }
                 }
             }
 
-            // Fallback: search the entire mineru directory for images
-            var imageFiles = Directory.GetFiles(mineruCacheDir, "*.*", SearchOption.AllDirectories)
-                .Where(f => Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
-                .ToList();
-            if (imageFiles.Count > 0)
+            // 2: Fallback to cache directory ~/.TraceView/{docId}/mineru/
+            var cacheBase = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".TraceView", docId);
+            var mineruCacheDir = Path.Combine(cacheBase, "mineru");
+            System.Diagnostics.Debug.WriteLine($"[Popo] Searching cache dir: {mineruCacheDir}, exists={Directory.Exists(mineruCacheDir)}");
+
+            if (Directory.Exists(mineruCacheDir))
             {
-                var imageDir = Path.GetDirectoryName(imageFiles[0]);
-                if (imageDir is not null)
-                    return imageDir;
+                foreach (var subDir in Directory.GetDirectories(mineruCacheDir))
+                {
+                    var hybridAutoDir = Path.Combine(subDir, "hybrid_auto");
+                    if (Directory.Exists(hybridAutoDir))
+                    {
+                        var imagesDir = Path.Combine(hybridAutoDir, "images");
+                        if (Directory.Exists(imagesDir))
+                        {
+                            var imageFilesInHybrid = Directory.GetFiles(imagesDir, "*.*", SearchOption.TopDirectoryOnly)
+                                .Where(f => Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
+                                .ToList();
+                            if (imageFilesInHybrid.Count > 0)
+                            {
+                                System.Diagnostics.Debug.WriteLine($"[Popo] SUCCESS (cache): Returning {hybridAutoDir}");
+                                return hybridAutoDir;
+                            }
+                        }
+                    }
+                }
+
+                // Fallback: search the entire mineru cache directory for images
+                var imageFiles = Directory.GetFiles(mineruCacheDir, "*.*", SearchOption.AllDirectories)
+                    .Where(f => Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
+                    .ToList();
+                if (imageFiles.Count > 0)
+                {
+                    var imageDir = Path.GetDirectoryName(imageFiles[0]);
+                    if (imageDir is not null)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[Popo] SUCCESS (cache fallback): Returning {imageDir}");
+                        return imageDir;
+                    }
+                }
             }
+
+            System.Diagnostics.Debug.WriteLine($"[Popo] FAILED: No images found anywhere");
         }
-        catch
+        catch (Exception ex)
         {
-            // Ignore errors finding the MinerU images directory
+            System.Diagnostics.Debug.WriteLine($"[Popo] ERROR in FindMinerUImagesDirectory: {ex}");
         }
 
         return null;

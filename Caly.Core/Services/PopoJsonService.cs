@@ -390,7 +390,7 @@ public static class PopoJsonService
         return ParseTreeNode(doc.RootElement);
     }
 
-    private static AnalysisTreeNode ParseTreeNode(JsonElement elem)
+    internal static AnalysisTreeNode ParseTreeNode(JsonElement elem)
     {
         var node = new AnalysisTreeNode();
 
@@ -937,19 +937,203 @@ public static class PopoJsonService
         if (doc.TreeRoot is null || artifactsDir is null)
             return;
 
-        // Find middle.json
-        var middleJsons = Directory.GetFiles(artifactsDir, "*_middle.json", SearchOption.AllDirectories);
+        // Find middle.json - search in artifactsDir and parent directories
+        // artifactsDir may be the images subdirectory, but middle.json is in hybrid_auto (parent)
+        var searchDir = artifactsDir;
+        var middleJsons = Directory.GetFiles(searchDir, "*_middle.json", SearchOption.AllDirectories);
+
+        // If not found in artifactsDir, try parent directory (hybrid_auto)
+        if (middleJsons.Length == 0 && Directory.Exists(searchDir))
+        {
+            var parentDir = Directory.GetParent(searchDir)?.FullName;
+            if (parentDir is not null)
+            {
+                middleJsons = Directory.GetFiles(parentDir, "*_middle.json", SearchOption.AllDirectories);
+            }
+        }
+
+        // If still not found, try grandparent directory
         if (middleJsons.Length == 0)
+        {
+            var parentDir = Directory.GetParent(artifactsDir)?.Parent?.FullName;
+            if (parentDir is not null)
+            {
+                middleJsons = Directory.GetFiles(parentDir, "*_middle.json", SearchOption.AllDirectories);
+            }
+        }
+
+        if (middleJsons.Length == 0)
+        {
+            System.Diagnostics.Debug.WriteLine($"[PopoJson] WARNING: No *_middle.json found near {artifactsDir}");
             return;
+        }
 
         var middleJson = middleJsons[0];
+        System.Diagnostics.Debug.WriteLine($"[PopoJson] Found middle.json: {middleJson}");
         try
         {
             var json = File.ReadAllText(middleJson);
             using var docJson = System.Text.Json.JsonDocument.Parse(json);
             PopulateTreeBlockIdsRecursive(doc.TreeRoot, docJson.RootElement);
+
+            // Now populate ImgPath for image nodes that have empty img_path
+            PopulateTreeImgPaths(doc.TreeRoot, artifactsDir);
         }
-        catch { }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[PopoJson] ERROR parsing middle.json: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Populates ImgPath for image nodes that have empty img_path from the Popo API.
+    /// Reads from content_list.json which contains the actual img_path mappings.
+    /// </summary>
+    public static void PopulateTreeImgPaths(AnalysisTreeNode node, string artifactsDir)
+    {
+        if (node.Type == "image" && string.IsNullOrEmpty(node.ImgPath))
+        {
+            // Try to find matching image from content_list.json
+            var contentListPath = FindContentListJson(artifactsDir);
+            if (contentListPath is not null)
+            {
+                try
+                {
+                    var json = File.ReadAllText(contentListPath);
+                    using var docJson = System.Text.Json.JsonDocument.Parse(json);
+                    if (docJson.RootElement.ValueKind == System.Text.Json.JsonValueKind.Array)
+                    {
+                        foreach (var elem in docJson.RootElement.EnumerateArray())
+                        {
+                            if (!elem.TryGetProperty("type", out var type) || type.GetString() != "image")
+                                continue;
+                            if (!elem.TryGetProperty("img_path", out var imgPath) || string.IsNullOrEmpty(imgPath.GetString()))
+                                continue;
+                            if (!elem.TryGetProperty("bbox", out var bbox))
+                                continue;
+                            if (!elem.TryGetProperty("page_idx", out var pageIdx))
+                                continue;
+
+                            // Match by bbox and page
+                            if (MatchNodeToBlock(node, bbox, pageIdx.GetInt32()))
+                            {
+                                node.ImgPath = imgPath.GetString()!;
+                                System.Diagnostics.Debug.WriteLine($"[PopoJson] Populated ImgPath from content_list.json: {node.ImgPath}");
+                                break;
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[PopoJson] ERROR reading content_list.json: {ex.Message}");
+                }
+            }
+
+            // Fallback: try to match by block_id in image filename
+            if (string.IsNullOrEmpty(node.ImgPath) && node.BlockIds.Count > 0)
+            {
+                var imageFiles = GetImageFiles(artifactsDir);
+                foreach (var blockId in node.BlockIds)
+                {
+                    var matchedFile = imageFiles.FirstOrDefault(f =>
+                        Path.GetFileName(f).Contains(blockId.ToString()));
+                    if (matchedFile is not null)
+                    {
+                        node.ImgPath = "images/" + Path.GetFileName(matchedFile);
+                        System.Diagnostics.Debug.WriteLine($"[PopoJson] Populated ImgPath for block {blockId}: {node.ImgPath}");
+                        break;
+                    }
+                }
+            }
+        }
+
+        foreach (var child in node.Children)
+        {
+            PopulateTreeImgPaths(child, artifactsDir);
+        }
+    }
+
+    /// <summary>
+    /// Finds content_list.json in the artifacts directory or parent directories.
+    /// </summary>
+    private static string? FindContentListJson(string artifactsDir)
+    {
+        // Search in artifactsDir and parent directories
+        var searchDir = artifactsDir;
+        var files = Directory.GetFiles(searchDir, "*_content_list*.json", SearchOption.AllDirectories);
+        if (files.Length > 0) return files[0];
+
+        var parentDir = Directory.GetParent(searchDir)?.FullName;
+        if (parentDir is not null)
+        {
+            files = Directory.GetFiles(parentDir, "*_content_list*.json", SearchOption.AllDirectories);
+            if (files.Length > 0) return files[0];
+        }
+
+        var grandparentDir = Directory.GetParent(artifactsDir)?.Parent?.FullName;
+        if (grandparentDir is not null)
+        {
+            files = Directory.GetFiles(grandparentDir, "*_content_list*.json", SearchOption.AllDirectories);
+            if (files.Length > 0) return files[0];
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Matches a tree node to a block from content_list.json by comparing bbox and page.
+    /// </summary>
+    private static bool MatchNodeToBlock(AnalysisTreeNode node, System.Text.Json.JsonElement bbox, int pageIdx)
+    {
+        if (node.Location.Count == 0) return false;
+
+        var bboxArr = bbox.EnumerateArray().Select(v => v.GetDouble()).ToArray();
+        if (bboxArr.Length < 4) return false;
+
+        var blockPage = pageIdx + 1; // content_list uses 0-based, tree uses 1-based
+        if (!node.Location.Any(l => l.Page == blockPage)) return false;
+
+        // Check if bboxes overlap
+        var blockX1 = bboxArr[0];
+        var blockY1 = bboxArr[1];
+        var blockX2 = bboxArr[2];
+        var blockY2 = bboxArr[3];
+
+        foreach (var loc in node.Location)
+        {
+            if (loc.Page != blockPage) continue;
+
+            var treeX1 = loc.Bbox.X;
+            var treeY1 = loc.Bbox.Y;
+            var treeX2 = treeX1 + loc.Bbox.Width;
+            var treeY2 = treeY1 + loc.Bbox.Height;
+
+            // Check overlap
+            var overlapX1 = Math.Max(blockX1, treeX1);
+            var overlapY1 = Math.Max(blockY1, treeY1);
+            var overlapX2 = Math.Min(blockX2, treeX2);
+            var overlapY2 = Math.Min(blockY2, treeY2);
+
+            if (overlapX1 < overlapX2 && overlapY1 < overlapY2)
+                return true;
+        }
+
+        return false;
+    }
+
+    private static List<string> GetImageFiles(string dir)
+    {
+        try
+        {
+            return Directory.GetFiles(dir, "*.*", SearchOption.AllDirectories)
+                .Where(f => Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
+                .ToList();
+        }
+        catch
+        {
+            return new List<string>();
+        }
     }
 
     private static void PopulateTreeBlockIdsRecursive(AnalysisTreeNode node, System.Text.Json.JsonElement elem)

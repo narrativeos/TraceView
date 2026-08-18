@@ -277,96 +277,22 @@ public sealed partial class DocumentViewModel : PopoService.IPopoProgressCallbac
                 OnPopoProgress,
                 this,
                 null,
-                _popoCts.Token);
+                _popoCts.Token,
+                ProjectPath);
 
             if (result.StructureDocument is not null)
             {
-                // Find artifacts directory for image display.
-                // IMPORTANT: Use the project's mineru directory (same as TryLoadPopoData) rather than
-                // result.ArtifactsDirectory (which searches ~/.TraceView/ cache).
-                // The Popo API's img_path (e.g., "images/xxx.jpg") is relative to the hybrid_auto
-                // directory inside the project's mineru folder. Using the project path ensures images
-                // are found both immediately after processing and when reopening the project later.
+                // Use the artifacts directory from PopoService.
+                // PopoService.FindMinerUImagesDirectory now searches {ProjectPath}/mineru/ first,
+                // then falls back to ~/.TraceView/{docId}/mineru/ cache.
                 string? artifactsDir = result.ArtifactsDirectory;
-                if (ProjectPath is not null)
-                {
-                    var mineruDir = Path.Combine(ProjectPath, "mineru");
-
-                    // 1: Scan mineru directory for hybrid_auto (handles ZIP internal folder name != project docId)
-                    if (Directory.Exists(mineruDir))
-                    {
-                        foreach (var subDir in Directory.GetDirectories(mineruDir))
-                        {
-                            var hybridAutoDir = Path.Combine(subDir, "hybrid_auto");
-                            if (Directory.Exists(hybridAutoDir))
-                            {
-                                var imagesDir = Path.Combine(hybridAutoDir, "images");
-                                if (Directory.Exists(imagesDir))
-                                {
-                                    var imageFiles = Directory.GetFiles(imagesDir, "*.*", SearchOption.TopDirectoryOnly)
-                                        .Where(f => Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
-                                        .ToList();
-                                    if (imageFiles.Count > 0)
-                                    {
-                                        artifactsDir = hybridAutoDir;
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-
-                        // Fallback: search the entire mineru directory for images
-                        if (artifactsDir is null)
-                        {
-                            var imageFiles = Directory.GetFiles(mineruDir, "*.*", SearchOption.AllDirectories)
-                                .Where(f => Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
-                                .ToList();
-                            if (imageFiles.Count > 0)
-                            {
-                                var imageDir = Path.GetDirectoryName(imageFiles[0]);
-                                if (imageDir is not null)
-                                    artifactsDir = imageDir;
-                            }
-                        }
-                    }
-
-                    // 2: Try popo/extract as fallback
-                    if (artifactsDir is null)
-                    {
-                        var extractDir = Path.Combine(ProjectPath, "popo", "extract");
-                        if (Directory.Exists(extractDir))
-                        {
-                            var imageFiles = Directory.GetFiles(extractDir, "*.*", SearchOption.AllDirectories)
-                                .Where(f => Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
-                                .ToList();
-                            if (imageFiles.Count > 0)
-                                artifactsDir = extractDir;
-                        }
-                    }
-
-                    // 3: Try all popo/ subdirectories for images
-                    if (artifactsDir is null)
-                    {
-                        var popoImageDir = Path.Combine(ProjectPath, "popo");
-                        if (Directory.Exists(popoImageDir))
-                        {
-                            foreach (var subDir in Directory.GetDirectories(popoImageDir))
-                            {
-                                if (artifactsDir is not null) break;
-                                var imageFiles = Directory.GetFiles(subDir, "*.*", SearchOption.AllDirectories)
-                                    .Where(f => Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
-                                    .ToList();
-                                if (imageFiles.Count > 0)
-                                    artifactsDir = subDir;
-                            }
-                        }
-                    }
-                }
 
                 // Populate block_ids from middle.json for tree nodes (Popo API returns empty block_ids)
                 if (result.StructureDocument.TreeRoot is not null && artifactsDir is not null)
                 {
                     PopoJsonService.PopulateTreeBlockIds(result.StructureDocument, artifactsDir);
+                    // Populate img_path from content_list.json for image nodes (Popo API returns empty img_path)
+                    PopoJsonService.PopulateTreeImgPaths(result.StructureDocument.TreeRoot, artifactsDir);
                 }
 
                 // Build hierarchical tree for Column 3 (matches popo_result.json tree structure)
@@ -412,11 +338,94 @@ public sealed partial class DocumentViewModel : PopoService.IPopoProgressCallbac
                     System.Diagnostics.Debug.WriteLine($"[PopoProcess] Reference generation failed: {ex.Message}");
                     // Non-fatal: don't fail the Popo process just because reference generation failed
                 }
+
+                // Resolve artifactsDir using same logic as TryLoadPopoData
+                // IMPORTANT: artifactsDir must point to hybrid_auto (not images subdirectory)
+                // so that PopulateTreeBlockIds can find middle.json and PopulateTreeImgPaths can search for images
+                string? artifactsDir = null;
+                var mineruDir = Path.Combine(ProjectPath, "mineru");
+                if (Directory.Exists(mineruDir))
+                {
+                    foreach (var subDir in Directory.GetDirectories(mineruDir))
+                    {
+                        if (artifactsDir is not null) break;
+                        var hybridAutoDir = Path.Combine(subDir, "hybrid_auto");
+                        if (Directory.Exists(hybridAutoDir))
+                        {
+                            var imagesDir = Path.Combine(hybridAutoDir, "images");
+                            if (Directory.Exists(imagesDir))
+                            {
+                                var imageFiles = System.IO.Directory.GetFiles(imagesDir, "*.*", System.IO.SearchOption.TopDirectoryOnly)
+                                    .Where(f => System.IO.Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
+                                    .ToList();
+                                if (imageFiles.Count > 0)
+                                {
+                                    artifactsDir = hybridAutoDir; // Return parent, not images subdirectory
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if (artifactsDir is null)
+                    {
+                        var files = System.IO.Directory.GetFiles(mineruDir, "*.*", System.IO.SearchOption.AllDirectories)
+                            .Where(f => System.IO.Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg");
+                        if (files.Any())
+                        {
+                            var dir = Path.GetDirectoryName(files.First());
+                            if (dir is not null) artifactsDir = dir;
+                        }
+                    }
+                }
+                if (artifactsDir is null)
+                {
+                    var extractDir = Path.Combine(ProjectPath, "popo", "extract");
+                    if (Directory.Exists(extractDir))
+                    {
+                        var files = System.IO.Directory.GetFiles(extractDir, "*.*", System.IO.SearchOption.AllDirectories)
+                            .Where(f => System.IO.Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg");
+                        if (files.Any()) artifactsDir = extractDir;
+                    }
+                }
+                if (artifactsDir is null)
+                {
+                    var popoImageDir = Path.Combine(ProjectPath, "popo");
+                    if (Directory.Exists(popoImageDir))
+                    {
+                        foreach (var subDir in Directory.GetDirectories(popoImageDir))
+                        {
+                            if (artifactsDir is not null) break;
+                            var files = System.IO.Directory.GetFiles(subDir, "*.*", System.IO.SearchOption.AllDirectories)
+                                .Where(f => System.IO.Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg");
+                            if (files.Any()) artifactsDir = subDir;
+                        }
+                    }
+                }
+                System.Diagnostics.Debug.WriteLine($"[PopoProcess] Resolved artifactsDir: {artifactsDir}");
+
+                // Assign StructureDocument and show analysis column
+                StructureDocument = result.StructureDocument;
+                ShowAnalysisColumn = true;
+
+                // Populate block_ids and build tree (same as TryLoadPopoData)
+                if (result.StructureDocument.TreeRoot is not null && artifactsDir is not null)
+                {
+                    PopoJsonService.PopulateTreeBlockIds(result.StructureDocument, artifactsDir);
+                }
+                if (result.StructureDocument.TreeRoot is not null)
+                {
+                    PopoTreeRoot = new TreeNodeViewModel(result.StructureDocument.TreeRoot, artifactsDir, result.StructureDocument);
+                }
+                PopoBlocks.Clear();
+                foreach (var block in result.StructureDocument.GetAllBlocks())
+                {
+                    PopoBlocks.Add(new BlockViewModel(block));
+                }
             }
 
             PopoStatus = PopoProcessStatus.Completed;
             PopoProgress = 100;
-            PopoStatusText = "Popo completed";
+            PopoStatusText = $"Popo completed ({PopoBlocks.Count} blocks)";
         }
         catch (OperationCanceledException)
         {

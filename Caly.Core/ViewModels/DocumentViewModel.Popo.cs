@@ -404,11 +404,8 @@ public sealed partial class DocumentViewModel
             var mineruDir = Path.Combine(ProjectPath, "mineru");
 
             // 1: Scan mineru directory for hybrid_auto (handles ZIP internal folder name != project docId)
-            // The ZIP may extract to {mineru}/{internal_name}/hybrid_auto/ where internal_name differs from docId
-            // e.g., project is ejij_4 but ZIP contains ejij/hybrid_auto/
             if (Directory.Exists(mineruDir))
             {
-                // First try all subdirectories for hybrid_auto
                 foreach (var subDir in Directory.GetDirectories(mineruDir))
                 {
                     var hybridAutoDir = Path.Combine(subDir, "hybrid_auto");
@@ -437,7 +434,6 @@ public sealed partial class DocumentViewModel
                         .ToList();
                     if (imageFiles.Count > 0)
                     {
-                        // Find the parent directory containing the images
                         var imageDir = Path.GetDirectoryName(imageFiles[0]);
                         if (imageDir is not null)
                             artifactsDir = imageDir;
@@ -478,6 +474,13 @@ public sealed partial class DocumentViewModel
             }
         }
 
+        // 4: Fallback to cache directory ~/.TraceView/{docId}/mineru/
+        // This ensures images load even if they were never extracted to the project directory.
+        if (artifactsDir is null && LocalPath is not null)
+        {
+            artifactsDir = FindMinerUImagesInCache(Path.GetFileNameWithoutExtension(LocalPath));
+        }
+
         // Assign the loaded document to StructureDocument (needed for TOC generation and other features)
         StructureDocument = minerUDoc;
 
@@ -488,6 +491,8 @@ public sealed partial class DocumentViewModel
         if (minerUDoc.TreeRoot is not null && artifactsDir is not null)
         {
             PopoJsonService.PopulateTreeBlockIds(minerUDoc, artifactsDir);
+            // Populate img_path from content_list.json for image nodes (Popo API returns empty img_path)
+            PopoJsonService.PopulateTreeImgPaths(minerUDoc.TreeRoot, artifactsDir);
         }
 
         // Build hierarchical tree for Column 3 (matches popo_result.json tree structure)
@@ -507,5 +512,55 @@ public sealed partial class DocumentViewModel
         PopoStatus = PopoProcessStatus.Completed;
         PopoProgress = 100;
         PopoStatusText = $"Loaded ({PopoBlocks.Count} blocks)";
+    }
+
+    /// <summary>
+    /// Finds MinerU images in the cache directory ~/.TraceView/{docId}/mineru/.
+    /// Mirrors PopoService.FindMinerUImagesDirectory for use during project reopen.
+    /// </summary>
+    private string? FindMinerUImagesInCache(string docId)
+    {
+        try
+        {
+            var cacheBase = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".TraceView", docId);
+            var mineruCacheDir = Path.Combine(cacheBase, "mineru");
+
+            if (!Directory.Exists(mineruCacheDir))
+                return null;
+
+            // Scan all subdirectories for hybrid_auto (ZIP internal name may differ from docId)
+            foreach (var subDir in Directory.GetDirectories(mineruCacheDir))
+            {
+                var hybridAutoDir = Path.Combine(subDir, "hybrid_auto");
+                if (Directory.Exists(hybridAutoDir))
+                {
+                    var imagesDir = Path.Combine(hybridAutoDir, "images");
+                    if (Directory.Exists(imagesDir))
+                    {
+                        var imageFiles = System.IO.Directory.GetFiles(imagesDir, "*.*", System.IO.SearchOption.TopDirectoryOnly)
+                            .Where(f => System.IO.Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
+                            .ToList();
+                        if (imageFiles.Count > 0)
+                            return hybridAutoDir;
+                    }
+                }
+            }
+
+            // Fallback: search the entire mineru cache directory for images
+            var allImageFiles = System.IO.Directory.GetFiles(mineruCacheDir, "*.*", System.IO.SearchOption.AllDirectories)
+                .Where(f => System.IO.Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
+                .ToList();
+            if (allImageFiles.Count > 0)
+            {
+                var imageDir = Path.GetDirectoryName(allImageFiles[0]);
+                return imageDir;
+            }
+        }
+        catch
+        {
+            // Ignore errors finding the cache directory
+        }
+
+        return null;
     }
 }
