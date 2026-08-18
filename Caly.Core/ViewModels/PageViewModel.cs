@@ -97,6 +97,12 @@ public sealed partial class PageViewModel : ViewModelBase, IDisposable
     [ObservableProperty] private PageType _minerUPageType = PageType.unknown;
 
     /// <summary>
+    /// Secondary page type classification from MinerU's page-level analysis (MinerU v2.0+).
+    /// Used for mixed-type pages (e.g., toc + copyright).
+    /// </summary>
+    [ObservableProperty] private PageType _minerUPageTypeSecondary = PageType.unknown;
+
+    /// <summary>
     /// Display name for the page type (Chinese).
     /// Only returns a value when the page type is known (not unknown).
     /// </summary>
@@ -122,9 +128,44 @@ public sealed partial class PageViewModel : ViewModelBase, IDisposable
     };
 
     /// <summary>
+    /// Display name for the secondary page type (Chinese).
+    /// Only returns a value when the secondary type is known (not unknown).
+    /// </summary>
+    public string? PageTypeSecondaryDisplayName => MinerUPageTypeSecondary switch
+    {
+        PageType.copyright => "版权",
+        PageType.colophon => "版本记录",
+        _ => null
+    };
+
+    /// <summary>
+    /// Combined page type badge text for display in thumbnail.
+    /// Shows "目录+版权" format when both primary and secondary types are present,
+    /// or just the primary type name when there is no secondary type.
+    /// Returns null if no page type is set.
+    /// </summary>
+    public string? PageTypeBadgeText
+    {
+        get
+        {
+            var primary = PageTypeDisplayName;
+            if (primary is null)
+                return null;
+
+            var secondary = PageTypeSecondaryDisplayName;
+            return secondary is not null ? $"{primary}+{secondary}" : primary;
+        }
+    }
+
+    /// <summary>
     /// Whether this page has a known MinerU page type.
     /// </summary>
     public bool HasPageType => MinerUPageType != PageType.unknown;
+
+    /// <summary>
+    /// Whether this page has a known secondary MinerU page type.
+    /// </summary>
+    public bool HasPageTypeSecondary => MinerUPageTypeSecondary != PageType.unknown;
 
     public TextSelection TextSelection { get; }
 

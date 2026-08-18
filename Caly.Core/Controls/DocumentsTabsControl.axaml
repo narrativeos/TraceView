@@ -2476,7 +2476,7 @@
                                                                          HorizontalAlignment="Stretch"
                                                                          VerticalAlignment="Stretch"/>
                                                                  <!-- Page Type Badge -->
-                                                                 <Label Content="{Binding PageTypeDisplayName}"
+                                                                 <Label Content="{Binding PageTypeBadgeText}"
                                                                         IsVisible="{Binding HasPageType}"
                                                                         MinWidth="25"
                                                                         HorizontalAlignment="Left"

@@ -242,12 +242,20 @@ public static class MinerUJsonService
                         : 0.0;
 
                     // Parse page_type if present (MinerU v2.3+)
+                    // page_idx is 0-based in the JSON; normalize to 1-based to match PageViewModel.PageNumber
                     var pageTypeStr = GetStringProperty(pageInfoElem, "page_type");
                     if (!string.IsNullOrEmpty(pageTypeStr))
                     {
                         var pageType = ParsePageType(pageTypeStr);
-                        // Store with 0-based page index (will be normalized to 1-based later)
-                        minerUDoc.PageTypes[pageNum] = pageType;
+                        minerUDoc.PageTypes[pageNum + 1] = pageType;
+                    }
+
+                    // Parse optional page_type_secondary if present (MinerU v2.0+)
+                    var pageTypeSecondaryStr = GetStringProperty(pageInfoElem, "page_type_secondary");
+                    if (!string.IsNullOrEmpty(pageTypeSecondaryStr))
+                    {
+                        var pageTypeSecondary = ParsePageType(pageTypeSecondaryStr);
+                        minerUDoc.PageTypeSecondaries[pageNum + 1] = pageTypeSecondary;
                     }
 
                     var blocks = new List<MinerUBlock>();
@@ -470,14 +478,25 @@ public static class MinerUJsonService
                 }
 
                 // Also normalize PageTypes (page_type enum values)
+                // Note: page_type and page_type_secondary are already stored with 1-based keys above,
+                // so we just need to copy them as-is if we're normalizing other structures.
                 if (minerUDoc.PageTypes.Count > 0)
                 {
                     var normalizedPageTypes = new Dictionary<int, PageType>();
                     foreach (var kvp in minerUDoc.PageTypes)
                     {
-                        normalizedPageTypes[kvp.Key + 1] = kvp.Value;
+                        normalizedPageTypes[kvp.Key] = kvp.Value;
                     }
                     minerUDoc.PageTypes = normalizedPageTypes;
+                }
+                if (minerUDoc.PageTypeSecondaries.Count > 0)
+                {
+                    var normalizedPageTypeSecondaries = new Dictionary<int, PageType>();
+                    foreach (var kvp in minerUDoc.PageTypeSecondaries)
+                    {
+                        normalizedPageTypeSecondaries[kvp.Key] = kvp.Value;
+                    }
+                    minerUDoc.PageTypeSecondaries = normalizedPageTypeSecondaries;
                 }
             }
 

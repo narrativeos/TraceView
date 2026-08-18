@@ -450,4 +450,104 @@ public class MinerUJsonServiceTests
                 Directory.Delete(tempDir, recursive: true);
         }
     }
+
+    [Fact]
+    public void TryParseMinerUMiddleJson_PageTypeSecondary_ParsesBothTypes()
+    {
+        // Test that both page_type and page_type_secondary are correctly parsed.
+        var tempDir = Path.Combine(Path.GetTempPath(), "caly-mineru-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+
+        var jsonPath = Path.Combine(tempDir, "secondary_type_middle.json");
+        File.WriteAllText(jsonPath, """
+        {
+          "pdf_info": [
+            {
+              "page_idx": 0,
+              "page_size": [1920, 2560],
+              "page_type": "toc",
+              "page_type_secondary": "copyright",
+              "preproc_blocks": [],
+              "para_blocks": [
+                {
+                  "type": "text",
+                  "bbox": [10, 20, 100, 40],
+                  "lines": [
+                    {
+                      "bbox": [10, 20, 100, 40],
+                      "spans": [
+                        { "bbox": [10, 20, 100, 40], "type": "text", "content": "toc with copyright" }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "page_idx": 1,
+              "page_size": [1920, 2560],
+              "page_type": "body",
+              "preproc_blocks": [],
+              "para_blocks": [
+                {
+                  "type": "text",
+                  "bbox": [10, 20, 100, 40],
+                  "lines": [
+                    {
+                      "bbox": [10, 20, 100, 40],
+                      "spans": [
+                        { "bbox": [10, 20, 100, 40], "type": "text", "content": "pure body" }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "page_idx": 2,
+              "page_size": [1920, 2560],
+              "page_type": "toc",
+              "page_type_secondary": "colophon",
+              "preproc_blocks": [],
+              "para_blocks": []
+            }
+          ]
+        }
+        """);
+
+        try
+        {
+            var result = MinerUJsonService.TryParseMinerUMiddleJson(jsonPath);
+
+            Assert.NotNull(result);
+
+            // page_idx 0 -> page 1: page_type=toc, page_type_secondary=copyright
+            Assert.True(result.PageTypes.TryGetValue(1, out var type1));
+            Assert.Equal(Caly.Core.Models.PageType.toc, type1);
+            Assert.True(result.PageTypeSecondaries.TryGetValue(1, out var secondary1));
+            Assert.Equal(Caly.Core.Models.PageType.copyright, secondary1);
+
+            // page_idx 1 -> page 2: page_type=body, no secondary type
+            Assert.True(result.PageTypes.TryGetValue(2, out var type2));
+            Assert.Equal(Caly.Core.Models.PageType.body, type2);
+            Assert.False(result.PageTypeSecondaries.ContainsKey(2));
+
+            // page_idx 2 -> page 3: page_type=toc, page_type_secondary=colophon
+            Assert.True(result.PageTypes.TryGetValue(3, out var type3));
+            Assert.Equal(Caly.Core.Models.PageType.toc, type3);
+            Assert.True(result.PageTypeSecondaries.TryGetValue(3, out var secondary3));
+            Assert.Equal(Caly.Core.Models.PageType.colophon, secondary3);
+
+            // Test GetPageTypeSecondary helper
+            Assert.Equal(Caly.Core.Models.PageType.copyright, result.GetPageTypeSecondary(1));
+            Assert.Null(result.GetPageTypeSecondary(2));
+            Assert.Equal(Caly.Core.Models.PageType.colophon, result.GetPageTypeSecondary(3));
+            Assert.Null(result.GetPageTypeSecondary(99));
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+                Directory.Delete(tempDir, recursive: true);
+        }
+    }
 }

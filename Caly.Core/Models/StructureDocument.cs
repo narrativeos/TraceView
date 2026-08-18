@@ -88,6 +88,23 @@ public partial class StructureDocument : ObservableObject
     private Dictionary<int, PageType> _pageTypes = new();
 
     /// <summary>
+    /// Secondary page type classification from MinerU's page-level analysis (MinerU v2.0+).
+    /// Maps page number (1-based) to the PageType enum value for mixed-type pages.
+    /// For example, a page may be primarily "toc" (table of contents) with a secondary "copyright" type.
+    /// This field is optional — only present when a page contains multiple types of content.
+    /// </summary>
+    [ObservableProperty]
+    private Dictionary<int, PageType> _pageTypeSecondaries = new();
+
+    /// <summary>
+    /// Gets the secondary page type for a given page number, or null if not set.
+    /// </summary>
+    public PageType? GetPageTypeSecondary(int pageNumber)
+    {
+        return PageTypeSecondaries.TryGetValue(pageNumber, out var type) ? type : (PageType?)null;
+    }
+
+    /// <summary>
     /// Pre-parsed table of contents entries from popo_result.json (result.toc.entries).
     /// When available, these are used directly instead of extracting TOC from the tree.
     /// Each entry maps to a section in the document with title, level, and verified page.

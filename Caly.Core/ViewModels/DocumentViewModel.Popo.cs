@@ -81,6 +81,10 @@ public sealed partial class DocumentViewModel
                 {
                     page.MinerUPageType = pageType;
                 }
+                if (page.MinerUPageTypeSecondary == PageType.unknown && doc.GetPageTypeSecondary(page.PageNumber) is PageType secondaryType)
+                {
+                    page.MinerUPageTypeSecondary = secondaryType;
+                }
             }
         }
     }
