@@ -761,16 +761,51 @@ public static class PopoJsonService
 
                                 if (!string.IsNullOrEmpty(title))
                                 {
+                                    int level = 1;
+                                    if (entry.TryGetProperty("level", out var lvlElem) && lvlElem.ValueKind == JsonValueKind.Number)
+                                        level = lvlElem.GetInt32();
+
+                                    int page = 0;
+                                    if (entry.TryGetProperty("linked_body_page", out var pageElem) && pageElem.ValueKind == JsonValueKind.Number)
+                                    {
+                                        page = pageElem.GetInt32();
+                                    }
+                                    else if (entry.TryGetProperty("page", out var fallbackPageElem) && fallbackPageElem.ValueKind == JsonValueKind.Number)
+                                    {
+                                        page = fallbackPageElem.GetInt32();
+                                    }
+
                                     tocEntries.Add(new TocEntry
                                     {
                                         Title = title,
-                                        Level = entry.TryGetProperty("level", out var lvlElem) ? lvlElem.GetInt32() : 1,
-                                        Page = entry.TryGetProperty("linked_body_page", out var pageElem) ? pageElem.GetInt32() : 0,
+                                        Level = level,
+                                        Page = page,
                                         Type = "toc"
                                     });
                                 }
                             }
                             doc.TocEntries = tocEntries;
+                            System.Diagnostics.Debug.WriteLine($"[Popo] result.toc.entries parsed: {tocEntries.Count} entries from {Path.GetFileName(jsonPath)}");
+                        }
+                        else
+                        {
+                            // Log toc availability for debugging — helps track whether API returns toc
+                            string tocStatus = "missing";
+                            if (resultElem.TryGetProperty("toc", out var tocCheck))
+                            {
+                                if (tocCheck.ValueKind == JsonValueKind.Null)
+                                    tocStatus = "present but null";
+                                else if (tocCheck.ValueKind == JsonValueKind.Object)
+                                {
+                                    if (!tocCheck.TryGetProperty("entries", out _))
+                                        tocStatus = "present but no entries field";
+                                    else
+                                        tocStatus = "present but entries is not an array";
+                                }
+                                else
+                                    tocStatus = $"present but unexpected type: {tocCheck.ValueKind}";
+                            }
+                            System.Diagnostics.Debug.WriteLine($"[Popo] result.toc: {tocStatus} in {Path.GetFileName(jsonPath)} (no TOC entries available)");
                         }
 
                         // Parse result.reference (bibliographic references) — newer format
@@ -1349,49 +1384,23 @@ public static class PopoJsonService
     #region Table of Contents
 
     /// <summary>
-    /// Builds a flat table of contents list from the Popo analysis tree.
-    /// Preferred path: uses pre-parsed TocEntries from StructureDocument (popo_result.json's result.toc.entries).
-    /// Falls back to extracting from the "目录" (TOC) subtree within the tree.
-    /// Final fallback: full-tree traversal.
+    /// Builds a flat table of contents list from the Popo analysis result.
+    /// Only uses pre-parsed TocEntries from StructureDocument (popo_result.json result.toc.entries).
+    /// No local fallback - if the API did not return toc entries, returns an empty list.
     /// </summary>
-    /// <param name="root">The root node of the document tree.</param>
-    /// <param name="doc">Optional StructureDocument with pre-parsed TOC entries.</param>
-    /// <returns>A list of TOC entries ordered by their appearance in the tree.</returns>
+    /// <param name="root">The root node of the document tree (unused, kept for backward compatibility).</param>
+    /// <param name="doc">StructureDocument with pre-parsed TOC entries from the API.</param>
+    /// <returns>A list of TOC entries from the API, or an empty list if the API did not return any.</returns>
     public static List<TocEntry> BuildTableOfContents(AnalysisTreeNode root, StructureDocument? doc = null)
     {
-        // Preferred path 1: Use pre-parsed TocEntries from StructureDocument (popo_result.json result.toc.entries)
+        // Only use pre-parsed TocEntries from the API (popo_result.json result.toc.entries)
+        // No local fallback to tree traversal.
         if (doc?.TocEntries is { Count: > 0 })
             return doc.TocEntries;
 
-        // Preferred path 2: Extract from the dedicated "目录" (TOC) subtree
-        var tocNode = FindTocNode(root);
-        if (tocNode is not null && tocNode.Children.Count > 0)
-        {
-            var entries = new List<TocEntry>();
-
-            // Calculate level offset to normalize the hierarchy.
-            // Find minimum level among the TOC subtree's children (skip the "目录" node itself).
-            int minLevel = int.MaxValue;
-            foreach (var child in tocNode.Children)
-            {
-                FindMinTocLevel(child, ref minLevel);
-            }
-            int levelOffset = minLevel != int.MaxValue ? 1 - minLevel : 0;
-
-            // Extract all text nodes from the TOC subtree (skip the "目录" node itself)
-            foreach (var child in tocNode.Children)
-            {
-                BuildTocFromSubtree(child, entries, levelOffset);
-            }
-
-            return entries;
-        }
-
-        // Fallback: full-tree traversal for documents without a dedicated TOC node
-        var fallbackEntries = new List<TocEntry>();
-        BuildTocRecursive(root, fallbackEntries);
-        return fallbackEntries;
+        return new List<TocEntry>();
     }
+
 
     /// <summary>
     /// Recursively searches the tree for a text node with title "目录" (Table of Contents).

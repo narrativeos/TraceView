@@ -405,6 +405,78 @@ public sealed class PopoService : IDisposable
             sourceDocId,
             taskIdResult);
 
+        // Parse result.toc.entries (structured table of contents) — same as TryParsePopoResultJson
+        if (resultElem.TryGetProperty("toc", out var tocElem) &&
+            tocElem.ValueKind == JsonValueKind.Object &&
+            tocElem.TryGetProperty("entries", out var entriesElem) &&
+            entriesElem.ValueKind == JsonValueKind.Array)
+        {
+            var tocEntries = new List<TocEntry>();
+            foreach (var entry in entriesElem.EnumerateArray())
+            {
+                if (entry.ValueKind != JsonValueKind.Object)
+                    continue;
+
+                string title = string.Empty;
+                if (entry.TryGetProperty("linked_body_title", out var linkedTitleElem) &&
+                    !string.IsNullOrEmpty(linkedTitleElem.GetString()))
+                {
+                    title = linkedTitleElem.GetString()!;
+                }
+                else if (entry.TryGetProperty("title", out var titleElem))
+                {
+                    title = titleElem.GetString() ?? string.Empty;
+                }
+
+                if (!string.IsNullOrEmpty(title))
+                {
+                    int level = 1;
+                    if (entry.TryGetProperty("level", out var lvlElem) && lvlElem.ValueKind == JsonValueKind.Number)
+                        level = lvlElem.GetInt32();
+
+                    int page = 0;
+                    if (entry.TryGetProperty("linked_body_page", out var pageElem) && pageElem.ValueKind == JsonValueKind.Number)
+                    {
+                        page = pageElem.GetInt32();
+                    }
+                    else if (entry.TryGetProperty("page", out var fallbackPageElem) && fallbackPageElem.ValueKind == JsonValueKind.Number)
+                    {
+                        page = fallbackPageElem.GetInt32();
+                    }
+
+                    tocEntries.Add(new TocEntry
+                    {
+                        Title = title,
+                        Level = level,
+                        Page = page,
+                        Type = "toc"
+                    });
+                }
+            }
+            minerUDoc.TocEntries = tocEntries;
+            System.Diagnostics.Debug.WriteLine($"[Popo] result.toc.entries parsed: {tocEntries.Count} entries for doc '{sourceDocId}'");
+        }
+        else
+        {
+            // Log toc availability for debugging — helps track whether API returns toc
+            string tocStatus = "missing";
+            if (resultElem.TryGetProperty("toc", out var tocCheck))
+            {
+                if (tocCheck.ValueKind == JsonValueKind.Null)
+                    tocStatus = "present but null";
+                else if (tocCheck.ValueKind == JsonValueKind.Object)
+                {
+                    if (!tocCheck.TryGetProperty("entries", out _))
+                        tocStatus = "present but no entries field";
+                    else
+                        tocStatus = "present but entries is not an array";
+                }
+                else
+                    tocStatus = $"present but unexpected type: {tocCheck.ValueKind}";
+            }
+            System.Diagnostics.Debug.WriteLine($"[Popo] result.toc: {tocStatus} for doc '{sourceDocId}' (no TOC entries available)");
+        }
+
         return minerUDoc;
     }
 

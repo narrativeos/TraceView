@@ -250,29 +250,21 @@ public sealed partial class DocumentViewModel
 
     /// <summary>
     /// Generates a Table of Contents from the Popo tree and displays it in an overlay.
-    /// Also saves toc.json and toc.md to the project's popo/ directory.
+    /// Reads directly from the in-memory StructureDocument (parsed from popo_result.json).
+    /// No intermediate files (toc.json/toc.md) are written.
     /// </summary>
     [RelayCommand]
-    private async System.Threading.Tasks.Task GenerateToc()
+    private void GenerateToc()
     {
         if (PopoTreeRoot is null || StructureDocument is null)
             return;
 
         try
         {
-            // Generate and save TOC in one pass (uses popo_result.json's 目录 subtree)
-            System.Collections.Generic.List<TocEntry> entries;
-            if (ProjectPath is not null)
-            {
-                var popoDir = Path.Combine(ProjectPath, "popo");
-                entries = await PopoJsonService.SaveTocFilesAsync(StructureDocument, popoDir);
-            }
-            else
-            {
-                entries = StructureDocument.TreeRoot is not null
-                    ? PopoJsonService.BuildTableOfContents(StructureDocument.TreeRoot, StructureDocument)
-                    : new System.Collections.Generic.List<TocEntry>();
-            }
+            // Build TOC directly from in-memory data (popo_result.json's parsed tree)
+            var entries = StructureDocument.TreeRoot is not null
+                ? PopoJsonService.BuildTableOfContents(StructureDocument.TreeRoot, StructureDocument)
+                : new System.Collections.Generic.List<TocEntry>();
 
             TocMarkdownText = PopoJsonService.GenerateTocMarkdown(entries);
             ShowTocPanel = true;

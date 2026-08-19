@@ -313,21 +313,9 @@ public sealed partial class DocumentViewModel : PopoService.IPopoProgressCallbac
                 // in the project's popo/ directory. TryLoadPopoData loads from there.
             }
 
-            // Auto-generate TOC files (toc.json + toc.md) in popo/ directory
+            // Auto-generate reference files (reference.json + reference.md) in popo/ directory
             if (result.StructureDocument is not null && ProjectPath is not null)
             {
-                try
-                {
-                    var popoDir = System.IO.Path.Combine(ProjectPath, "popo");
-                    await PopoJsonService.SaveTocFilesAsync(result.StructureDocument, popoDir);
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[PopoProcess] TOC generation failed: {ex.Message}");
-                    // Non-fatal: don't fail the Popo process just because TOC generation failed
-                }
-
-                // Auto-generate reference files (reference.json + reference.md) in popo/ directory
                 try
                 {
                     var popoDir = System.IO.Path.Combine(ProjectPath, "popo");

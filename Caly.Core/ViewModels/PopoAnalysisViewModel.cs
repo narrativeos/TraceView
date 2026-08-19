@@ -426,21 +426,20 @@ public partial class AnalysisViewModel : ViewModelBase
     public bool CanGenerateToc => _structureDocument.TreeRoot is not null;
 
     /// <summary>
-    /// Generates the table of contents and saves toc.json + toc.md files to the project's popo/ directory.
-    /// Also populates TocMarkdownText for inline preview.
+    /// Generates the table of contents from the in-memory StructureDocument (parsed from popo_result.json).
+    /// Populates TocMarkdownText for inline preview. No intermediate files are written.
     /// </summary>
     [RelayCommand]
-    private async System.Threading.Tasks.Task GenerateTocAsync()
+    private void GenerateToc()
     {
-        if (_structureDocument.TreeRoot is null || _projectPath is null)
+        if (_structureDocument.TreeRoot is null)
             return;
 
         IsTocGenerating = true;
 
         try
         {
-            var popoDir = System.IO.Path.Combine(_projectPath, "popo");
-            var entries = await PopoJsonService.SaveTocFilesAsync(_structureDocument, popoDir);
+            var entries = PopoJsonService.BuildTableOfContents(_structureDocument.TreeRoot, _structureDocument);
             TocMarkdownText = PopoJsonService.GenerateTocMarkdown(entries);
             ShowTocPanel = true;
         }
