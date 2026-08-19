@@ -177,10 +177,27 @@ public class GeoStoryBuilder
         // 6. Build final chapters with depth-based camera constraints & smooth transitions
         var chapters = new List<GeoChapter>();
         GeoChapter? previousChapter = null;
+        int globalIndex = 0;
         for (int i = 0; i < selected.Count; i++)
         {
-            var chapter = BuildChapter(selected[i], i, depthRanges, previousChapter, cancellationToken);
+            var chapter = BuildChapter(selected[i], globalIndex, depthRanges, previousChapter, cancellationToken);
+            
+            // Insert transition chapters if there's a large jump from previous chapter
+            if (previousChapter is not null)
+            {
+                var transitions = GenerateTransitionChapters(previousChapter, chapter, globalIndex);
+                if (transitions.Count > 0)
+                {
+                    chapters.AddRange(transitions);
+                    globalIndex += transitions.Count;
+                    // Update chapter index after transitions
+                    chapter.Id = $"chapter-{globalIndex}";
+                    chapter.Alignment = globalIndex % 2 == 0 ? "right" : "left";
+                }
+            }
+            
             chapters.Add(chapter);
+            globalIndex++;
             previousChapter = chapter;
         }
 
@@ -575,6 +592,140 @@ public class GeoStoryBuilder
     {
         return BuildChapter(candidate, index, new List<DepthCameraRange>(), null, CancellationToken.None);
     }
+
+    /// <summary>
+    /// Generates transition chapters between two chapters when there's a large spatial or zoom jump.
+    /// This ensures smooth camera transitions by interpolating center, zoom, and pitch.
+    /// 
+    /// Thresholds:
+    /// - Zoom delta > 5 levels: generate transitions
+    /// - Distance > 500km: generate transitions
+    /// 
+    /// Each transition chapter is marked as Hidden=true (map-only, no text panel).
+    /// </summary>
+    static List<GeoChapter> GenerateTransitionChapters(
+        GeoChapter from, GeoChapter to, int transitionStartIndex)
+    {
+        var transitions = new List<GeoChapter>();
+
+        // Calculate zoom and distance deltas
+        var zoomDelta = Math.Abs(to.Zoom - from.Zoom);
+        var distanceKm = CalculateGreatCircleDistance(from.Lng, from.Lat, to.Lng, to.Lat);
+
+        // Determine if transitions are needed
+        bool needsTransition = zoomDelta > 5 || distanceKm > 500;
+        if (!needsTransition)
+            return transitions;
+
+        // Calculate number of transition steps (1-3 based on severity)
+        int numSteps;
+        if (zoomDelta > 10 || distanceKm > 1500)
+            numSteps = 3;
+        else if (zoomDelta > 7 || distanceKm > 800)
+            numSteps = 2;
+        else
+            numSteps = 1;
+
+        // Generate intermediate chapters
+        for (int i = 1; i <= numSteps; i++)
+        {
+            var t = (double)i / (numSteps + 1); // Interpolation factor (0 to 1)
+
+            // Spherical interpolation for center point (along great circle)
+            var (lng, lat) = SphericalInterpolate(from.Lng, from.Lat, to.Lng, to.Lat, t);
+
+            // Linear interpolation for zoom and pitch
+            var zoom = from.Zoom + (to.Zoom - from.Zoom) * t;
+            var pitch = from.Pitch + (to.Pitch - from.Pitch) * t;
+            var bearing = from.Bearing + (to.Bearing - from.Bearing) * t;
+
+            // Create transition chapter
+            var transition = new GeoChapter
+            {
+                Id = $"transition-{transitionStartIndex}-{i}",
+                Title = $"{from.Title} → {to.Title}",
+                Description = "",
+                Image = "",
+                Alignment = "full",
+                Hidden = true, // Hide text panel, show only map animation
+                MapAnimation = "flyTo",
+                Lng = lng,
+                Lat = lat,
+                Zoom = zoom,
+                Pitch = pitch,
+                Bearing = bearing,
+                RotateAnimation = false,
+                OnChapterEnter = AllLayerIds.Select(id => new GeoLayerEffect
+                {
+                    LayerId = id,
+                    Opacity = 0.5, // Dim all layers during transition
+                    Duration = 300
+                }).ToList(),
+                OnChapterExit = Array.Empty<GeoLayerEffect>().ToList(),
+                Beats = new List<GeoBeat>()
+            };
+
+            transitions.Add(transition);
+            System.Diagnostics.Debug.WriteLine(
+                $"[GeoStoryBuilder] Transition {i}/{numSteps}: zoom={zoom:F1} center=({lng:F2}, {lat:F2})");
+        }
+
+        return transitions;
+    }
+
+    /// <summary>
+    /// Calculates the great circle distance between two points in kilometers.
+    /// Uses the Haversine formula.
+    /// </summary>
+    static double CalculateGreatCircleDistance(double lng1, double lat1, double lng2, double lat2)
+    {
+        const double EarthRadiusKm = 6371.0;
+        var dLat = ToRadians(lat2 - lat1);
+        var dLng = ToRadians(lng2 - lng1);
+        var a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2)
+              + Math.Cos(ToRadians(lat1)) * Math.Cos(ToRadians(lat2))
+              * Math.Sin(dLng / 2) * Math.Sin(dLng / 2);
+        var c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
+        return EarthRadiusKm * c;
+    }
+
+    /// <summary>
+    /// Performs spherical interpolation (great circle) between two points.
+    /// Returns the interpolated longitude and latitude at factor t (0 to 1).
+    /// </summary>
+    static (double Lng, double Lat) SphericalInterpolate(
+        double lng1, double lat1, double lng2, double lat2, double t)
+    {
+        var phi1 = ToRadians(lat1);
+        var phi2 = ToRadians(lat2);
+        var lambda1 = ToRadians(lng1);
+        var lambda2 = ToRadians(lng2);
+
+        // Great circle interpolation using spherical linear interpolation (slerp)
+        var d = 2.0 * Math.Asin(Math.Sqrt(
+            Math.Sin((phi2 - phi1) / 2.0) * Math.Sin((phi2 - phi1) / 2.0) +
+            Math.Cos(phi1) * Math.Cos(phi2) *
+            Math.Sin((lambda2 - lambda1) / 2.0) * Math.Sin((lambda2 - lambda1) / 2.0)));
+
+        if (d < 1e-6) // Points are essentially the same
+            return (lng1, lat1);
+
+        var a = Math.Sin((1.0 - t) * d) / Math.Sin(d);
+        var b = Math.Sin(t * d) / Math.Sin(d);
+
+        // Convert to Cartesian, interpolate, convert back
+        var x = a * Math.Cos(phi1) * Math.Cos(lambda1) + b * Math.Cos(phi2) * Math.Cos(lambda2);
+        var y = a * Math.Cos(phi1) * Math.Sin(lambda1) + b * Math.Cos(phi2) * Math.Sin(lambda2);
+        var z = a * Math.Sin(phi1) + b * Math.Sin(phi2);
+
+        var lat = Math.Atan2(z, Math.Sqrt(x * x + y * y));
+        var lng = Math.Atan2(y, x);
+
+        return (ToDegrees(lng), ToDegrees(lat));
+    }
+
+    static double ToRadians(double degrees) => degrees * Math.PI / 180.0;
+    static double ToDegrees(double radians) => radians * 180.0 / Math.PI;
 
     /// <summary>
     /// Builds narrative beats from locations that have meaningful spatial roles.
