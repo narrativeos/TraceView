@@ -104,6 +104,21 @@ public class GeoStoryBuilder
     }
 
     /// <summary>
+    /// Per-depth camera range constraints derived from global analysis.
+    /// Used to keep camera transitions smooth across chapters at the same structural level.
+    /// </summary>
+    struct DepthCameraRange
+    {
+        public int Depth;
+        public double MinZoom;
+        public double MaxZoom;
+        public double TypicalZoom;
+        public double MinPitch;
+        public double MaxPitch;
+        public double TypicalPitch;
+    }
+
+    /// <summary>
     /// Build story map configuration from Popo tree and verified geocoded features.
     /// </summary>
     /// <param name="popoRoot">Root node of the Popo document tree.</param>
@@ -136,7 +151,8 @@ public class GeoStoryBuilder
         // 2. Walk the Popo tree and collect chapter candidates
         var candidates = new List<ChapterCandidate>();
         int order = 0;
-        WalkPopoTree(popoRoot, uuidToFeature, candidates, ref order, 0);
+        var ancestorStack = new List<ChapterCandidate>();
+        WalkPopoTree(popoRoot, uuidToFeature, candidates, ancestorStack, ref order, 0, cancellationToken);
 
         // 3. Filter: must have enough locations AND content blocks
         var valid = candidates
@@ -147,17 +163,25 @@ public class GeoStoryBuilder
         if (valid.Count == 0)
             return null;
 
-        // 4. Resolve ancestor/descendant conflicts
-        var selected = ResolveAncestorConflicts(valid);
+        // 4. Sort by original tree traversal order
+        var selected = valid.OrderBy(c => c.TreeOrder).ToList();
 
-        // 5. Sort by original tree traversal order
-        selected = selected.OrderBy(c => c.TreeOrder).ToList();
+        // 5. Analyze per-depth camera ranges from all candidates
+        var depthRanges = AnalyzeDepthRanges(selected, cancellationToken);
+        System.Diagnostics.Debug.WriteLine($"[GeoStoryBuilder] Depth camera ranges:");
+        foreach (var dr in depthRanges)
+        {
+            System.Diagnostics.Debug.WriteLine($"  Depth {dr.Depth}: zoom=[{dr.MinZoom:F1}, {dr.MaxZoom:F1}] pitch=[{dr.MinPitch:F1}, {dr.MaxPitch:F1}]");
+        }
 
-        // 6. Build final chapters
+        // 6. Build final chapters with depth-based camera constraints & smooth transitions
         var chapters = new List<GeoChapter>();
+        GeoChapter? previousChapter = null;
         for (int i = 0; i < selected.Count; i++)
         {
-            chapters.Add(BuildChapter(selected[i], i));
+            var chapter = BuildChapter(selected[i], i, depthRanges, previousChapter, cancellationToken);
+            chapters.Add(chapter);
+            previousChapter = chapter;
         }
 
         // 7. Generate story title using NLP /analyze/title API
@@ -222,16 +246,21 @@ public class GeoStoryBuilder
     /// <summary>
     /// Depth-first walk of the Popo tree, collecting candidates at every node
     /// that has a meaningful title.
+    /// Conflict resolution is done inline using an ancestor list (O(n*d) instead of O(n²)).
     /// </summary>
     void WalkPopoTree(
         AnalysisTreeNode node,
         Dictionary<string, GeoFeature> uuidToFeature,
         List<ChapterCandidate> candidates,
+        List<ChapterCandidate> ancestorStack,
         ref int order,
-        int depth)
+        int depth,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         // Collect all source_block_ids throughout this subtree
-        var allUuids = CollectAllSourceBlockIds(node);
+        var allUuids = CollectAllSourceBlockIds(node, cancellationToken);
 
         // Match geocoded locations
         var matchedLocations = allUuids
@@ -245,7 +274,7 @@ public class GeoStoryBuilder
             && node.Title != "Default Title"
             && node.Title.Trim().Length > 1)
         {
-            candidates.Add(new ChapterCandidate
+            var newCandidate = new ChapterCandidate
             {
                 TreeNode = node,
                 Title = node.Title,
@@ -254,84 +283,251 @@ public class GeoStoryBuilder
                 Locations = matchedLocations,
                 ContentBlockCount = allUuids.Count,
                 AllUuids = allUuids
-            });
+            };
+
+            // Inline conflict resolution: check against all ancestors on the stack
+            var ancestorsToRemove = new List<ChapterCandidate>();
+            bool shouldAddNewCandidate = true;
+
+            foreach (var ancestor in ancestorStack)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                // Check if ancestor is a true ancestor (its UUIDs contain new candidate's UUIDs)
+                if (ancestor.AllUuids.IsSupersetOf(newCandidate.AllUuids)
+                    && ancestor.AllUuids.Count > newCandidate.AllUuids.Count)
+                {
+                    // Ancestor/descendant conflict detected
+                    if (newCandidate.Locations.Count >= MinIndependentLocations
+                        || newCandidate.Locations.Count >= ancestor.Locations.Count * ChildLocationRatio)
+                    {
+                        // New candidate is more granular and has enough locations → prefer new, remove ancestor
+                        ancestorsToRemove.Add(ancestor);
+                    }
+                    else
+                    {
+                        // Ancestor is better → don't add new candidate
+                        shouldAddNewCandidate = false;
+                        break;
+                    }
+                }
+            }
+
+            // Remove conflicting ancestors
+            foreach (var ancestor in ancestorsToRemove)
+            {
+                candidates.Remove(ancestor);
+                ancestorStack.Remove(ancestor);
+            }
+
+            if (shouldAddNewCandidate)
+            {
+                candidates.Add(newCandidate);
+                ancestorStack.Add(newCandidate);
+            }
         }
 
         // Recurse into children
         foreach (var child in node.Children)
         {
-            WalkPopoTree(child, uuidToFeature, candidates, ref order, depth + 1);
+            WalkPopoTree(child, uuidToFeature, candidates, ancestorStack, ref order, depth + 1, cancellationToken);
+        }
+
+        // Backtrack: remove this node from the ancestor list if we added it
+        if (ancestorStack.Count > 0 && ancestorStack[ancestorStack.Count - 1].TreeNode == node)
+        {
+            ancestorStack.RemoveAt(ancestorStack.Count - 1);
         }
     }
 
     /// <summary>
     /// Recursively collects all source_block_ids from a node and its descendants.
     /// </summary>
-    static HashSet<string> CollectAllSourceBlockIds(AnalysisTreeNode node)
+    static HashSet<string> CollectAllSourceBlockIds(AnalysisTreeNode node, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var ids = new HashSet<string>(node.SourceBlockIds ?? Enumerable.Empty<string>());
         if (node.Children is not null)
         {
             foreach (var child in node.Children)
             {
-                ids.UnionWith(CollectAllSourceBlockIds(child));
+                ids.UnionWith(CollectAllSourceBlockIds(child, cancellationToken));
             }
         }
         return ids;
     }
 
     /// <summary>
-    /// Resolves ancestor/descendant conflicts: when both a parent and its child
-    /// qualify as chapters, prefer the child if it has enough locations relative
-    /// to the parent (>= 70%). Otherwise keep the parent.
+    /// Analyzes all chapter candidates to compute per-depth camera ranges.
     /// </summary>
-    static List<ChapterCandidate> ResolveAncestorConflicts(List<ChapterCandidate> candidates)
+    static List<DepthCameraRange> AnalyzeDepthRanges(
+        List<ChapterCandidate> candidates,
+        CancellationToken cancellationToken = default)
     {
-        var toRemove = new HashSet<ChapterCandidate>();
+        var depthGroups = candidates.GroupBy(c => c.Depth).ToList();
+        var ranges = new List<DepthCameraRange>();
 
-        // Process deeper nodes first
-        var sorted = candidates.OrderByDescending(c => c.Depth).ToList();
-
-        for (int i = 0; i < sorted.Count; i++)
+        foreach (var group in depthGroups)
         {
-            if (toRemove.Contains(sorted[i]))
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var depth = group.Key;
+            var zooms = new List<double>();
+            var pitches = new List<double>();
+
+            foreach (var candidate in group)
+            {
+                var (zoom, pitch) = EstimateCameraForCandidate(candidate);
+                zooms.Add(zoom);
+                pitches.Add(pitch);
+            }
+
+            if (zooms.Count == 0)
                 continue;
 
-            for (int j = i + 1; j < sorted.Count; j++)
+            var sortedZooms = zooms.OrderBy(z => z).ToList();
+            var sortedPitches = pitches.OrderBy(p => p).ToList();
+
+            ranges.Add(new DepthCameraRange
             {
-                if (toRemove.Contains(sorted[j]))
-                    continue;
-
-                var deeper = sorted[i];
-                var shallower = sorted[j];
-
-                // Check ancestor relationship: shallower's UUIDs contain deeper's
-                if (shallower.AllUuids.IsSupersetOf(deeper.AllUuids)
-                    && shallower.AllUuids.Count > deeper.AllUuids.Count)
-                {
-                    // Child is independently viable → always prefer child
-                    // Child has enough of the parent's locations → prefer child
-                    // Otherwise keep the parent
-                    if (deeper.Locations.Count >= MinIndependentLocations
-                        || deeper.Locations.Count >= shallower.Locations.Count * ChildLocationRatio)
-                        toRemove.Add(shallower);
-                    else
-                        toRemove.Add(deeper);
-                }
-            }
+                Depth = depth,
+                MinZoom = sortedZooms.First(),
+                MaxZoom = sortedZooms.Last(),
+                TypicalZoom = sortedZooms[sortedZooms.Count / 2],
+                MinPitch = sortedPitches.First(),
+                MaxPitch = sortedPitches.Last(),
+                TypicalPitch = sortedPitches[sortedPitches.Count / 2]
+            });
         }
 
-        return candidates.Where(c => !toRemove.Contains(c)).ToList();
+        return ranges;
+    }
+
+    /// <summary>
+    /// Estimates raw zoom/pitch for a candidate (used during analysis phase).
+    /// </summary>
+    static (double Zoom, double Pitch) EstimateCameraForCandidate(ChapterCandidate candidate)
+    {
+        var locs = candidate.Locations;
+        if (locs.Count == 0)
+            return (12, 0);
+
+        var rolePriority = new Dictionary<string, int>
+        {
+            { "PATH", 6 }, { "TARGET", 5 }, { "ORIGIN", 4 },
+            { "ACTOR", 3 }, { "CONTAINER", 2 }, { "MODIFIER", 1 }
+        };
+
+        var dominantRole = locs
+            .Where(l => !string.IsNullOrEmpty(l.SpatialRole))
+            .OrderByDescending(l => rolePriority.GetValueOrDefault(l.SpatialRole!, 0))
+            .Select(l => l.SpatialRole)
+            .FirstOrDefault() ?? "STATIC";
+
+        double baseZoom;
+        if (locs.Count == 1)
+        {
+            baseZoom = GetZoomFromPlaceRank(locs[0].PlaceRank);
+        }
+        else
+        {
+            var lonSpan = locs.Max(l => l.Longitude) - locs.Min(l => l.Longitude);
+            var latSpan = locs.Max(l => l.Latitude) - locs.Min(l => l.Latitude);
+            var maxSpan = Math.Max(lonSpan, latSpan);
+            baseZoom = maxSpan < 0.0001
+                ? GetZoomFromPlaceRank(locs[0].PlaceRank)
+                : Math.Log(360.0 / maxSpan) / Math.Log(2.0) - 0.5;
+            baseZoom = Math.Max(1.0, Math.Min(20.0, baseZoom));
+        }
+
+        double zoom = baseZoom;
+        double pitch = 0;
+
+        switch (dominantRole)
+        {
+            case "PATH": pitch = 35; break;
+            case "TARGET": zoom = Math.Min(baseZoom + 2, 18); break;
+            case "ACTOR": zoom = Math.Min(baseZoom + 1, 18); pitch = 20; break;
+            case "CONTAINER": pitch = 10; break;
+            case "MODIFIER": zoom = Math.Max(baseZoom - 1, 2); break;
+        }
+
+        return (zoom, pitch);
+    }
+
+    /// <summary>
+    /// Constrains camera params to depth range and smooths transitions from previous chapter.
+    /// </summary>
+    static (double Zoom, double Pitch) ConstrainCameraToRange(
+        double rawZoom, double rawPitch,
+        DepthCameraRange range,
+        GeoChapter? previousChapter)
+    {
+        // Step 1: Clamp to depth range (with 1-level tolerance)
+        double zoom = Math.Max(range.MinZoom - 1, Math.Min(range.MaxZoom + 1, rawZoom));
+        double pitch = Math.Max(range.MinPitch, Math.Min(range.MaxPitch, rawPitch));
+
+        // Step 2: Smooth transition from previous chapter
+        if (previousChapter is not null)
+        {
+            const double MaxZoomDelta = 3.0;
+            const double MaxPitchDelta = 15.0;
+
+            var zoomDelta = zoom - previousChapter.Zoom;
+            if (Math.Abs(zoomDelta) > MaxZoomDelta)
+                zoom = previousChapter.Zoom + Math.Sign(zoomDelta) * MaxZoomDelta;
+
+            var pitchDelta = pitch - previousChapter.Pitch;
+            if (Math.Abs(pitchDelta) > MaxPitchDelta)
+                pitch = previousChapter.Pitch + Math.Sign(pitchDelta) * MaxPitchDelta;
+        }
+
+        zoom = Math.Max(1.0, Math.Min(20.0, zoom));
+        pitch = Math.Max(0.0, Math.Min(60.0, pitch));
+
+        return (zoom, pitch);
     }
 
     /// <summary>
     /// Builds a single GeoChapter from a validated candidate.
     /// Camera behavior adapts to spatial_role and verb_spatial_class.
+    /// Camera parameters are constrained by depth-based ranges and smoothed across transitions.
     /// </summary>
-    static GeoChapter BuildChapter(ChapterCandidate candidate, int index)
+    static GeoChapter BuildChapter(
+        ChapterCandidate candidate, int index,
+        List<DepthCameraRange> depthRanges,
+        GeoChapter? previousChapter,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         var locs = candidate.Locations;
-        var (lng, lat, zoom, pitch, bearing, mapAnimation) = CalculateSpatialCamera(locs);
+        var (lng, lat, rawZoom, rawPitch, bearing, mapAnimation) = CalculateSpatialCamera(locs);
+
+        // Find the depth range for this candidate's depth
+        var range = depthRanges.FirstOrDefault(r => r.Depth == candidate.Depth);
+
+        // If no range found for this depth, create a default range based on raw values
+        if (range.Depth == 0)
+        {
+            range = new DepthCameraRange
+            {
+                Depth = candidate.Depth,
+                MinZoom = Math.Max(1, rawZoom - 2),
+                MaxZoom = Math.Min(20, rawZoom + 2),
+                TypicalZoom = rawZoom,
+                MinPitch = 0,
+                MaxPitch = 60,
+                TypicalPitch = rawPitch
+            };
+        }
+
+        // Apply depth-based constraints and smooth transitions
+        var (zoom, pitch) = ConstrainCameraToRange(rawZoom, rawPitch, range, previousChapter);
+
+        System.Diagnostics.Debug.WriteLine(
+            $"[GeoStoryBuilder] Chapter {index} (depth={candidate.Depth}): " +
+            $"raw zoom={rawZoom:F1} pitch={rawPitch:F1} → constrained zoom={zoom:F1} pitch={pitch:F1}");
 
         // Determine which layers are "active" in this chapter
         var activeLayerIds = locs
@@ -356,23 +552,28 @@ public class GeoStoryBuilder
             Zoom = zoom,
             Pitch = pitch,
             Bearing = bearing,
-            // onChapterEnter: highlight active layers, dim the rest
             OnChapterEnter = AllLayerIds.Select(id => new GeoLayerEffect
             {
                 LayerId = id,
                 Opacity = activeLayerIds.Contains(id) ? 1.0 : 0.2,
                 Duration = 500
             }).ToList(),
-            // onChapterExit: restore all layers to default
             OnChapterExit = AllLayerIds.Select(id => new GeoLayerEffect
             {
                 LayerId = id,
                 Opacity = 0.7,
                 Duration = 300
             }).ToList(),
-
             Beats = BuildBeats(locs)
         };
+    }
+
+    /// <summary>
+    /// Backward-compatible overload (no constraints).
+    /// </summary>
+    static GeoChapter BuildChapter(ChapterCandidate candidate, int index)
+    {
+        return BuildChapter(candidate, index, new List<DepthCameraRange>(), null, CancellationToken.None);
     }
 
     /// <summary>
