@@ -175,8 +175,6 @@ public class GeoStoryBuilder
         }
 
         // 6. Build final chapters with depth-based camera constraints & smooth transitions
-        // NOTE: Do NOT insert transition chapters here - they will be generated in Phase 3
-        // after global optimization to avoid duplicate/nested transitions.
         var chapters = new List<GeoChapter>();
         GeoChapter? previousChapter = null;
         for (int i = 0; i < selected.Count; i++)
@@ -190,30 +188,7 @@ public class GeoStoryBuilder
         // After all chapters are built, do a global pass to smooth zoom/pitch transitions
         OptimizeGlobalCameraParameters(chapters);
 
-        // 6.6 Phase 3: Generate transition chapters after global optimization
-        var finalChapters = new List<GeoChapter>();
-        GeoChapter? prevChapter = null;
-        int finalIndex = 0;
-        foreach (var chapter in chapters)
-        {
-            if (prevChapter is not null)
-            {
-                var transitions = GenerateTransitionChapters(prevChapter, chapter, finalIndex);
-                if (transitions.Count > 0)
-                {
-                    finalChapters.AddRange(transitions);
-                    finalIndex += transitions.Count;
-                }
-            }
-            // Set ID and alignment based on final position (do this AFTER transitions)
-            chapter.Id = $"chapter-{finalIndex}";
-            chapter.Alignment = finalIndex % 2 == 0 ? "right" : "left";
-            finalChapters.Add(chapter);
-            finalIndex++;
-            prevChapter = chapter;
-        }
-        chapters = finalChapters;
-
+        // Global optimization is sufficient - no transition chapters needed.
         // 7. Generate story title using NLP /analyze/title API
         //    Data source: first few chapter titles (limited to avoid overly long input)
         string storyTitle = documentTitle;
