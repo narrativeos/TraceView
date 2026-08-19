@@ -175,29 +175,14 @@ public class GeoStoryBuilder
         }
 
         // 6. Build final chapters with depth-based camera constraints & smooth transitions
+        // NOTE: Do NOT insert transition chapters here - they will be generated in Phase 3
+        // after global optimization to avoid duplicate/nested transitions.
         var chapters = new List<GeoChapter>();
         GeoChapter? previousChapter = null;
-        int globalIndex = 0;
         for (int i = 0; i < selected.Count; i++)
         {
-            var chapter = BuildChapter(selected[i], globalIndex, depthRanges, previousChapter, cancellationToken);
-            
-            // Insert transition chapters if there's a large jump from previous chapter
-            if (previousChapter is not null)
-            {
-                var transitions = GenerateTransitionChapters(previousChapter, chapter, globalIndex);
-                if (transitions.Count > 0)
-                {
-                    chapters.AddRange(transitions);
-                    globalIndex += transitions.Count;
-                    // Update chapter index after transitions
-                    chapter.Id = $"chapter-{globalIndex}";
-                    chapter.Alignment = globalIndex % 2 == 0 ? "right" : "left";
-                }
-            }
-            
+            var chapter = BuildChapter(selected[i], i, depthRanges, previousChapter, cancellationToken);
             chapters.Add(chapter);
-            globalIndex++;
             previousChapter = chapter;
         }
 
