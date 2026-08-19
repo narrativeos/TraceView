@@ -201,6 +201,33 @@ public class GeoStoryBuilder
             previousChapter = chapter;
         }
 
+        // 6.5 Phase 2: Global camera parameter optimization
+        // After all chapters are built, do a global pass to smooth zoom/pitch transitions
+        OptimizeGlobalCameraParameters(chapters);
+
+        // 6.6 Regenerate transition chapters after global optimization
+        var finalChapters = new List<GeoChapter>();
+        GeoChapter? prevChapter = null;
+        int finalIndex = 0;
+        foreach (var chapter in chapters)
+        {
+            if (prevChapter is not null)
+            {
+                var transitions = GenerateTransitionChapters(prevChapter, chapter, finalIndex);
+                if (transitions.Count > 0)
+                {
+                    finalChapters.AddRange(transitions);
+                    finalIndex += transitions.Count;
+                    chapter.Id = $"chapter-{finalIndex}";
+                    chapter.Alignment = finalIndex % 2 == 0 ? "right" : "left";
+                }
+            }
+            finalChapters.Add(chapter);
+            finalIndex++;
+            prevChapter = chapter;
+        }
+        chapters = finalChapters;
+
         // 7. Generate story title using NLP /analyze/title API
         //    Data source: first few chapter titles (limited to avoid overly long input)
         string storyTitle = documentTitle;
@@ -591,6 +618,104 @@ public class GeoStoryBuilder
     static GeoChapter BuildChapter(ChapterCandidate candidate, int index)
     {
         return BuildChapter(candidate, index, new List<DepthCameraRange>(), null, CancellationToken.None);
+    }
+
+    /// <summary>
+    /// Phase 2: Global camera parameter optimization.
+    /// After all chapters are built, performs a global pass to smooth zoom/pitch transitions
+    /// from an overall balanced perspective.
+    /// 
+    /// Strategy:
+    /// 1. Normalize zoom values to a reasonable global range (3-15)
+    /// 2. Apply exponential moving average smoothing to reduce abrupt changes
+    /// 3. Enforce max delta constraints between adjacent chapters
+    /// 4. Preserve semantic hierarchy (depth-based relative ordering)
+    /// </summary>
+    static void OptimizeGlobalCameraParameters(List<GeoChapter> chapters)
+    {
+        if (chapters.Count < 2)
+            return;
+
+        // Step 1: Collect all zoom values to understand the distribution
+        var zooms = chapters.Select(c => c.Zoom).ToList();
+        var minZoom = zooms.Min();
+        var maxZoom = zooms.Max();
+        var zoomRange = maxZoom - minZoom;
+
+        System.Diagnostics.Debug.WriteLine(
+            $"[GeoStoryBuilder] Global optimization: {chapters.Count} chapters, " +
+            $"zoom range [{minZoom:F1}, {maxZoom:F1}], span={zoomRange:F1}");
+
+        // Step 2: Normalize zoom to target range [3, 15] while preserving relative ordering
+        const double TargetMinZoom = 3.0;
+        const double TargetMaxZoom = 15.0;
+        const double TargetRange = TargetMaxZoom - TargetMinZoom;
+
+        foreach (var chapter in chapters)
+        {
+            if (zoomRange < 0.01) // All chapters have same zoom, use default
+            {
+                chapter.Zoom = 8.0; // Medium zoom as default
+            }
+            else
+            {
+                // Linear normalization to target range
+                var normalizedZoom = TargetMinZoom + (chapter.Zoom - minZoom) / zoomRange * TargetRange;
+                chapter.Zoom = normalizedZoom;
+            }
+        }
+
+        // Step 3: Apply exponential moving average smoothing (alpha = 0.4)
+        // This reduces abrupt changes while preserving overall trend
+        const double smoothingAlpha = 0.4;
+        var smoothedZooms = new double[chapters.Count];
+        smoothedZooms[0] = chapters[0].Zoom;
+
+        for (int i = 1; i < chapters.Count; i++)
+        {
+            smoothedZooms[i] = smoothingAlpha * chapters[i].Zoom + (1 - smoothingAlpha) * smoothedZooms[i - 1];
+        }
+
+        // Apply smoothed values
+        for (int i = 0; i < chapters.Count; i++)
+        {
+            chapters[i].Zoom = smoothedZooms[i];
+        }
+
+        // Step 4: Enforce max delta constraint between adjacent chapters (max 3 zoom levels)
+        const double maxZoomDelta = 3.0;
+        for (int i = 1; i < chapters.Count; i++)
+        {
+            var delta = chapters[i].Zoom - chapters[i - 1].Zoom;
+            if (Math.Abs(delta) > maxZoomDelta)
+            {
+                // Interpolate to stay within constraint
+                chapters[i].Zoom = chapters[i - 1].Zoom + Math.Sign(delta) * maxZoomDelta;
+            }
+        }
+
+        // Step 5: Smooth pitch values (similar approach)
+        const double maxPitchDelta = 10.0;
+        for (int i = 1; i < chapters.Count; i++)
+        {
+            var pitchDelta = chapters[i].Pitch - chapters[i - 1].Pitch;
+            if (Math.Abs(pitchDelta) > maxPitchDelta)
+            {
+                chapters[i].Pitch = chapters[i - 1].Pitch + Math.Sign(pitchDelta) * maxPitchDelta;
+            }
+        }
+
+        // Step 6: Final safety bounds
+        foreach (var chapter in chapters)
+        {
+            chapter.Zoom = Math.Max(1.0, Math.Min(20.0, chapter.Zoom));
+            chapter.Pitch = Math.Max(0.0, Math.Min(60.0, chapter.Pitch));
+        }
+
+        // Log results
+        var finalZooms = chapters.Select(c => c.Zoom).ToList();
+        System.Diagnostics.Debug.WriteLine(
+            $"[GeoStoryBuilder] After optimization: zoom range [{finalZooms.Min():F1}, {finalZooms.Max():F1}]");
     }
 
     /// <summary>
