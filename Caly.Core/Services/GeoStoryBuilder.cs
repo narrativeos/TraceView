@@ -203,10 +203,11 @@ public class GeoStoryBuilder
                 {
                     finalChapters.AddRange(transitions);
                     finalIndex += transitions.Count;
-                    chapter.Id = $"chapter-{finalIndex}";
-                    chapter.Alignment = finalIndex % 2 == 0 ? "right" : "left";
                 }
             }
+            // Set ID and alignment based on final position (do this AFTER transitions)
+            chapter.Id = $"chapter-{finalIndex}";
+            chapter.Alignment = finalIndex % 2 == 0 ? "right" : "left";
             finalChapters.Add(chapter);
             finalIndex++;
             prevChapter = chapter;
