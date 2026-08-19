@@ -190,7 +190,7 @@ public class GeoStoryBuilder
         // After all chapters are built, do a global pass to smooth zoom/pitch transitions
         OptimizeGlobalCameraParameters(chapters);
 
-        // 6.6 Regenerate transition chapters after global optimization
+        // 6.6 Phase 3: Generate transition chapters after global optimization
         var finalChapters = new List<GeoChapter>();
         GeoChapter? prevChapter = null;
         int finalIndex = 0;

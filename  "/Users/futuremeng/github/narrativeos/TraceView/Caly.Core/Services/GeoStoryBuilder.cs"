@@ -1,0 +1,18 @@
+ "        // 2. Walk the Popo tree and collect chapter candidates
+        // Conflict resolution is done inline during tree walk (O(n*d) instead of O(n²))
+        var candidates = new List<ChapterCandidate>();
+        var ancestorStack = new Stack<ChapterCandidate>();
+        int order = 0;
+        WalkPopoTree(popoRoot, uuidToFeature, candidates, ancestorStack, ref order, 0, cancellationToken);
+
+        // 3. Filter: must have enough locations AND content blocks
+        var valid = candidates
+            .Where(c => c.Locations.Count >= MinLocations
+                     && c.ContentBlockCount >= MinContentBlocks)
+            .ToList();
+
+        if (valid.Count == 0)
+            return null;
+
+        // 4. Sort by original tree traversal order
+        var selected = valid.OrderBy(c => c.TreeOrder).ToList();"
