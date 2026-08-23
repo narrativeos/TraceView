@@ -197,6 +197,25 @@ public static class EnrichedResultBuilder
             });
         }
 
+        // P0: Collect hierarchy/containment relations from block.Relations (SemanticRelation)
+        // These are PART_OF relations from HanLP that represent term hierarchy
+        foreach (var rel in block.Relations)
+        {
+            // Only process hierarchy/containment type PART_OF relations (上下级关系)
+            if (rel.Predicate == "PART_OF" && rel.Source?.Contains("hierarchy/containment") == true)
+            {
+                enrichedBlock.Relations.Add(new EnrichedRelation
+                {
+                    RelationType = "HYPERNYM",
+                    SourceEntityId = rel.Subject,
+                    TargetEntityId = rel.ObjectText,
+                    EntityCategory = "UNKNOWN",  // Hierarchy relations span multiple categories
+                    Confidence = rel.Confidence,
+                    Evidence = rel.Evidence ?? ""
+                });
+            }
+        }
+
         // Collect relations from other entity types (stored in EnrichedMetadata)
         foreach (var kvp in block.EnrichedMetadata)
         {
