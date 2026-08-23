@@ -52,6 +52,9 @@ public static class TermResultBuilder
         };
 
         // ── Collect all entities as term candidates ──
+        // P0 fix: Categories that should never be considered domain terms
+        var nonTermCategories = new HashSet<string>(StringComparer.Ordinal) { "NUMBER", "DATE" };
+        
         var allEntities = new List<(string Text, string Category, string Normalized, List<int> BlockIds, int Frequency)>();
         var textToEntry = new Dictionary<string, (int Index, TermEntry Entry)>(StringComparer.Ordinal);
         var blockIdSets = new Dictionary<string, HashSet<int>>(StringComparer.Ordinal);
@@ -62,6 +65,10 @@ public static class TermResultBuilder
             foreach (var entry in block.Entities)
             {
                 if (entry.ValidationStatus == "invalid") continue;
+                // P0 fix: Exclude NUMBER and DATE categories from term extraction
+                if (nonTermCategories.Contains(entry.Category)) continue;
+                // P2 fix: Filter out UNKNOWN noise (formula fragments, low-confidence short tokens)
+                if (entry.Category == "UNKNOWN" && entry.EnrichmentConfidence < 0.15 && entry.Text.Length <= 4) continue;
 
                 var text = IsCleanEnrichedText(entry.EnrichedText) ? entry.EnrichedText : entry.Text;
 
@@ -80,6 +87,10 @@ public static class TermResultBuilder
             foreach (var entry in block.Entities)
             {
                 if (entry.ValidationStatus == "invalid") continue;
+                // P0 fix: Exclude NUMBER and DATE categories from term extraction
+                if (nonTermCategories.Contains(entry.Category)) continue;
+                // P2 fix: Filter out UNKNOWN noise (formula fragments, low-confidence short tokens)
+                if (entry.Category == "UNKNOWN" && entry.EnrichmentConfidence < 0.15 && entry.Text.Length <= 4) continue;
 
                 var text = IsCleanEnrichedText(entry.EnrichedText) ? entry.EnrichedText : entry.Text;
                 if (textToEntry.ContainsKey(text)) continue;
@@ -93,6 +104,10 @@ public static class TermResultBuilder
                     BlockCount = blockIdSets.TryGetValue(text, out var bids) ? bids.Count : 1,
                     BlockIds = blockIdSets.TryGetValue(text, out var bidList) ? bidList.ToList() : new List<int>()
                 };
+
+                // P2: Category confidence and misclassification detection
+                termEntry.CategoryConfidence = GetCategoryConfidence(entry.Category, entry.EnrichmentConfidence);
+                (termEntry.IsLikelyMisclassified, termEntry.MisclassificationReason) = DetectMisclassification(entry, text);
 
                 // Extract definition from entity metadata
                 if (entityMetadata.TryGetValue(text, out var meta))
@@ -266,5 +281,96 @@ public static class TermResultBuilder
             return false;
 
         return true;
+    }
+
+    // ── P2: Category confidence and misclassification detection ──
+
+    /// <summary>
+    /// Determines the confidence level of an NLP category assignment.
+    /// </summary>
+    private static string GetCategoryConfidence(string category, double score)
+    {
+        var highConfidence = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "PERSON", "ORGANIZATION", "LOCATION", "DATE", "NUMBER"
+        };
+        var mediumConfidence = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "MATERIAL", "PRODUCT", "STANDARD", "FACILITY", "COMPANY"
+        };
+
+        if (highConfidence.Contains(category))
+            return score > 0.2 ? "high" : "medium";
+        if (mediumConfidence.Contains(category))
+            return score > 0.2 ? "medium" : "low";
+        if (category == "UNKNOWN")
+            return "low";
+        return "unknown";
+    }
+
+    /// <summary>
+    /// Detects potential misclassifications and returns (isMisclassified, reason).
+    /// </summary>
+    private static (bool IsMisclassified, string Reason) DetectMisclassification(EnrichedEntityEntry entry, string text)
+    {
+        // Check for company names detected as PERSON (common with Chinese NER)
+        if (entry.Category == "PERSON")
+        {
+            var companyIndicators = new[] { "公司", "集团", "有限", "股份", "制造", "科技", "工业", "大学", "学院", "研究院" };
+            foreach (var indicator in companyIndicators)
+            {
+                if (text.Contains(indicator))
+                    return (true, "company_name_as_person");
+            }
+            // Check for single character names that are likely segmentation artifacts
+            if (text.Length == 1 && entry.EnrichmentConfidence < 0.25)
+                return (true, "segmentation_artifact");
+        }
+
+        // Check for formula fragments detected as UNKNOWN
+        if (entry.Category == "UNKNOWN")
+        {
+            // Greek letters or LaTeX commands
+            if (IsFormulaFragment(text))
+                return (true, "formula_fragment");
+            // Very short UNKNOWN tokens with low scores are likely noise
+            if (text.Length <= 2 && entry.EnrichmentConfidence < 0.2)
+                return (true, "low_confidence_noise");
+        }
+
+        // Check for segmentation artifacts in ORGANIZATION (e.g., "上海液压" split from "上海液压气动密封行业协会")
+        if (entry.Category == "ORGANIZATION" && entry.EnrichmentConfidence < 0.2)
+        {
+            if (text.Length <= 3)
+                return (true, "segmentation_artifact");
+        }
+
+        return (false, string.Empty);
+    }
+
+    /// <summary>
+    /// Heuristic check for formula fragments (Greek letters, LaTeX commands, subscripts/superscripts).
+    /// </summary>
+    private static bool IsFormulaFragment(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return false;
+        // Greek letters
+        var greekLetters = new[] { "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta", "iota", "kappa", "lambda", "mu", "nu", "xi", "pi", "rho", "sigma", "tau", "upsilon", "phi", "chi", "psi", "omega", "Gamma", "Delta", "Theta", "Lambda", "Xi", "Pi", "Sigma", "Upsilon", "Phi", "Psi", "Omega" };
+        var lower = text.ToLowerInvariant();
+        foreach (var g in greekLetters)
+        {
+            if (lower == g) return true;
+        }
+        // LaTeX commands
+        if (text.StartsWith("\\")) return true;
+        // Subscript/superscript fragments
+        if (text.Contains("_") || text.Contains("^")) return true;
+        // Math operators
+        var mathOperators = new[] { "infty", "partial", "nabla", "forall", "exists", "emptyset", "aleph", "wp", "Re", "Im", "ni", "mid" };
+        foreach (var op in mathOperators)
+        {
+            if (lower == op) return true;
+        }
+        return false;
     }
 }

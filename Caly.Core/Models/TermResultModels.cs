@@ -80,6 +80,74 @@ public class TermEntry
     /// <summary>Depth in the term tree (0 = root).</summary>
     [JsonPropertyName("depth")]
     public int Depth { get; set; }
+    
+    // ── P2: Category confidence and traceability annotations ──
+    
+    /// <summary>
+    /// Confidence level of the NLP category assignment: "high", "medium", "low", or "unknown".
+    /// - "high": Named entity types (PERSON, ORGANIZATION, LOCATION) from quality NER
+    /// - "medium": Domain-specific types (MATERIAL, PRODUCT, STANDARD, FACILITY)
+    /// - "low": UNKNOWN category or entities with noise indicators
+    /// - "unknown": No category information available
+    /// </summary>
+    [JsonPropertyName("category_confidence")]
+    public string CategoryConfidence { get; set; } = "unknown";
+    
+    /// <summary>
+    /// Source of the category assignment (e.g., "hanlp_ner", "rule_based", "unknown").
+    /// </summary>
+    [JsonPropertyName("category_source")]
+    public string CategorySource { get; set; } = "hanlp_ner";
+    
+    /// <summary>
+    /// If true, the category may be incorrect (e.g., company name detected as PERSON).
+    /// Downstream applications can use this to flag entities for review.
+    /// </summary>
+    [JsonPropertyName("is_likely_misclassified")]
+    public bool IsLikelyMisclassified { get; set; }
+    
+    /// <summary>
+    /// Reason for potential misclassification (e.g., "company_name_as_person", "formula_fragment", "segmentation_artifact").
+    /// Empty string if not flagged.
+    /// </summary>
+    [JsonPropertyName("misclassification_reason")]
+    public string MisclassificationReason { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// Traceability information: first occurrence context and extraction method.
+    /// </summary>
+    [JsonPropertyName("traceability")]
+    public TermTraceability? Traceability { get; set; }
+}
+
+/// <summary>
+/// Traceability information for a term, supporting downstream review and audit.
+/// </summary>
+public class TermTraceability
+{
+    /// <summary>Block ID of the first occurrence.</summary>
+    [JsonPropertyName("first_occurrence_block")]
+    public int? FirstOccurrenceBlock { get; set; }
+    
+    /// <summary>Character span of the first occurrence [start, end].</summary>
+    [JsonPropertyName("first_occurrence_span")]
+    public int[]? FirstOccurrenceSpan { get; set; }
+    
+    /// <summary>Context snippet around the first occurrence.</summary>
+    [JsonPropertyName("context_snippet")]
+    public string? ContextSnippet { get; set; }
+    
+    /// <summary>Extraction method that produced this term (e.g., "ner", "definition", "dependency_parse").</summary>
+    [JsonPropertyName("extraction_method")]
+    public string ExtractionMethod { get; set; } = "ner";
+    
+    /// <summary>Formula placeholders that were replaced in the source text.</summary>
+    [JsonPropertyName("formula_context")]
+    public List<string> FormulaContext { get; set; } = new();
+    
+    /// <summary>Segmentation warnings (e.g., "可能由换行切分").</summary>
+    [JsonPropertyName("segmentation_warnings")]
+    public List<string> SegmentationWarnings { get; set; } = new();
 }
 
 /// <summary>
