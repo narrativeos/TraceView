@@ -36,6 +36,17 @@ public partial class TermTreeNodeViewModel : ObservableObject
     public double Score { get; }
     public string? Definition { get; }
     public int Depth { get; }
+    
+    // ── P2: Relation metadata for UI display ──
+    
+    /// <summary>Relation type from parent (e.g., "HYPERNYM", "IS_A"). Null for root nodes.</summary>
+    public string? ParentRelationType { get; }
+    
+    /// <summary>Confidence of the relation from parent (0.0-1.0). Null for root nodes.</summary>
+    public double? ParentRelationConfidence { get; }
+    
+    /// <summary>Evidence text for the relation from parent. Null for root nodes.</summary>
+    public string? ParentRelationEvidence { get; }
 
     [ObservableProperty]
     private bool _isExpanded;
@@ -45,6 +56,32 @@ public partial class TermTreeNodeViewModel : ObservableObject
     public bool HasChildren => Children.Count > 0;
 
     public string ScoreDisplay => $"{Score:F2}";
+    
+    /// <summary>Display text for relation type (e.g., "上下级", "定义").</summary>
+    public string? RelationTypeDisplay => ParentRelationType switch
+    {
+        "HYPERNYM" => "上下级",
+        "IS_A" => "定义",
+        "HYPONYM" => "包含",
+        "SYNONYM" => "同义",
+        null => null,
+        _ => ParentRelationType
+    };
+    
+    /// <summary>Display text for relation confidence (e.g., "置信度: 0.65").</summary>
+    public string? RelationConfidenceDisplay => ParentRelationConfidence is double conf 
+        ? $"置信度: {conf:F2}" 
+        : null;
+    
+    /// <summary>Whether this node has relation info to display (non-root node).</summary>
+    public bool HasRelationInfo => ParentRelationType != null;
+    
+    /// <summary>Short evidence display (truncated if too long).</summary>
+    public string? RelationEvidenceDisplay => ParentRelationEvidence != null 
+        ? (ParentRelationEvidence.Length > 50 
+            ? ParentRelationEvidence.Substring(0, 50) + "..." 
+            : ParentRelationEvidence)
+        : null;
 
     public string CategoryColorHex => Category switch
     {
@@ -61,13 +98,17 @@ public partial class TermTreeNodeViewModel : ObservableObject
 
     public string IndentDisplay => new string(' ', Depth * 2);
 
-    public TermTreeNodeViewModel(string term, string category, double score, string? definition, int depth)
+    public TermTreeNodeViewModel(string term, string category, double score, string? definition, int depth,
+        string? parentRelationType = null, double? parentRelationConfidence = null, string? parentRelationEvidence = null)
     {
         Term = term;
         Category = category;
         Score = score;
         Definition = definition;
         Depth = depth;
+        ParentRelationType = parentRelationType;
+        ParentRelationConfidence = parentRelationConfidence;
+        ParentRelationEvidence = parentRelationEvidence;
         _isExpanded = depth <= 1; // Auto-expand top 2 levels
     }
 }

@@ -208,6 +208,20 @@ public class TermTreeNodeOutput
     /// <summary>Child nodes.</summary>
     [JsonPropertyName("children")]
     public List<TermTreeNodeOutput> Children { get; set; } = new();
+    
+    // ── P2: Relation metadata for UI display ──
+    
+    /// <summary>Relation type from parent (e.g., "HYPERNYM", "IS_A"). Null for root nodes.</summary>
+    [JsonPropertyName("parent_relation_type")]
+    public string? ParentRelationType { get; set; }
+    
+    /// <summary>Confidence of the relation from parent (0.0-1.0). Null for root nodes.</summary>
+    [JsonPropertyName("parent_relation_confidence")]
+    public double? ParentRelationConfidence { get; set; }
+    
+    /// <summary>Evidence text for the relation from parent. Null for root nodes.</summary>
+    [JsonPropertyName("parent_relation_evidence")]
+    public string? ParentRelationEvidence { get; set; }
 }
 
 /// <summary>

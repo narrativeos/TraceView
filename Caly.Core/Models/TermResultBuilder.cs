@@ -180,9 +180,10 @@ public static class TermResultBuilder
         }
 
         // ── Build hierarchy tree ──
+        // P2: Include relation type, confidence, and evidence for UI display
         var hypernymRelations = result.Relations
             .Where(r => r.Type == "HYPERNYM" || r.Type == "IS_A")
-            .Select(r => (r.Source, r.Target, r.Confidence))
+            .Select(r => (r.Source, r.Target, r.Confidence, r.Evidence, r.Type))
             .ToList();
 
         var definitions = result.Terms
@@ -217,7 +218,11 @@ public static class TermResultBuilder
             Score = node.Score,
             Definition = node.Definition,
             Depth = node.Depth,
-            Children = node.Children.Select(ConvertToOutput).ToList()
+            Children = node.Children.Select(ConvertToOutput).ToList(),
+            // P2: Pass relation metadata for UI display
+            ParentRelationType = node.ParentRelationType,
+            ParentRelationConfidence = node.ParentRelationConfidence,
+            ParentRelationEvidence = node.ParentRelationEvidence
         };
     }
 

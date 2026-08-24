@@ -104,7 +104,11 @@ public partial class TermBlockViewModel : ObservableObject
             node.Category,
             node.Score,
             node.Definition,
-            node.Depth);
+            node.Depth,
+            // P2: Pass relation metadata for UI display
+            node.ParentRelationType,
+            node.ParentRelationConfidence,
+            node.ParentRelationEvidence);
 
         foreach (var child in node.Children)
         {

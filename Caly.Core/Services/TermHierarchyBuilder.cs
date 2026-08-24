@@ -52,6 +52,17 @@ public class TermTreeNode
 
     /// <summary>Whether this node is in the current recursion stack.</summary>
     internal bool InStack { get; set; }
+    
+    // ── P2: Relation metadata for UI display ──
+    
+    /// <summary>Relation type from parent (e.g., "HYPERNYM", "IS_A"). Null for root nodes.</summary>
+    public string? ParentRelationType { get; set; }
+    
+    /// <summary>Confidence of the relation from parent (0.0-1.0). Null for root nodes.</summary>
+    public double? ParentRelationConfidence { get; set; }
+    
+    /// <summary>Evidence text for the relation from parent. Null for root nodes.</summary>
+    public string? ParentRelationEvidence { get; set; }
 }
 
 /// <summary>
@@ -64,13 +75,13 @@ public class TermHierarchyBuilder
     /// Builds a list of root-level term tree nodes from term relations and scores.
     /// </summary>
     /// <param name="terms">All term texts with their scores.</param>
-    /// <param name="hypernymRelations">HYPERNYM relations (term → hypernym).</param>
+    /// <param name="hypernymRelations">HYPERNYM relations (term → hypernym, confidence, evidence, relationType).</param>
     /// <param name="definitions">Term definitions keyed by term text.</param>
     /// <param name="categories">Entity categories keyed by term text.</param>
     /// <returns>List of root nodes (terms with no hypernym).</returns>
     public List<TermTreeNode> Build(
         IReadOnlyDictionary<string, double> terms,
-        IReadOnlyList<(string Term, string Hypernym, double Confidence)> hypernymRelations,
+        IReadOnlyList<(string Term, string Hypernym, double Confidence, string? Evidence, string RelationType)> hypernymRelations,
         IReadOnlyDictionary<string, string> definitions,
         IReadOnlyDictionary<string, string> categories)
     {
@@ -78,8 +89,10 @@ public class TermHierarchyBuilder
         // Key = hypernym (parent), Value = list of terms (children)
         var childrenMap = new Dictionary<string, List<string>>(StringComparer.Ordinal);
         var relationConfidences = new Dictionary<(string, string), double>();
+        var relationEvidence = new Dictionary<(string, string), string?>();
+        var relationTypes = new Dictionary<(string, string), string>();
 
-        foreach (var (term, hypernym, confidence) in hypernymRelations)
+        foreach (var (term, hypernym, confidence, evidence, relationType) in hypernymRelations)
         {
             if (!childrenMap.ContainsKey(hypernym))
                 childrenMap[hypernym] = new List<string>();
@@ -87,6 +100,8 @@ public class TermHierarchyBuilder
             {
                 childrenMap[hypernym].Add(term);
                 relationConfidences[(term, hypernym)] = confidence;
+                relationEvidence[(term, hypernym)] = evidence;
+                relationTypes[(term, hypernym)] = relationType;
             }
         }
 
@@ -114,7 +129,8 @@ public class TermHierarchyBuilder
             if (visited.Contains(rootTerm)) continue;
 
             var node = BuildSubtree(rootTerm, childrenMap, terms, definitions, categories,
-                relationConfidences, visited, nodeCache, 0, new HashSet<string>(StringComparer.Ordinal));
+                relationConfidences, relationEvidence, relationTypes,
+                visited, nodeCache, 0, new HashSet<string>(StringComparer.Ordinal));
             if (node != null)
                 roots.Add(node);
         }
@@ -133,10 +149,15 @@ public class TermHierarchyBuilder
         IReadOnlyDictionary<string, string> definitions,
         IReadOnlyDictionary<string, string> categories,
         Dictionary<(string, string), double> relationConfidences,
+        Dictionary<(string, string), string?> relationEvidence,
+        Dictionary<(string, string), string> relationTypes,
         HashSet<string> visited,
         Dictionary<string, TermTreeNode> nodeCache,
         int depth,
-        HashSet<string> pathStack)
+        HashSet<string> pathStack,
+        string? parentRelationType = null,
+        double? parentRelationConfidence = null,
+        string? parentRelationEvidence = null)
     {
         // Cycle detection: if already in current path, skip
         if (pathStack.Contains(term))
@@ -160,7 +181,11 @@ public class TermHierarchyBuilder
             Category = categories.TryGetValue(term, out var cat) ? cat : "CONCEPT",
             Score = scores.TryGetValue(term, out var s) ? s : 0.0,
             Definition = definitions.TryGetValue(term, out var def) ? def : null,
-            Depth = depth
+            Depth = depth,
+            // P2: Pass relation metadata from parent
+            ParentRelationType = parentRelationType,
+            ParentRelationConfidence = parentRelationConfidence,
+            ParentRelationEvidence = parentRelationEvidence
         };
 
         nodeCache[term] = node;
@@ -171,8 +196,15 @@ public class TermHierarchyBuilder
             foreach (var child in children.OrderByDescending(c =>
                 relationConfidences.TryGetValue((c, term), out var conf) ? conf : 0.0))
             {
+                // P2: Get relation metadata for this child
+                var childRelationType = relationTypes.TryGetValue((child, term), out var rt) ? rt : "HYPERNYM";
+                var childRelationConfidence = relationConfidences.TryGetValue((child, term), out var childConf) ? childConf : (double?)null;
+                var childRelationEvidence = relationEvidence.TryGetValue((child, term), out var childEv) ? childEv : null;
+                
                 var childNode = BuildSubtree(child, childrenMap, scores, definitions, categories,
-                    relationConfidences, visited, nodeCache, depth + 1, pathStack);
+                    relationConfidences, relationEvidence, relationTypes,
+                    visited, nodeCache, depth + 1, pathStack,
+                    childRelationType, childRelationConfidence, childRelationEvidence);
                 if (childNode != null)
                     node.Children.Add(childNode);
             }

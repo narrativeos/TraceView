@@ -2293,10 +2293,12 @@
                                                           <Border Padding="4,2"
                                                                   CornerRadius="3"
                                                                   Background="{DynamicResource SystemChromeMediumLowColor}">
-                                                              <StackPanel Spacing="0">
+                                                              <StackPanel Spacing="2">
+                                                                  <!-- Term name -->
                                                                   <TextBlock FontSize="11"
                                                                              FontWeight="SemiBold"
                                                                              Text="{Binding Term}"/>
+                                                                  <!-- Category and Score -->
                                                                   <StackPanel Orientation="Horizontal"
                                                                               Spacing="4">
                                                                       <TextBlock FontSize="9"
@@ -2306,12 +2308,33 @@
                                                                                  Opacity="0.5"
                                                                                  Text="{Binding ScoreDisplay, StringFormat='s={0}'}"/>
                                                                   </StackPanel>
+                                                                  <!-- P2: Relation type and confidence (only for non-root nodes) -->
+                                                                  <StackPanel Orientation="Horizontal"
+                                                                              Spacing="4"
+                                                                              IsVisible="{Binding HasRelationInfo}">
+                                                                      <TextBlock FontSize="8"
+                                                                                 Foreground="#2196F3"
+                                                                                 FontWeight="SemiBold"
+                                                                                 Text="{Binding RelationTypeDisplay}"/>
+                                                                      <TextBlock FontSize="8"
+                                                                                 Foreground="#757575"
+                                                                                 Text="{Binding RelationConfidenceDisplay}"/>
+                                                                  </StackPanel>
+                                                                  <!-- Definition -->
                                                                   <TextBlock FontSize="8"
                                                                              Opacity="0.4"
                                                                              FontStyle="Italic"
                                                                              Text="{Binding Definition}"
                                                                               TextWrapping="Wrap"
                                                                               MaxWidth="240"/>
+                                                                  <!-- P2: Relation evidence (only for non-root nodes with evidence) -->
+                                                                  <TextBlock FontSize="7"
+                                                                             Opacity="0.3"
+                                                                             Foreground="#757575"
+                                                                             Text="{Binding RelationEvidenceDisplay}"
+                                                                             TextWrapping="Wrap"
+                                                                             MaxWidth="240"
+                                                                             IsVisible="{Binding ParentRelationEvidence}"/>
                                                               </StackPanel>
                                                           </Border>
                                                       </StackPanel>
