@@ -58,10 +58,12 @@ namespace Caly.Core.Services
                 if (y is null) return 1;
                 if (x is null) return -1;
 
-                if (x.Page.PageNumber.Equals(y.Page.PageNumber))
-                {
-                    return x.Type.CompareTo(y.Type);
-                }
+                // Priority: render all Pictures first (fast visual feedback),
+                // then all TextLayers (text selection/search), then Thumbnails.
+                // Within the same type, process by page number (top-to-bottom).
+                int typeCompare = x.Type.CompareTo(y.Type);
+                if (typeCompare != 0)
+                    return typeCompare;
 
                 return x.Page.PageNumber.CompareTo(y.Page.PageNumber);
             }
@@ -807,8 +809,11 @@ namespace Caly.Core.Services
                         }
                     }
 
-                    // TextLayer
-                    if (page.PdfTextLayer is null)
+                    // TextLayer: lazy load only for the first visible page (currently selected).
+                    // Other pages' text layers are deferred until the user navigates to them.
+                    // This significantly reduces initial render time for documents with complex text layouts.
+                    bool isFirstVisiblePage = (p == visibleStart);
+                    if (isFirstVisiblePage && page.PdfTextLayer is null)
                     {
                         if (_cacheTextLayers.TryGetValue(page.PageNumber, out var textLayer))
                         {
@@ -828,6 +833,32 @@ namespace Caly.Core.Services
         }
 
         public static Range Empty => new Range(Index.Start, Index.Start);
+
+        /// <summary>
+        /// Lazily loads the TextLayer for a specific page.
+        /// Called when the user navigates to a new page to enable text selection/search.
+        /// </summary>
+        public async Task LoadTextLayerForPage(DocumentViewModel document, int pageNumber, CancellationToken token)
+        {
+            var page = document.GetPage(pageNumber);
+            if (page is null || page.PdfTextLayer is not null)
+            {
+                return;
+            }
+
+            if (_cacheTextLayers.TryGetValue(pageNumber, out var textLayer))
+            {
+                await Dispatcher.UIThread.InvokeAsync(() => page.PdfTextLayer = textLayer);
+            }
+            else
+            {
+                var request = new RenderRequest(page, RenderRequestTypes.TextLayer, token);
+                if (!_requestsWriter.TryWrite(request))
+                {
+                    throw new Exception("Could not write request to channel.");
+                }
+            }
+        }
 
         public async Task CancelAndClear()
         {

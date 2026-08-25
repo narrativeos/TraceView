@@ -588,6 +588,7 @@ public sealed partial class DocumentViewModel
     /// </summary>
     partial void OnShowSemanticColumnChanged(bool value)
     {
+        if (_isInitialLoading) return;
         // Data is already loaded in LoadAllColumnsAsync()
         // Just update visibility state
         UpdateSemanticVisibility();

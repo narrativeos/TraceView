@@ -125,9 +125,9 @@
                                                                   ZoomLevel="{Binding $parent[controls:PageItemsControl].ZoomLevel}"
                                                                   Blocks="{Binding PreprocBlocks}"
                                                                  VisibleArea="{Binding VisibleArea}"
-                                                                 HighlightBlockId="{Binding $parent[controls:PageItemsControl].((vm:DocumentViewModel)DataContext).AnalysisViewModel.SelectedBlockId}"
-                                                                 RelatedHighlightBlockIds="{Binding $parent[controls:PageItemsControl].((vm:DocumentViewModel)DataContext).SelectedMinerUBlockRelatedIds}"
-                                                                 RelatedHighlightDestinationType="{Binding $parent[controls:PageItemsControl].((vm:DocumentViewModel)DataContext).SelectedMinerUBlockDestinationType}"
+                                                                 HighlightBlockId="{Binding $parent[controls:PageItemsControl].((vm:DocumentViewModel)DataContext).AnalysisViewModel.SelectedBlockId, FallbackValue={x:Null}}"
+                                                                 RelatedHighlightBlockIds="{Binding $parent[controls:PageItemsControl].((vm:DocumentViewModel)DataContext).SelectedMinerUBlockRelatedIds, FallbackValue={x:Null}}"
+                                                                 RelatedHighlightDestinationType="{Binding $parent[controls:PageItemsControl].((vm:DocumentViewModel)DataContext).SelectedMinerUBlockDestinationType, FallbackValue={x:Null}}"
                                                                  ShowLabels="True"
                                                                  HorizontalAlignment="Stretch"
                                                                  VerticalAlignment="Stretch"/>

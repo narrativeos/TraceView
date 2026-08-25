@@ -128,6 +128,12 @@ public sealed partial class DocumentViewModel : ViewModelBase
             OnPropertyChanged(nameof(SelectedPageIndex));
             GoToPreviousPageCommand.NotifyCanExecuteChanged();
             GoToNextPageCommand.NotifyCanExecuteChanged();
+
+            // Lazy load TextLayer for the newly selected page
+            if (value.HasValue)
+            {
+                _ = LoadTextLayerForPage(value.Value);
+            }
         }
     } = 1;
 
@@ -155,6 +161,33 @@ public sealed partial class DocumentViewModel : ViewModelBase
             }
 
             SelectedPageNumber = null;
+        }
+    }
+
+    /// <summary>
+    /// Lazily loads the TextLayer for a specific page.
+    /// Called when the user navigates to a new page to enable text selection/search on that page.
+    /// </summary>
+    private async Task LoadTextLayerForPage(int pageNumber)
+    {
+        var page = Pages.FirstOrDefault(p => p.PageNumber == pageNumber);
+        if (page is null || page.PdfTextLayer is not null)
+        {
+            return; // Already loaded or page doesn't exist
+        }
+
+        try
+        {
+            // Trigger the PdfPageService to render the text layer for this page
+            await _pdfPageService.LoadTextLayerForPage(this, pageNumber, _mainToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // Ignored
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteExceptionToFile(ex);
         }
     }
 
@@ -588,11 +621,13 @@ public sealed partial class DocumentViewModel : ViewModelBase
             });
 
             // ================================================================
-            // Phase 3: Sequential load - each column's spinner hides before
-            // the next column starts loading.
+            // Phase 3: Parallel load - MinerU and Popo load sequentially (Popo
+            // depends on MinerU's PreprocBlocks/PageTypes). Remaining columns
+            // (Semantic, Geo, Enriched, Term) load in parallel for faster startup.
             // ================================================================
-            System.Diagnostics.Debug.WriteLine("[LoadColumns] Phase 3: Sequential loading started");
+            System.Diagnostics.Debug.WriteLine("[LoadColumns] Phase 3: Parallel loading started");
 
+            // MinerU must load first (Popo depends on PreprocBlocks/PageTypes)
             if (hasMinerU)
             {
                 await Task.Run(() => TryLoadMinerUData());
@@ -604,6 +639,7 @@ public sealed partial class DocumentViewModel : ViewModelBase
                 });
             }
 
+            // Popo must load after MinerU (depends on StructureDocument.PreprocBlocks/PageTypes)
             if (hasPopo)
             {
                 await Task.Run(() => TryLoadPopoData());
@@ -616,48 +652,69 @@ public sealed partial class DocumentViewModel : ViewModelBase
                 });
             }
 
+            // Load remaining columns in parallel (no dependencies between them)
+            var loadTasks = new List<Task>();
+
             if (hasSemantic)
             {
-                await Task.Run(() => TryLoadSemanticData());
-                await Dispatcher.UIThread.InvokeAsync(() =>
+                loadTasks.Add(Task.Run(async () =>
                 {
-                    IsSemanticProcessing = false;
-                    SemanticStatus = SemanticProcessStatus.Completed;
-                    SemanticStatusText = "Loaded";
-                });
+                    TryLoadSemanticData();
+                    await Dispatcher.UIThread.InvokeAsync(() =>
+                    {
+                        IsSemanticProcessing = false;
+                        SemanticStatus = SemanticProcessStatus.Completed;
+                        SemanticStatusText = "Loaded";
+                    });
+                }));
             }
 
             if (hasGeo)
             {
-                await Task.Run(() => TryLoadGeoData());
-                await Dispatcher.UIThread.InvokeAsync(() =>
+                loadTasks.Add(Task.Run(async () =>
                 {
-                    IsGeoProcessing = false;
-                    GeoStatus = GeoProcessStatus.Completed;
-                    GeoStatusText = "Loaded";
-                });
+                    TryLoadGeoData();
+                    await Dispatcher.UIThread.InvokeAsync(() =>
+                    {
+                        IsGeoProcessing = false;
+                        GeoStatus = GeoProcessStatus.Completed;
+                        GeoStatusText = "Loaded";
+                    });
+                }));
             }
 
             if (hasEnriched)
             {
-                await Task.Run(() => TryLoadEnrichedData());
-                await Dispatcher.UIThread.InvokeAsync(() =>
+                loadTasks.Add(Task.Run(async () =>
                 {
-                    IsEnrichProcessing = false;
-                    _enrichStatusText = "Loaded";
-                    OnPropertyChanged(nameof(EnrichStatusText));
-                });
+                    TryLoadEnrichedData();
+                    await Dispatcher.UIThread.InvokeAsync(() =>
+                    {
+                        IsEnrichProcessing = false;
+                        _enrichStatusText = "Loaded";
+                        OnPropertyChanged(nameof(EnrichStatusText));
+                    });
+                }));
             }
 
             if (hasTerm)
             {
-                await Task.Run(() => TryLoadTermData());
-                await Dispatcher.UIThread.InvokeAsync(() =>
+                loadTasks.Add(Task.Run(async () =>
                 {
-                    IsTermProcessing = false;
-                    _termStatusText = "Loaded";
-                    OnPropertyChanged(nameof(TermStatusText));
-                });
+                    TryLoadTermData();
+                    await Dispatcher.UIThread.InvokeAsync(() =>
+                    {
+                        IsTermProcessing = false;
+                        _termStatusText = "Loaded";
+                        OnPropertyChanged(nameof(TermStatusText));
+                    });
+                }));
+            }
+
+            // Wait for all remaining columns to finish loading
+            if (loadTasks.Count > 0)
+            {
+                await Task.WhenAll(loadTasks);
             }
 
             // Initial loading complete — allow toggle buttons to auto-load on user click

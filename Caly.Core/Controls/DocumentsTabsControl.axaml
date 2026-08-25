@@ -951,6 +951,11 @@
                                                          Maximum="100"
                                                          Value="{Binding SemanticProgress}"
                                                          HorizontalAlignment="Center"/>
+                                            <!-- Progress Percentage -->
+                                            <TextBlock Text="{Binding SemanticProgress, StringFormat='{}{0}%'}"
+                                                       FontSize="11"
+                                                       HorizontalAlignment="Center"
+                                                       Opacity="0.7"/>
                                             <Button Content="Cancel"
                                                     Command="{Binding CancelSemanticProcessCommand}"
                                                     HorizontalAlignment="Center"
@@ -1474,15 +1479,56 @@
                                                           FontSize="12"/>
                                                <TextBlock Text="{Binding GeoStatusText}"
                                                           FontSize="10"
-                                                          Opacity="0.5"/>
+                                                          Opacity="0.5"
+                                                          IsVisible="{Binding !IsGeoProcessing}"/>
+                                               <TextBlock Text="{Binding GeocodingTotalCount, StringFormat='({0} locations)'}"
+                                                          FontSize="10"
+                                                          Opacity="0.4"
+                                                          IsVisible="{Binding !IsGeoProcessing}"/>
                                            </StackPanel>
-                                           <Button Grid.Column="1"
-                                                   Content="Cancel"
-                                                   Command="{Binding CancelGeoProcessCommand}"
-                                                   IsVisible="{Binding IsGeoProcessing}"
-                                                   Padding="12,2"
-                                                   FontSize="10"/>
                                        </Grid>
+
+                                       <!-- Progress State: shown during Geo processing -->
+                                       <Border IsVisible="{Binding IsGeoProcessing}"
+                                               VerticalAlignment="Center"
+                                               HorizontalAlignment="Stretch"
+                                               Margin="0,20,0,0">
+                                           <StackPanel VerticalAlignment="Center"
+                                                       HorizontalAlignment="Center"
+                                                       Spacing="12">
+                                               <!-- Spinner -->
+                                               <PathIcon Width="32"
+                                                         Height="32"
+                                                         Data="{StaticResource spinner_regular}"
+                                                         Foreground="{DynamicResource SystemAccentColor}"
+                                                         HorizontalAlignment="Center"/>
+
+                                               <!-- Status Text -->
+                                               <TextBlock Text="{Binding GeoStatusText}"
+                                                          FontSize="13"
+                                                          HorizontalAlignment="Center"
+                                                          TextAlignment="Center"/>
+
+                                               <!-- Progress Bar -->
+                                               <ProgressBar Width="200"
+                                                            Minimum="0"
+                                                            Maximum="100"
+                                                            Value="{Binding GeoProgress}"
+                                                            HorizontalAlignment="Center"/>
+
+                                               <!-- Progress Percentage -->
+                                               <TextBlock Text="{Binding GeoProgress, StringFormat='{}{0}%'}"
+                                                          FontSize="11"
+                                                          HorizontalAlignment="Center"
+                                                          Opacity="0.7"/>
+
+                                               <!-- Cancel Button -->
+                                               <Button Content="Cancel"
+                                                       Command="{Binding CancelGeoProcessCommand}"
+                                                       HorizontalAlignment="Center"
+                                                       Padding="20,4"/>
+                                           </StackPanel>
+                                       </Border>
 
                                        <!-- Location Table -->
                                        <ScrollViewer IsVisible="{Binding GeocodingTotalCount, Converter={StaticResource IsGreaterThanConverter}, ConverterParameter=0}"

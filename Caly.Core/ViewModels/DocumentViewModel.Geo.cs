@@ -139,6 +139,12 @@ public sealed partial class DocumentViewModel
     private bool _isGeoProcessing;
 
     /// <summary>
+    /// Geo loading progress percentage (0-100).
+    /// </summary>
+    [ObservableProperty]
+    private int _geoProgress;
+
+    /// <summary>
     /// Collection of locations being geocoded (for table display).
     /// </summary>
     [ObservableProperty]
@@ -961,18 +967,21 @@ public sealed partial class DocumentViewModel
     {
         try
         {
+            GeoProgress = 0;
+            GeoStatusText = "Loading Geo data...";
+
             var outputDir = GetSemanticOutputDir();
             var geoJsonPath = Path.Combine(outputDir, "locations.geojson");
 
             if (File.Exists(geoJsonPath))
             {
                 GeoJsonFilePath = geoJsonPath;
-                GeoStatus = GeoProcessStatus.Completed;
-                ShowGeoColumn = true;
-                IsGeoProcessing = false;
+                GeoProgress = 20;
 
                 // Parse the GeoJSON file using System.Text.Json (fast, AOT-compatible)
                 var content = File.ReadAllText(geoJsonPath);
+                GeoProgress = 30;
+
                 var locations = new ObservableCollection<GeocodingLocationViewModel>();
 
                 using (var doc = System.Text.Json.JsonDocument.Parse(content))
@@ -980,13 +989,23 @@ public sealed partial class DocumentViewModel
                     var root = doc.RootElement;
                     if (!root.TryGetProperty("features", out System.Text.Json.JsonElement features) ||
                         features.ValueKind != System.Text.Json.JsonValueKind.Array)
+                    {
+                        GeoProgress = 100;
+                        GeoStatusText = "GeoJSON loaded (no features)";
                         return;
+                    }
 
+                    // Count total features for progress calculation
+                    int totalFeatures = features.GetArrayLength();
                     int loadIndex = 0;
                     foreach (var feature in features.EnumerateArray())
                     {
                         if (feature.ValueKind != System.Text.Json.JsonValueKind.Object)
                             continue;
+
+                        // Update progress during parsing (30% -> 80%)
+                        loadIndex++;
+                        GeoProgress = 30 + (int)((loadIndex * 50.0) / totalFeatures);
 
                         string? name = null;
                         string? displayName = null;
@@ -1142,11 +1161,20 @@ public sealed partial class DocumentViewModel
                 }
 
                 GeocodingLocations = locations;
+                GeoProgress = 100;
+                GeoStatus = GeoProcessStatus.Completed;
+                ShowGeoColumn = true;
+                IsGeoProcessing = false;
                 GeoStatusText = locations.Count > 0
                     ? $"Loaded {locations.Count} locations from cache"
                     : "GeoJSON loaded (no locations)";
 
                 System.Diagnostics.Debug.WriteLine($"[Geo] TryLoadGeoData: loaded {locations.Count} locations from {geoJsonPath}");
+            }
+            else
+            {
+                GeoProgress = 100;
+                GeoStatusText = "No Geo data found";
             }
 
             // Also check for existing GeoLibre JSON file
@@ -1160,6 +1188,8 @@ public sealed partial class DocumentViewModel
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[Geo] TryLoadGeoData ERROR: {ex.Message}");
+            GeoProgress = 0;
+            GeoStatusText = $"ERROR: {ex.Message}";
         }
     }
 

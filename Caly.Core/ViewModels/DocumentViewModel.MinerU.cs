@@ -257,6 +257,12 @@ public sealed partial class DocumentViewModel
     private ObservableCollection<MinerUBlockViewModel> _visibleMinerUBlocks = new();
 
     /// <summary>
+    /// Timer for debouncing VisiblePages changes during initial layout.
+    /// Coalesces rapid range expansions (1..2 → 1..3 → 1..5 → 1..6) into a single update.
+    /// </summary>
+    private Timer? _visiblePagesUpdateTimer;
+
+    /// <summary>
     /// Gets MinerU blocks filtered by the current visible page range.
     /// When VisiblePages changes (PDF scroll), this property returns
     /// only blocks for the visible pages, enabling smooth transition in the right panel.
@@ -286,7 +292,18 @@ public sealed partial class DocumentViewModel
 
     partial void OnVisiblePagesChanged(Range? value)
     {
-        UpdateVisibleMinerUBlocks();
+        // Debounce rapid VisiblePages changes during initial layout.
+        // During startup, the visible range can expand multiple times (1..2 → 1..3 → 1..5 → 1..6),
+        // causing redundant filtering. We delay the update to coalesce these changes.
+        if (_visiblePagesUpdateTimer is not null)
+        {
+            _visiblePagesUpdateTimer.Change(Timeout.Infinite, Timeout.Infinite); // Cancel previous
+        }
+
+        _visiblePagesUpdateTimer = new Timer(_ =>
+        {
+            Dispatcher.UIThread.InvokeAsync(() => UpdateVisibleMinerUBlocks());
+        }, null, 50, Timeout.Infinite);
     }
 
     /// <summary>

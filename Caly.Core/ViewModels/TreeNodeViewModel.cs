@@ -25,6 +25,7 @@ using Avalonia.Media.Imaging;
 using Caly.Core.Models;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
@@ -37,6 +38,18 @@ namespace Caly.Core.ViewModels;
 /// </summary>
 public partial class TreeNodeViewModel : ObservableObject
 {
+    /// <summary>
+    /// Supported image file extensions for lookup.
+    /// </summary>
+    private static readonly string[] s_imageExtensions = { ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp" };
+
+    /// <summary>
+    /// Cache for artifacts directory file listings.
+    /// Key: artifacts directory path (lowercased), Value: dictionary mapping filename (lowercased) → full path.
+    /// This avoids repeated Directory.GetFiles calls across multiple TreeNodeViewModel instances.
+    /// </summary>
+    private static readonly ConcurrentDictionary<string, Dictionary<string, string>> s_artifactsFileCache = new();
+
     private readonly AnalysisTreeNode _node;
     private readonly string? _artifactsDirectory;
     private readonly System.Collections.Generic.Dictionary<int, MinerUBlock?>? _blockLookup;
@@ -82,6 +95,55 @@ public partial class TreeNodeViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Builds a filename → full-path lookup dictionary for the given artifacts directory.
+    /// Results are cached statically to avoid repeated Directory.GetFiles calls.
+    /// </summary>
+    private static Dictionary<string, string> BuildArtifactsFileMap(string artifactsDir)
+    {
+        var cacheKey = artifactsDir.ToLowerInvariant();
+        return s_artifactsFileCache.GetOrAdd(cacheKey, _ =>
+        {
+            var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                foreach (var file in Directory.GetFiles(artifactsDir, "*.*", SearchOption.AllDirectories))
+                {
+                    if (s_imageExtensions.Contains(Path.GetExtension(file).ToLowerInvariant()))
+                    {
+                        var name = Path.GetFileName(file).ToLowerInvariant();
+                        if (!map.ContainsKey(name))
+                        {
+                            map[name] = file;
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // Directory access failed; return empty map
+            }
+            return map;
+        });
+    }
+
+    /// <summary>
+    /// Searches for an image file by filename using the cached artifacts directory file map.
+    /// Returns the full path if found, null otherwise.
+    /// </summary>
+    private static string? FindImageInArtifacts(string? artifactsDir, string fileName)
+    {
+        if (artifactsDir is null || string.IsNullOrEmpty(fileName))
+            return null;
+
+        var fileMap = BuildArtifactsFileMap(artifactsDir);
+        if (fileMap.TryGetValue(fileName, out var fullPath))
+        {
+            return fullPath;
+        }
+        return null;
+    }
+
     public string Type => _node.Type;
     public string Title => _node.Title;
     public string Metadata => _node.Metadata;
@@ -115,24 +177,22 @@ public partial class TreeNodeViewModel : ObservableObject
     {
         get
         {
-            System.Diagnostics.Debug.WriteLine($"[ImageBitmap] GETTER called: Type={Type}, IsImage={IsImage}, cached={_cachedBitmap is not null}");
-            if (Type != "image")
-                return null;
-
+            // Fast path: return cached bitmap immediately (no logging on cache hit)
             if (_cachedBitmap is not null)
                 return _cachedBitmap;
 
+            // Only load for image-type nodes
+            if (!IsImage)
+                return null;
+
             // Strategy 1: Use ImgPath from popo_result.json (most reliable)
-            System.Diagnostics.Debug.WriteLine($"[ImageBitmap] ImgPath='{_node.ImgPath}', isEmpty={string.IsNullOrEmpty(_node.ImgPath)}, artifactsDir={_artifactsDirectory}");
             if (!string.IsNullOrEmpty(_node.ImgPath))
             {
                 var imgFileName = Path.GetFileName(_node.ImgPath);
-                System.Diagnostics.Debug.WriteLine($"[ImageBitmap] fileName={imgFileName}");
                 if (!string.IsNullOrEmpty(imgFileName) && _artifactsDirectory is not null)
                 {
-                    var imageExtensions = new[] { ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp" };
                     var ext = Path.GetExtension(imgFileName).ToLowerInvariant();
-                    if (imageExtensions.Contains(ext))
+                    if (s_imageExtensions.Contains(ext))
                     {
                         // Try multiple possible paths in order of likelihood:
                         // 1. {artifactsDir}/images/{fileName} — standard when artifactsDir is hybrid_auto
@@ -147,45 +207,30 @@ public partial class TreeNodeViewModel : ObservableObject
                         {
                             if (File.Exists(imagePath))
                             {
-                                System.Diagnostics.Debug.WriteLine($"[ImageBitmap] Direct load: {imagePath}");
                                 try
                                 {
                                     _cachedBitmap = new Bitmap(imagePath);
                                     OnPropertyChanged(nameof(HasImageBitmap));
                                     return _cachedBitmap;
                                 }
-                                catch (Exception ex)
+                                catch
                                 {
-                                    System.Diagnostics.Debug.WriteLine($"[ImageBitmap] Failed to load: {ex.Message}");
+                                    // Image format not supported or corrupted
                                 }
                             }
                         }
 
-                        // Last resort: search in artifacts directory if direct paths don't exist
-                        // Only do this once per node (cached via _cachedBitmap = null check above)
-                        var allImageFiles = Directory.GetFiles(_artifactsDirectory, "*.*", SearchOption.AllDirectories)
-                            .Where(f => imageExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()))
-                            .ToList();
-                        System.Diagnostics.Debug.WriteLine($"[ImageBitmap] Fallback scan: Found {allImageFiles.Count} image files in artifacts dir");
-
-                        foreach (var file in allImageFiles)
+                        // Last resort: use cached file map (avoids repeated Directory.GetFiles)
+                        if (FindImageInArtifacts(_artifactsDirectory, imgFileName) is var fallbackPath && fallbackPath is not null)
                         {
-                            if (Path.GetFileName(file).Equals(imgFileName, StringComparison.OrdinalIgnoreCase))
+                            try
                             {
-                                System.Diagnostics.Debug.WriteLine($"[ImageBitmap] Match found: {file}");
-                                try
-                                {
-                                    _cachedBitmap = new Bitmap(file);
-                                    OnPropertyChanged(nameof(HasImageBitmap));
-                                    return _cachedBitmap;
-                                }
-                                catch (Exception ex)
-                                {
-                                    System.Diagnostics.Debug.WriteLine($"[ImageBitmap] Failed to load: {ex.Message}");
-                                }
+                                _cachedBitmap = new Bitmap(fallbackPath);
+                                OnPropertyChanged(nameof(HasImageBitmap));
+                                return _cachedBitmap;
                             }
+                            catch { }
                         }
-                        System.Diagnostics.Debug.WriteLine($"[ImageBitmap] No match found for {imgFileName}");
                     }
                 }
             }
@@ -193,8 +238,7 @@ public partial class TreeNodeViewModel : ObservableObject
             if (_artifactsDirectory is null)
                 return null;
 
-            var imageExtensions2 = new[] { ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp" };
-            var imagesDir2 = Path.Combine(_artifactsDirectory, "images");
+            var imagesDir = Path.Combine(_artifactsDirectory, "images");
 
             // Strategy 2: Use BlockIds to look up MinerUBlock and get image filename
             if (_blockLookup is not null && BlockIds.Count > 0)
@@ -208,30 +252,25 @@ public partial class TreeNodeViewModel : ObservableObject
                         {
                             var contentName = Path.GetFileName(imageContent);
                             // Try direct path first
-                            var directPath = Path.Combine(imagesDir2, contentName);
+                            var directPath = Path.Combine(imagesDir, contentName);
                             if (File.Exists(directPath))
                             {
                                 try { _cachedBitmap = new Bitmap(directPath); OnPropertyChanged(nameof(HasImageBitmap)); return _cachedBitmap; }
                                 catch { }
                             }
-                            // Fallback: scan all image files
-                            var allImageFiles2 = Directory.GetFiles(_artifactsDirectory, "*.*", SearchOption.AllDirectories)
-                                .Where(f => imageExtensions2.Contains(Path.GetExtension(f).ToLowerInvariant()))
-                                .OrderBy(f => f)
-                                .ToList();
-                            foreach (var file in allImageFiles2)
+                            // Fallback: use cached file map
+                            if (FindImageInArtifacts(_artifactsDirectory, contentName) is var fallbackPath2 && fallbackPath2 is not null)
                             {
-                                if (Path.GetFileName(file).Equals(contentName, StringComparison.OrdinalIgnoreCase))
-                                {
-                                    try { _cachedBitmap = new Bitmap(file); OnPropertyChanged(nameof(HasImageBitmap)); return _cachedBitmap; }
-                                    catch { }
-                                }
+                                try { _cachedBitmap = new Bitmap(fallbackPath2); OnPropertyChanged(nameof(HasImageBitmap)); return _cachedBitmap; }
+                                catch { }
                             }
-                            foreach (var file in allImageFiles2)
+                            // Fallback: search by path substring match
+                            var fileMap = BuildArtifactsFileMap(_artifactsDirectory);
+                            foreach (var filePath in fileMap.Values)
                             {
-                                if (file.Contains(imageContent))
+                                if (filePath.Contains(imageContent))
                                 {
-                                    try { _cachedBitmap = new Bitmap(file); OnPropertyChanged(nameof(HasImageBitmap)); return _cachedBitmap; }
+                                    try { _cachedBitmap = new Bitmap(filePath); OnPropertyChanged(nameof(HasImageBitmap)); return _cachedBitmap; }
                                     catch { }
                                 }
                             }
@@ -245,24 +284,17 @@ public partial class TreeNodeViewModel : ObservableObject
             {
                 var contentName = Path.GetFileName(Content);
                 // Try direct path first
-                var directPath = Path.Combine(imagesDir2, contentName);
+                var directPath = Path.Combine(imagesDir, contentName);
                 if (File.Exists(directPath))
                 {
                     try { _cachedBitmap = new Bitmap(directPath); OnPropertyChanged(nameof(HasImageBitmap)); return _cachedBitmap; }
                     catch { }
                 }
-                // Fallback: scan all image files
-                var allImageFiles2 = Directory.GetFiles(_artifactsDirectory, "*.*", SearchOption.AllDirectories)
-                    .Where(f => imageExtensions2.Contains(Path.GetExtension(f).ToLowerInvariant()))
-                    .OrderBy(f => f)
-                    .ToList();
-                foreach (var file in allImageFiles2)
+                // Fallback: use cached file map
+                if (FindImageInArtifacts(_artifactsDirectory, contentName) is var fallbackPath3 && fallbackPath3 is not null)
                 {
-                    if (Path.GetFileName(file).Equals(contentName, StringComparison.OrdinalIgnoreCase))
-                    {
-                        try { _cachedBitmap = new Bitmap(file); OnPropertyChanged(nameof(HasImageBitmap)); return _cachedBitmap; }
-                        catch { }
-                    }
+                    try { _cachedBitmap = new Bitmap(fallbackPath3); OnPropertyChanged(nameof(HasImageBitmap)); return _cachedBitmap; }
+                    catch { }
                 }
             }
 
