@@ -77,7 +77,7 @@
                                        TextTrimming="CharacterEllipsis"
                                        IsVisible="{Binding HasTitle}"/>
 
-                            <!-- Content Preview (non-image nodes) -->
+                            <!-- Content Preview (non-image nodes, collapsed) -->
                             <TextBlock Text="{Binding ContentPreview}"
                                        FontSize="11"
                                        Opacity="0.8"
@@ -87,6 +87,15 @@
                                        HorizontalAlignment="Stretch"
                                        TextAlignment="Left"
                                        IsVisible="{Binding ShowContentPreview}"/>
+
+                            <!-- Full Content (non-image nodes, expanded) -->
+                            <TextBlock Text="{Binding DisplayContent}"
+                                       FontSize="11"
+                                       Opacity="0.8"
+                                       TextWrapping="Wrap"
+                                       HorizontalAlignment="Stretch"
+                                       TextAlignment="Left"
+                                       IsVisible="{Binding ShowFullContent}"/>
 
                             <!-- Image caption/metadata (image nodes) -->
                             <TextBlock Text="{Binding DisplayMetadata}"

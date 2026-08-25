@@ -416,6 +416,15 @@ public static class PopoJsonService
         if (elem.TryGetProperty("content", out var contentElem))
             node.Content = contentElem.GetString() ?? string.Empty;
 
+        // For table nodes: if content is empty or a placeholder like "[table]",
+        // extract actual content from table_body HTML and table_caption fields.
+        if (node.Type == "table" && IsTablePlaceholder(node.Content))
+        {
+            var tableContent = ExtractTableContent(elem);
+            if (!string.IsNullOrEmpty(tableContent))
+                node.Content = tableContent;
+        }
+
         if (elem.TryGetProperty("level", out var levelElem))
             node.Level = levelElem.GetInt32();
 
@@ -1011,6 +1020,8 @@ public static class PopoJsonService
             return;
         }
 
+        System.Diagnostics.Debug.WriteLine($"[PopoJson] Found middle.json: {middleJsons[0]}");
+
         var middleJson = middleJsons[0];
         System.Diagnostics.Debug.WriteLine($"[PopoJson] Found middle.json: {middleJson}");
         try
@@ -1315,6 +1326,23 @@ public static class PopoJsonService
                         if (id.ValueKind == System.Text.Json.JsonValueKind.Number)
                         {
                             treeNode.BlockIds.Add(id.GetInt32());
+                        }
+                    }
+
+                    // For table nodes with placeholder content, extract actual content from middle.json block
+                    if (treeNode.Type == "table" && IsTablePlaceholder(treeNode.Content))
+                    {
+                        var tableContent = ExtractTableContentFromBlock(block);
+                        if (!string.IsNullOrEmpty(tableContent))
+                        {
+                            System.Diagnostics.Debug.WriteLine(
+                                $"[Popo] Extracted table content for node on page {pageIdx + 1}: {tableContent.Length} chars");
+                            treeNode.Content = tableContent;
+                        }
+                        else
+                        {
+                            System.Diagnostics.Debug.WriteLine(
+                                $"[Popo] No table content found in middle.json block for node on page {pageIdx + 1}");
                         }
                     }
                 }
@@ -1868,6 +1896,211 @@ public static class PopoJsonService
 
         writer.WriteEndObject();
     }
+
+    #region Table Content Extraction
+
+    /// <summary>
+    /// Checks if the given content is a placeholder that should be replaced with actual table data.
+    /// </summary>
+    static bool IsTablePlaceholder(string content)
+    {
+        var trimmed = content.Trim();
+        return string.IsNullOrEmpty(trimmed) ||
+               trimmed == "[table]" ||
+               trimmed == "[table_body]" ||
+               trimmed == "<table>" ||
+               trimmed.StartsWith("<table") ||
+               trimmed.StartsWith("<Table");
+    }
+
+    /// <summary>
+    /// Extracts structured text from a table node's table_body HTML and table_caption fields.
+    /// Parses table_body HTML into a readable format: "列名: 值 | 列名: 值" per row.
+    /// Also includes table_caption as the title.
+    /// </summary>
+    static string ExtractTableContent(JsonElement elem)
+    {
+        var parts = new List<string>();
+
+        // Extract table caption
+        if (elem.TryGetProperty("table_caption", out var captionElem) && captionElem.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var cap in captionElem.EnumerateArray())
+            {
+                if (cap.ValueKind == JsonValueKind.String)
+                {
+                    var text = (cap.GetString() ?? string.Empty).Trim();
+                    // Remove HTML tags from caption (e.g., <sup>)
+                    text = System.Text.RegularExpressions.Regex.Replace(text, "<[^>]+>", "");
+                    if (!string.IsNullOrEmpty(text))
+                    {
+                        parts.Add(text);
+                    }
+                }
+            }
+        }
+
+        // Parse table_body HTML
+        if (elem.TryGetProperty("table_body", out var bodyElem) && bodyElem.ValueKind == JsonValueKind.String)
+        {
+            var html = bodyElem.GetString() ?? string.Empty;
+            var rows = ParseHtmlTableRows(html);
+            parts.AddRange(rows);
+        }
+
+        return string.Join("\n", parts);
+    }
+
+    /// <summary>
+    /// Parses HTML table into structured text rows.
+    /// First row is treated as headers; subsequent rows are formatted as "header: value | header: value".
+    /// </summary>
+    static List<string> ParseHtmlTableRows(string html)
+    {
+        var results = new List<string>();
+
+        // Extract all <tr>...</tr>
+        var rowRegex = new System.Text.RegularExpressions.Regex("<tr[^>]*>(.*?)</tr>", System.Text.RegularExpressions.RegexOptions.Singleline);
+        var headerCells = new List<string>();
+        bool isFirstRow = true;
+
+        foreach (System.Text.RegularExpressions.Match match in rowRegex.Matches(html))
+        {
+            var rowHtml = match.Groups[1].Value;
+            var cells = ExtractHtmlCells(rowHtml);
+
+            if (isFirstRow)
+            {
+                headerCells = cells;
+                isFirstRow = false;
+            }
+            else
+            {
+                // Format as "header: value | header: value"
+                var pairs = new List<string>();
+                int maxCols = Math.Max(headerCells.Count, cells.Count);
+                for (int i = 0; i < maxCols; i++)
+                {
+                    var key = i < headerCells.Count ? StripHtmlTags(headerCells[i]) : string.Empty;
+                    var val = i < cells.Count ? StripHtmlTags(cells[i]) : string.Empty;
+
+                    // Skip if both key and value are empty
+                    if (string.IsNullOrEmpty(key) && string.IsNullOrEmpty(val))
+                        continue;
+
+                    pairs.Add($"{key}: {val}");
+                }
+
+                if (pairs.Count > 0)
+                {
+                    results.Add(string.Join(" | ", pairs));
+                }
+            }
+        }
+
+        return results;
+    }
+
+    /// <summary>
+    /// Extracts cell content from <td> and <th> tags.
+    /// </summary>
+    static List<string> ExtractHtmlCells(string rowHtml)
+    {
+        var cells = new List<string>();
+        var cellRegex = new System.Text.RegularExpressions.Regex("<t[hd][^>]*>(.*?)</t[hd]>", System.Text.RegularExpressions.RegexOptions.Singleline);
+
+        foreach (System.Text.RegularExpressions.Match match in cellRegex.Matches(rowHtml))
+        {
+            cells.Add(match.Groups[1].Value);
+        }
+
+        return cells;
+    }
+
+    /// <summary>
+    /// Strips HTML tags from a string.
+    /// </summary>
+    static string StripHtmlTags(string html)
+    {
+        return System.Text.RegularExpressions.Regex.Replace(html, "<[^>]+>", "").Trim();
+    }
+
+    /// <summary>
+    /// Extracts table content from a middle.json block element.
+    /// This handles both preproc_blocks (which have table_body HTML) and para_blocks (which have table_caption).
+    /// For middle.json format, table HTML is nested in blocks[0].lines[0].spans[0].html.
+    /// </summary>
+    static string ExtractTableContentFromBlock(JsonElement block)
+    {
+        var parts = new List<string>();
+
+        // Extract table_caption (from para_blocks)
+        if (block.TryGetProperty("table_caption", out var captionElem) && captionElem.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var cap in captionElem.EnumerateArray())
+            {
+                if (cap.ValueKind == JsonValueKind.String)
+                {
+                    var text = (cap.GetString() ?? string.Empty).Trim();
+                    text = System.Text.RegularExpressions.Regex.Replace(text, "<[^>]+>", "");
+                    if (!string.IsNullOrEmpty(text))
+                    {
+                        parts.Add(text);
+                    }
+                }
+            }
+        }
+
+        // Try direct table_body property (from some preproc_blocks formats)
+        if (block.TryGetProperty("table_body", out var bodyElem) && bodyElem.ValueKind == JsonValueKind.String)
+        {
+            var html = bodyElem.GetString() ?? string.Empty;
+            var rows = ParseHtmlTableRows(html);
+            parts.AddRange(rows);
+        }
+
+        // Try nested structure from middle.json: blocks[0].lines[0].spans[0].html
+        // This is the actual structure used by MinerU's middle.json for table blocks
+        if (parts.Count == 0 && block.TryGetProperty("blocks", out var blocksElem) && blocksElem.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var subBlock in blocksElem.EnumerateArray())
+            {
+                // Look for table_body sub-block
+                if (subBlock.TryGetProperty("type", out var typeElem) && 
+                    typeElem.ValueKind == JsonValueKind.String &&
+                    typeElem.GetString() == "table_body")
+                {
+                    if (subBlock.TryGetProperty("lines", out var linesElem) && linesElem.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var line in linesElem.EnumerateArray())
+                        {
+                            if (line.TryGetProperty("spans", out var spansElem) && spansElem.ValueKind == JsonValueKind.Array)
+                            {
+                                foreach (var span in spansElem.EnumerateArray())
+                                {
+                                    if (span.TryGetProperty("html", out var htmlElem) && htmlElem.ValueKind == JsonValueKind.String)
+                                    {
+                                        var html = htmlElem.GetString() ?? string.Empty;
+                                        var rows = ParseHtmlTableRows(html);
+                                        parts.AddRange(rows);
+                                        System.Diagnostics.Debug.WriteLine(
+                                            $"[Popo] Extracted table HTML from nested blocks structure: {html.Length} chars");
+                                        break;
+                                    }
+                                }
+                            }
+                            if (parts.Count > 0) break;
+                        }
+                    }
+                }
+                if (parts.Count > 0) break;
+            }
+        }
+
+        return string.Join("\n", parts);
+    }
+
+    #endregion
 
     #endregion
 }
