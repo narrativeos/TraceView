@@ -134,11 +134,39 @@ public partial class TreeNodeViewModel : ObservableObject
                     var ext = Path.GetExtension(imgFileName).ToLowerInvariant();
                     if (imageExtensions.Contains(ext))
                     {
-                        // Search for the filename in artifacts directory
+                        // Try multiple possible paths in order of likelihood:
+                        // 1. {artifactsDir}/images/{fileName} — standard when artifactsDir is hybrid_auto
+                        // 2. {artifactsDir}/{fileName} — when artifactsDir is already the images directory
+                        var possiblePaths = new[]
+                        {
+                            Path.Combine(_artifactsDirectory, "images", imgFileName),
+                            Path.Combine(_artifactsDirectory, imgFileName),
+                        };
+
+                        foreach (var imagePath in possiblePaths)
+                        {
+                            if (File.Exists(imagePath))
+                            {
+                                System.Diagnostics.Debug.WriteLine($"[ImageBitmap] Direct load: {imagePath}");
+                                try
+                                {
+                                    _cachedBitmap = new Bitmap(imagePath);
+                                    OnPropertyChanged(nameof(HasImageBitmap));
+                                    return _cachedBitmap;
+                                }
+                                catch (Exception ex)
+                                {
+                                    System.Diagnostics.Debug.WriteLine($"[ImageBitmap] Failed to load: {ex.Message}");
+                                }
+                            }
+                        }
+
+                        // Last resort: search in artifacts directory if direct paths don't exist
+                        // Only do this once per node (cached via _cachedBitmap = null check above)
                         var allImageFiles = Directory.GetFiles(_artifactsDirectory, "*.*", SearchOption.AllDirectories)
                             .Where(f => imageExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()))
                             .ToList();
-                        System.Diagnostics.Debug.WriteLine($"[ImageBitmap] Found {allImageFiles.Count} image files in artifacts dir");
+                        System.Diagnostics.Debug.WriteLine($"[ImageBitmap] Fallback scan: Found {allImageFiles.Count} image files in artifacts dir");
 
                         foreach (var file in allImageFiles)
                         {
@@ -165,15 +193,8 @@ public partial class TreeNodeViewModel : ObservableObject
             if (_artifactsDirectory is null)
                 return null;
 
-            // Get all image files once
             var imageExtensions2 = new[] { ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp" };
-            var allImageFiles2 = Directory.GetFiles(_artifactsDirectory, "*.*", SearchOption.AllDirectories)
-                .Where(f => imageExtensions2.Contains(Path.GetExtension(f).ToLowerInvariant()))
-                .OrderBy(f => f)
-                .ToList();
-
-            if (allImageFiles2.Count == 0)
-                return null;
+            var imagesDir2 = Path.Combine(_artifactsDirectory, "images");
 
             // Strategy 2: Use BlockIds to look up MinerUBlock and get image filename
             if (_blockLookup is not null && BlockIds.Count > 0)
@@ -186,6 +207,18 @@ public partial class TreeNodeViewModel : ObservableObject
                         if (!string.IsNullOrEmpty(imageContent))
                         {
                             var contentName = Path.GetFileName(imageContent);
+                            // Try direct path first
+                            var directPath = Path.Combine(imagesDir2, contentName);
+                            if (File.Exists(directPath))
+                            {
+                                try { _cachedBitmap = new Bitmap(directPath); OnPropertyChanged(nameof(HasImageBitmap)); return _cachedBitmap; }
+                                catch { }
+                            }
+                            // Fallback: scan all image files
+                            var allImageFiles2 = Directory.GetFiles(_artifactsDirectory, "*.*", SearchOption.AllDirectories)
+                                .Where(f => imageExtensions2.Contains(Path.GetExtension(f).ToLowerInvariant()))
+                                .OrderBy(f => f)
+                                .ToList();
                             foreach (var file in allImageFiles2)
                             {
                                 if (Path.GetFileName(file).Equals(contentName, StringComparison.OrdinalIgnoreCase))
@@ -211,6 +244,18 @@ public partial class TreeNodeViewModel : ObservableObject
             if (!string.IsNullOrEmpty(Content))
             {
                 var contentName = Path.GetFileName(Content);
+                // Try direct path first
+                var directPath = Path.Combine(imagesDir2, contentName);
+                if (File.Exists(directPath))
+                {
+                    try { _cachedBitmap = new Bitmap(directPath); OnPropertyChanged(nameof(HasImageBitmap)); return _cachedBitmap; }
+                    catch { }
+                }
+                // Fallback: scan all image files
+                var allImageFiles2 = Directory.GetFiles(_artifactsDirectory, "*.*", SearchOption.AllDirectories)
+                    .Where(f => imageExtensions2.Contains(Path.GetExtension(f).ToLowerInvariant()))
+                    .OrderBy(f => f)
+                    .ToList();
                 foreach (var file in allImageFiles2)
                 {
                     if (Path.GetFileName(file).Equals(contentName, StringComparison.OrdinalIgnoreCase))

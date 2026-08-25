@@ -36,4 +36,10 @@ public class ProjectMetadata
     /// Last modification timestamp.
     /// </summary>
     public DateTime? LastModified { get; set; }
+
+    /// <summary>
+    /// Cached path to MinerU images directory (relative to project path).
+    /// Avoids scanning thousands of image files on each document open.
+    /// </summary>
+    public string? MinerUImagesDir { get; set; }
 }

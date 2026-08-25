@@ -250,4 +250,59 @@ public class ProjectService
         var metadata = LoadProjectMetadata(projectPath);
         return metadata?.PdfPath;
     }
+
+    /// <summary>
+    /// Saves the MinerU images directory path to project metadata.
+    /// This caches the discovered path to avoid scanning thousands of files on subsequent opens.
+    /// </summary>
+    public void SaveMinerUImagesDir(string projectPath, string imagesDir)
+    {
+        var metadata = LoadProjectMetadata(projectPath);
+        if (metadata is null)
+            return;
+
+        try
+        {
+            // Store as relative path if it's under the project directory
+            if (imagesDir.StartsWith(projectPath, StringComparison.OrdinalIgnoreCase))
+            {
+                metadata.MinerUImagesDir = Path.GetRelativePath(projectPath, imagesDir);
+            }
+            else
+            {
+                metadata.MinerUImagesDir = imagesDir;
+            }
+
+            var metadataPath = Path.Combine(projectPath, "project.json");
+            File.WriteAllText(metadataPath, JsonSerializer.Serialize(metadata, SourceGenerationContext.Default.ProjectMetadata));
+        }
+        catch
+        {
+            // Silently ignore errors saving metadata
+        }
+    }
+
+    /// <summary>
+    /// Gets the cached MinerU images directory path from project metadata.
+    /// Returns null if not cached or if the path doesn't exist.
+    /// </summary>
+    public string? GetCachedMinerUImagesDir(string projectPath)
+    {
+        var metadata = LoadProjectMetadata(projectPath);
+        if (metadata?.MinerUImagesDir is null)
+            return null;
+
+        // Resolve relative paths
+        var imagesDir = metadata.MinerUImagesDir;
+        if (!Path.IsPathRooted(imagesDir))
+        {
+            imagesDir = Path.Combine(projectPath, imagesDir);
+        }
+
+        // Verify the directory still exists
+        if (Directory.Exists(imagesDir))
+            return imagesDir;
+
+        return null;
+    }
 }

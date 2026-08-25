@@ -26,6 +26,8 @@ using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.IO;
 using System.Linq;
+using System.Text;
+using System.Text.Json;
 using System;
 
 namespace Caly.Core.ViewModels;
@@ -340,6 +342,32 @@ public sealed partial class DocumentViewModel
     }
 
     /// <summary>
+    /// Whether Popo output files exist on disk (popo/popo_result.json or popo/extract/).
+    /// Used to determine column visibility based on actual artifacts rather than in-memory state.
+    /// </summary>
+    public bool HasPopoData
+    {
+        get
+        {
+            if (ProjectPath is null)
+                return false;
+
+            var popoDir = Path.Combine(ProjectPath, "popo");
+            if (!Directory.Exists(popoDir))
+                return false;
+
+            // Check for popo_result.json
+            var resultJson = Path.Combine(popoDir, "popo_result.json");
+            if (File.Exists(resultJson))
+                return true;
+
+            // Check for extract subdirectory
+            var extractDir = Path.Combine(popoDir, "extract");
+            return Directory.Exists(extractDir);
+        }
+    }
+
+    /// <summary>
     /// Attempts to load Popo analysis data for the currently opened document.
     /// Only loads from popo/popo_result.json in the project's popo/ directory.
     /// Called silently after the document is successfully opened.
@@ -391,82 +419,79 @@ public sealed partial class DocumentViewModel
         // Uses the MinerU extracted directory because popo_result.json's img_path (e.g., "images/xxx.jpg")
         // is relative to the hybrid_auto directory. This avoids duplicating image files.
         string? artifactsDir = null;
+
+        // 0: Check ArtifactsDir from popo_result.json (fastest - embedded in the data itself)
+        // This works even when no project is open (API response).
+        if (minerUDoc.ArtifactsDir is not null)
+        {
+            var cachedDir = minerUDoc.ArtifactsDir;
+            if (!Path.IsPathRooted(cachedDir))
+            {
+                // _artifactsDir is relative to the docId directory (parent of popo/), not popo/ itself.
+                // e.g., popoDir = ~/.TraceView/{docId}/popo/, so baseDir = ~/.TraceView/{docId}/
+                // and _artifactsDir = "mineru/{docId}/hybrid_auto" → baseDir + _artifactsDir
+                var baseDir = ProjectPath ?? Path.GetDirectoryName(popoDir);
+                cachedDir = Path.Combine(baseDir ?? popoDir, cachedDir);
+            }
+            if (Directory.Exists(cachedDir))
+            {
+                artifactsDir = cachedDir;
+                System.Diagnostics.Debug.WriteLine($"[Popo] Using _artifactsDir from popo_result.json: {artifactsDir}");
+            }
+        }
+
         if (ProjectPath is not null)
         {
-            var mineruDir = Path.Combine(ProjectPath, "mineru");
-
-            // 1: Scan mineru directory for hybrid_auto (handles ZIP internal folder name != project docId)
-            if (Directory.Exists(mineruDir))
+            // 1: Check project.json cache (backward compatibility)
+            if (artifactsDir is null)
             {
-                foreach (var subDir in Directory.GetDirectories(mineruDir))
+                var projectService = App.Current?.Services?.GetService(typeof(ProjectService)) as ProjectService;
+                if (projectService is not null)
                 {
-                    var hybridAutoDir = Path.Combine(subDir, "hybrid_auto");
-                    if (Directory.Exists(hybridAutoDir))
-                    {
-                        var imagesDir = Path.Combine(hybridAutoDir, "images");
-                        if (Directory.Exists(imagesDir))
-                        {
-                            var imageFiles = System.IO.Directory.GetFiles(imagesDir, "*.*", System.IO.SearchOption.TopDirectoryOnly)
-                                .Where(f => System.IO.Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
-                                .ToList();
-                            if (imageFiles.Count > 0)
-                            {
-                                artifactsDir = hybridAutoDir;
-                                break;
-                            }
-                        }
-                    }
-                }
-
-                // Fallback: search the entire mineru directory for images
-                if (artifactsDir is null)
-                {
-                    var imageFiles = System.IO.Directory.GetFiles(mineruDir, "*.*", System.IO.SearchOption.AllDirectories)
-                        .Where(f => System.IO.Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
-                        .ToList();
-                    if (imageFiles.Count > 0)
-                    {
-                        var imageDir = Path.GetDirectoryName(imageFiles[0]);
-                        if (imageDir is not null)
-                            artifactsDir = imageDir;
-                    }
+                    artifactsDir = projectService.GetCachedMinerUImagesDir(ProjectPath);
                 }
             }
 
-            // 2: Try popo/extract as fallback
-            if (artifactsDir is null)
+            // 2: Check MinerUService cache %LocalAppData%/Caly/mineru/{docId}/hybrid_auto/
+            // This is where MinerUService extracts the ZIP files.
+            if (artifactsDir is null && LocalPath is not null)
             {
-                var extractDir = Path.Combine(ProjectPath, "popo", "extract");
-                if (Directory.Exists(extractDir))
+                var docId = Path.GetFileNameWithoutExtension(LocalPath);
+                var minerUCacheBase = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                var minerUCacheDir = Path.Combine(minerUCacheBase, "Caly", "mineru", docId, "hybrid_auto");
+                if (Directory.Exists(minerUCacheDir))
                 {
-                    var imageFiles = System.IO.Directory.GetFiles(extractDir, "*.*", System.IO.SearchOption.AllDirectories)
-                        .Where(f => System.IO.Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
-                        .ToList();
-                    if (imageFiles.Count > 0)
-                        artifactsDir = extractDir;
-                }
-            }
-
-            // 3: Try all popo/ subdirectories for images
-            if (artifactsDir is null)
-            {
-                var popoImageDir = Path.Combine(ProjectPath, "popo");
-                if (Directory.Exists(popoImageDir))
-                {
-                    foreach (var subDir in Directory.GetDirectories(popoImageDir))
+                    var imagesDir = Path.Combine(minerUCacheDir, "images");
+                    if (Directory.Exists(imagesDir))
                     {
-                        if (artifactsDir is not null) break;
-                        var imageFiles = System.IO.Directory.GetFiles(subDir, "*.*", System.IO.SearchOption.AllDirectories)
+                        var imageFiles = System.IO.Directory.GetFiles(imagesDir, "*.*", System.IO.SearchOption.TopDirectoryOnly)
                             .Where(f => System.IO.Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
                             .ToList();
                         if (imageFiles.Count > 0)
-                            artifactsDir = subDir;
+                        {
+                            artifactsDir = minerUCacheDir;
+                            System.Diagnostics.Debug.WriteLine($"[Popo] Found images in MinerUService cache: {artifactsDir}");
+                        }
                     }
                 }
             }
         }
 
-        // 4: Fallback to cache directory ~/.TraceView/{docId}/mineru/
+        // Cache the discovered artifactsDir for next time (saves scanning on future loads)
+        if (artifactsDir is not null && ProjectPath is not null)
+        {
+            var projectService = App.Current?.Services?.GetService(typeof(ProjectService)) as ProjectService;
+            projectService?.SaveMinerUImagesDir(ProjectPath, artifactsDir);
+
+            // If artifactsDir was found via fallback (not from popo_result.json),
+            // update the JSON file so next load is instant
+            if (minerUDoc.ArtifactsDir is null)
+            {
+                UpdatePopoResultArtifactsDir(popoDir, artifactsDir);
+            }
+        }
+
+        // 3: Fallback to legacy cache directory ~/.TraceView/{docId}/mineru/
         // This ensures images load even if they were never extracted to the project directory.
         if (artifactsDir is null && LocalPath is not null)
         {
@@ -480,11 +505,13 @@ public sealed partial class DocumentViewModel
         ShowAnalysisColumn = true;
 
         // Populate block_ids from middle.json for tree nodes (Popo API returns empty block_ids)
+        // Note: PopulateTreeBlockIds internally calls PopulateTreeImgPaths, so no need to call it again
         if (minerUDoc.TreeRoot is not null && artifactsDir is not null)
         {
             PopoJsonService.PopulateTreeBlockIds(minerUDoc, artifactsDir);
-            // Populate img_path from content_list.json for image nodes (Popo API returns empty img_path)
-            PopoJsonService.PopulateTreeImgPaths(minerUDoc.TreeRoot, artifactsDir);
+
+            // Persist resolved image paths back to popo_result.json for future loads
+            PopoJsonService.UpdatePopoResultImgPaths(minerUDoc, popoDir);
         }
 
         // Build hierarchical tree for Column 3 (matches popo_result.json tree structure)
@@ -504,6 +531,9 @@ public sealed partial class DocumentViewModel
         PopoStatus = PopoProcessStatus.Completed;
         PopoProgress = 100;
         PopoStatusText = $"Loaded ({PopoBlocks.Count} blocks)";
+        
+        // Reset processing flag so ShowPopoBlocksList becomes true
+        IsPopoProcessing = false;
     }
 
     /// <summary>
@@ -537,16 +567,6 @@ public sealed partial class DocumentViewModel
                     }
                 }
             }
-
-            // Fallback: search the entire mineru cache directory for images
-            var allImageFiles = System.IO.Directory.GetFiles(mineruCacheDir, "*.*", System.IO.SearchOption.AllDirectories)
-                .Where(f => System.IO.Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
-                .ToList();
-            if (allImageFiles.Count > 0)
-            {
-                var imageDir = Path.GetDirectoryName(allImageFiles[0]);
-                return imageDir;
-            }
         }
         catch
         {
@@ -554,5 +574,62 @@ public sealed partial class DocumentViewModel
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Updates popo_result.json with the discovered artifactsDir path.
+    /// This is called when fallback search finds the images directory,
+    /// so that next load can use the cached path instead of scanning.
+    /// </summary>
+    private void UpdatePopoResultArtifactsDir(string popoDir, string artifactsDir)
+    {
+        try
+        {
+            var resultPath = Path.Combine(popoDir, "popo_result.json");
+            if (!File.Exists(resultPath))
+                return;
+
+            var content = File.ReadAllText(resultPath);
+
+            try
+            {
+                using var doc = JsonDocument.Parse(content);
+                var ms = new MemoryStream();
+                using var writer = new Utf8JsonWriter(
+                    ms,
+                    new JsonWriterOptions { Indented = true });
+                writer.WriteStartObject();
+
+                // Write _artifactsDir first (relative path for portability)
+                var relativePath = artifactsDir;
+                if (ProjectPath is not null && artifactsDir.StartsWith(ProjectPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    relativePath = Path.GetRelativePath(ProjectPath, artifactsDir);
+                }
+                writer.WriteString("_artifactsDir", relativePath);
+
+                // Copy all other properties from the original JSON
+                foreach (var property in doc.RootElement.EnumerateObject())
+                {
+                    writer.WritePropertyName(property.Name);
+                    property.Value.WriteTo(writer);
+                }
+                writer.WriteEndObject();
+                writer.Flush();
+
+                content = Encoding.UTF8.GetString(ms.ToArray());
+                File.WriteAllText(resultPath, content);
+                System.Diagnostics.Debug.WriteLine($"[Popo] Updated popo_result.json with _artifactsDir='{relativePath}'");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[Popo] Failed to update popo_result.json: {ex.Message}");
+                // Non-fatal: continue with original content
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Popo] Failed to read popo_result.json for update: {ex.Message}");
+        }
     }
 }

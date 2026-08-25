@@ -42,6 +42,14 @@ public partial class StructureDocument : ObservableObject
     private string _modelName = string.Empty;
 
     /// <summary>
+    /// Path to the artifacts directory (images, etc.) relative to the project root.
+    /// Stored in popo_result.json so image paths can be resolved without directory scanning.
+    /// Example: "mineru/978-xxx/hybrid_auto"
+    /// </summary>
+    [ObservableProperty]
+    private string? _artifactsDir;
+
+    /// <summary>
     /// Normalized blocks grouped by page number (para+discarded blocks).
     /// </summary>
     [ObservableProperty]

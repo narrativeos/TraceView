@@ -788,6 +788,10 @@ public sealed partial class DocumentViewModel
 
         // Show the MinerU column when data is loaded
         ShowMinerUColumn = true;
+        
+        // Reset parsing flag so ShowMinerUBlocksList becomes true
+        IsMinerUParsing = false;
+        
         OnPropertyChanged(nameof(HasMinerUData));
     }
 

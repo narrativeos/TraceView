@@ -854,6 +854,14 @@ public static class PopoJsonService
                             doc.ReferenceEntries = referenceEntries;
                         }
 
+                        // Parse _artifactsDir (cached image directory path) — injected by PopoService
+                        if (root.TryGetProperty("_artifactsDir", out var artifactsDirElem) &&
+                            artifactsDirElem.ValueKind == JsonValueKind.String)
+                        {
+                            doc.ArtifactsDir = artifactsDirElem.GetString();
+                            System.Diagnostics.Debug.WriteLine($"[Popo] _artifactsDir loaded: {doc.ArtifactsDir}");
+                        }
+
                         return doc;
                     }
                 }
@@ -1023,55 +1031,76 @@ public static class PopoJsonService
     /// <summary>
     /// Populates ImgPath for image nodes that have empty img_path from the Popo API.
     /// Reads from content_list.json which contains the actual img_path mappings.
+    /// Optimized: reads content_list.json only ONCE and caches image files for fallback matching.
     /// </summary>
     public static void PopulateTreeImgPaths(AnalysisTreeNode node, string artifactsDir)
     {
+        // Read content_list.json ONCE at the top level
+        var contentListPath = FindContentListJson(artifactsDir);
+        System.Text.Json.JsonDocument? parsedContentList = null;
+        if (contentListPath is not null)
+        {
+            try
+            {
+                var json = File.ReadAllText(contentListPath);
+                parsedContentList = System.Text.Json.JsonDocument.Parse(json);
+                System.Diagnostics.Debug.WriteLine($"[PopoJson] Loaded content_list.json: {contentListPath}");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[PopoJson] ERROR reading content_list.json: {ex.Message}");
+            }
+        }
+
+        // Cache image files ONCE for fallback matching
+        var cachedImageFiles = GetImageFiles(artifactsDir);
+        System.Diagnostics.Debug.WriteLine($"[PopoJson] Cached {cachedImageFiles.Count} image files for fallback matching");
+
+        PopulateTreeImgPathsRecursive(node, artifactsDir, parsedContentList, cachedImageFiles);
+    }
+
+    /// <summary>
+    /// Internal recursive implementation that uses pre-parsed content_list.json and cached image files.
+    /// </summary>
+    private static void PopulateTreeImgPathsRecursive(
+        AnalysisTreeNode node,
+        string artifactsDir,
+        System.Text.Json.JsonDocument? parsedContentList,
+        List<string> cachedImageFiles)
+    {
         if (node.Type == "image" && string.IsNullOrEmpty(node.ImgPath))
         {
-            // Try to find matching image from content_list.json
-            var contentListPath = FindContentListJson(artifactsDir);
-            if (contentListPath is not null)
+            // Strategy 1: Try to find matching image from pre-parsed content_list.json
+            if (parsedContentList is not null &&
+                parsedContentList.RootElement.ValueKind == System.Text.Json.JsonValueKind.Array)
             {
-                try
+                foreach (var elem in parsedContentList.RootElement.EnumerateArray())
                 {
-                    var json = File.ReadAllText(contentListPath);
-                    using var docJson = System.Text.Json.JsonDocument.Parse(json);
-                    if (docJson.RootElement.ValueKind == System.Text.Json.JsonValueKind.Array)
-                    {
-                        foreach (var elem in docJson.RootElement.EnumerateArray())
-                        {
-                            if (!elem.TryGetProperty("type", out var type) || type.GetString() != "image")
-                                continue;
-                            if (!elem.TryGetProperty("img_path", out var imgPath) || string.IsNullOrEmpty(imgPath.GetString()))
-                                continue;
-                            if (!elem.TryGetProperty("bbox", out var bbox))
-                                continue;
-                            if (!elem.TryGetProperty("page_idx", out var pageIdx))
-                                continue;
+                    if (!elem.TryGetProperty("type", out var type) || type.GetString() != "image")
+                        continue;
+                    if (!elem.TryGetProperty("img_path", out var imgPath) || string.IsNullOrEmpty(imgPath.GetString()))
+                        continue;
+                    if (!elem.TryGetProperty("bbox", out var bbox))
+                        continue;
+                    if (!elem.TryGetProperty("page_idx", out var pageIdx))
+                        continue;
 
-                            // Match by bbox and page
-                            if (MatchNodeToBlock(node, bbox, pageIdx.GetInt32()))
-                            {
-                                node.ImgPath = imgPath.GetString()!;
-                                System.Diagnostics.Debug.WriteLine($"[PopoJson] Populated ImgPath from content_list.json: {node.ImgPath}");
-                                break;
-                            }
-                        }
+                    // Match by bbox and page
+                    if (MatchNodeToBlock(node, bbox, pageIdx.GetInt32()))
+                    {
+                        node.ImgPath = imgPath.GetString()!;
+                        System.Diagnostics.Debug.WriteLine($"[PopoJson] Populated ImgPath from content_list.json: {node.ImgPath}");
+                        break;
                     }
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[PopoJson] ERROR reading content_list.json: {ex.Message}");
                 }
             }
 
-            // Fallback: try to match by block_id in image filename
+            // Strategy 2: Fallback - try to match by block_id in image filename (using cached files)
             if (string.IsNullOrEmpty(node.ImgPath) && node.BlockIds.Count > 0)
             {
-                var imageFiles = GetImageFiles(artifactsDir);
                 foreach (var blockId in node.BlockIds)
                 {
-                    var matchedFile = imageFiles.FirstOrDefault(f =>
+                    var matchedFile = cachedImageFiles.FirstOrDefault(f =>
                         Path.GetFileName(f).Contains(blockId.ToString()));
                     if (matchedFile is not null)
                     {
@@ -1085,7 +1114,7 @@ public static class PopoJsonService
 
         foreach (var child in node.Children)
         {
-            PopulateTreeImgPaths(child, artifactsDir);
+            PopulateTreeImgPathsRecursive(child, artifactsDir, parsedContentList, cachedImageFiles);
         }
     }
 
@@ -1717,6 +1746,127 @@ public static class PopoJsonService
             return prop.GetInt32();
         }
         return null;
+    }
+
+    /// <summary>
+    /// Persists resolved image paths back to popo_result.json.
+    /// After PopulateTreeImgPaths resolves image paths in-memory, this method
+    /// updates the img_path field for each image node in the JSON file so that
+    /// subsequent loads can skip the expensive fallback matching logic.
+    /// </summary>
+    public static void UpdatePopoResultImgPaths(StructureDocument doc, string popoDir)
+    {
+        if (doc.TreeRoot is null)
+            return;
+
+        var resultPath = Path.Combine(popoDir, "popo_result.json");
+        if (!File.Exists(resultPath))
+            return;
+
+        try
+        {
+            var content = File.ReadAllText(resultPath);
+            using var jsonDoc = JsonDocument.Parse(content);
+            var root = jsonDoc.RootElement;
+
+            System.Text.Json.JsonElement? treeElement = null;
+            if (root.TryGetProperty("result", out var resultElem) &&
+                resultElem.TryGetProperty("tree", out var treeElem))
+            {
+                treeElement = treeElem;
+            }
+            else if (root.TryGetProperty("tree", out var directTree))
+            {
+                treeElement = directTree;
+            }
+
+            if (treeElement is null)
+            {
+                System.Diagnostics.Debug.WriteLine("[Popo] No tree found in popo_result.json for img_path update");
+                return;
+            }
+
+            var ms = new MemoryStream();
+            using var writer = new Utf8JsonWriter(ms, new JsonWriterOptions { Indented = true });
+            CopyJsonWithUpdatedImgPaths(writer, root, doc.TreeRoot);
+            writer.Flush();
+            var updatedContent = System.Text.Encoding.UTF8.GetString(ms.ToArray());
+            File.WriteAllText(resultPath, updatedContent);
+            System.Diagnostics.Debug.WriteLine("[Popo] Updated popo_result.json with resolved image paths");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Popo] Failed to update popo_result.json img_paths: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Recursively copies a JSON element, updating img_path for matching image nodes.
+    /// </summary>
+    private static void CopyJsonWithUpdatedImgPaths(
+        System.Text.Json.Utf8JsonWriter writer,
+        System.Text.Json.JsonElement jsonNode,
+        AnalysisTreeNode modelNode)
+    {
+        if (jsonNode.ValueKind != System.Text.Json.JsonValueKind.Object)
+        {
+            jsonNode.WriteTo(writer);
+            return;
+        }
+
+        writer.WriteStartObject();
+        bool needsImgPathUpdate = false;
+        string? resolvedImgPath = null;
+
+        if (modelNode.Type == "image" && !string.IsNullOrEmpty(modelNode.ImgPath))
+        {
+            if (jsonNode.TryGetProperty("type", out var jsonType) && jsonType.GetString() == "image")
+            {
+                string? jsonImgPath = null;
+                if (jsonNode.TryGetProperty("img_path", out var jsonImgPathElem))
+                    jsonImgPath = jsonImgPathElem.GetString();
+                if (string.IsNullOrEmpty(jsonImgPath) || jsonImgPath != modelNode.ImgPath)
+                {
+                    needsImgPathUpdate = true;
+                    resolvedImgPath = modelNode.ImgPath;
+                }
+            }
+        }
+
+        foreach (var prop in jsonNode.EnumerateObject())
+        {
+            if (prop.Name == "img_path" && needsImgPathUpdate)
+            {
+                writer.WriteString("img_path", resolvedImgPath);
+                System.Diagnostics.Debug.WriteLine($"[Popo] Updated img_path for node '{modelNode.Title}': {resolvedImgPath}");
+            }
+            else if (prop.Name == "children" && prop.Value.ValueKind == System.Text.Json.JsonValueKind.Array)
+            {
+                writer.WritePropertyName("children");
+                writer.WriteStartArray();
+                var jsonChildren = prop.Value.EnumerateArray();
+                var modelChildren = modelNode.Children;
+                int jsonIndex = 0;
+                foreach (var jsonChild in jsonChildren)
+                {
+                    if (jsonIndex < modelChildren.Count)
+                        CopyJsonWithUpdatedImgPaths(writer, jsonChild, modelChildren[jsonIndex]);
+                    else
+                        jsonChild.WriteTo(writer);
+                    jsonIndex++;
+                }
+                writer.WriteEndArray();
+            }
+            else
+            {
+                prop.WriteTo(writer);
+            }
+        }
+
+        if (needsImgPathUpdate && !jsonNode.TryGetProperty("img_path", out _))
+            writer.WriteString("img_path", resolvedImgPath);
+
+        writer.WriteEndObject();
     }
 
     #endregion

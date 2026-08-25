@@ -2334,7 +2334,7 @@
                                                                              Text="{Binding RelationEvidenceDisplay}"
                                                                              TextWrapping="Wrap"
                                                                              MaxWidth="240"
-                                                                             IsVisible="{Binding ParentRelationEvidence}"/>
+                                                                             IsVisible="{Binding HasParentRelationEvidence}"/>
                                                               </StackPanel>
                                                           </Border>
                                                       </StackPanel>

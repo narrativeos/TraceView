@@ -102,6 +102,23 @@ public sealed partial class DocumentViewModel
     public bool HasGeoLibreFile => !string.IsNullOrEmpty(GeoLibreFilePath) && File.Exists(GeoLibreFilePath);
 
     /// <summary>
+    /// Whether GeoJSON output file exists on disk (semantic/locations.geojson).
+    /// Used to determine column visibility based on actual artifacts rather than in-memory state.
+    /// </summary>
+    public bool HasGeoData
+    {
+        get
+        {
+            if (ProjectPath is null)
+                return false;
+
+            var outputDir = GetSemanticOutputDir();
+            var geoJsonPath = Path.Combine(outputDir, "locations.geojson");
+            return File.Exists(geoJsonPath);
+        }
+    }
+
+    /// <summary>
     /// Geo processing status.
     /// </summary>
     [ObservableProperty]
@@ -952,6 +969,7 @@ public sealed partial class DocumentViewModel
                 GeoJsonFilePath = geoJsonPath;
                 GeoStatus = GeoProcessStatus.Completed;
                 ShowGeoColumn = true;
+                IsGeoProcessing = false;
 
                 // Parse the GeoJSON file using System.Text.Json (fast, AOT-compatible)
                 var content = File.ReadAllText(geoJsonPath);

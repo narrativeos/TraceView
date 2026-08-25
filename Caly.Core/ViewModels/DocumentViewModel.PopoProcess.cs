@@ -288,11 +288,10 @@ public sealed partial class DocumentViewModel : PopoService.IPopoProgressCallbac
                 string? artifactsDir = result.ArtifactsDirectory;
 
                 // Populate block_ids from middle.json for tree nodes (Popo API returns empty block_ids)
+                // Note: PopulateTreeBlockIds internally calls PopulateTreeImgPaths, so no need to call it again
                 if (result.StructureDocument.TreeRoot is not null && artifactsDir is not null)
                 {
                     PopoJsonService.PopulateTreeBlockIds(result.StructureDocument, artifactsDir);
-                    // Populate img_path from content_list.json for image nodes (Popo API returns empty img_path)
-                    PopoJsonService.PopulateTreeImgPaths(result.StructureDocument.TreeRoot, artifactsDir);
                 }
 
                 // Build hierarchical tree for Column 3 (matches popo_result.json tree structure)

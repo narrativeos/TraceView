@@ -526,6 +526,7 @@ public sealed class PopoService : IDisposable
         // project directory. Without this copy, reloading the project won't find popo_result.json
         // and will fall back to other parsing methods that may not have img_path populated.
         // Use read-then-write instead of File.Copy to avoid file lock issues on macOS.
+        // Also inject _artifactsDir so image paths can be resolved without directory scanning.
         if (!string.IsNullOrEmpty(projectPath))
         {
             try
@@ -537,6 +538,46 @@ public sealed class PopoService : IDisposable
                 {
                     Directory.CreateDirectory(projectPopoDir);
                     var content = File.ReadAllText(cacheResultPath);
+
+                    // Inject _artifactsDir into the JSON for fast image resolution on reload
+                    if (!string.IsNullOrEmpty(artifactsDir))
+                    {
+                        try
+                        {
+                            using var doc = JsonDocument.Parse(content);
+                            var ms = new System.IO.MemoryStream();
+                            using var writer = new System.Text.Json.Utf8JsonWriter(
+                                ms,
+                                new System.Text.Json.JsonWriterOptions { Indented = true });
+                            writer.WriteStartObject();
+
+                            // Write _artifactsDir first (relative path for portability)
+                            var relativePath = artifactsDir;
+                            if (artifactsDir.StartsWith(projectPath, StringComparison.OrdinalIgnoreCase))
+                            {
+                                relativePath = Path.GetRelativePath(projectPath, artifactsDir);
+                            }
+                            writer.WriteString("_artifactsDir", relativePath);
+
+                            // Copy all other properties from the original JSON
+                            foreach (var property in doc.RootElement.EnumerateObject())
+                            {
+                                writer.WritePropertyName(property.Name);
+                                property.Value.WriteTo(writer);
+                            }
+                            writer.WriteEndObject();
+                            writer.Flush();
+
+                            content = System.Text.Encoding.UTF8.GetString(ms.ToArray());
+                            System.Diagnostics.Debug.WriteLine($"[Popo] Injected _artifactsDir='{relativePath}' into popo_result.json");
+                        }
+                        catch (Exception ex)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"[Popo] Failed to inject _artifactsDir: {ex.Message}");
+                            // Continue with original content - _artifactsDir is optional
+                        }
+                    }
+
                     File.WriteAllText(projectResultPath, content);
                     System.Diagnostics.Debug.WriteLine($"[Popo] Saved popo_result.json to project: {projectResultPath}");
                 }
@@ -562,8 +603,11 @@ public sealed class PopoService : IDisposable
 
     /// <summary>
     /// Finds the MinerU extracted images directory for a given document ID.
-    /// Scans all subdirectories in the mineru folder for hybrid_auto since the ZIP internal
-    /// folder name may differ from the project docId (e.g., project ejij_4 but ZIP contains ejij/).
+    /// Search order (optimized for speed):
+    ///   1. {projectPath}/mineru/{subDir}/hybrid_auto/ (project extraction)
+    ///   2. %LocalAppData%/Caly/mineru/{docId}/hybrid_auto/ (MinerUService cache)
+    ///   3. ~/.TraceView/{docId}/mineru/{subDir}/hybrid_auto/ (legacy cache)
+    /// No AllDirectories fallback to avoid scanning thousands of files.
     /// </summary>
     /// <param name="docId">Document ID.</param>
     /// <param name="projectPath">Optional project path. If provided, searches {projectPath}/mineru/ first.</param>
@@ -608,25 +652,33 @@ public sealed class PopoService : IDisposable
                             }
                         }
                     }
+                }
+            }
 
-                    // Fallback: search the entire mineru directory for images
-                    var allImageFiles = Directory.GetFiles(mineruDir, "*.*", SearchOption.AllDirectories)
-                        .Where(f => Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
-                        .ToList();
-                    System.Diagnostics.Debug.WriteLine($"[Popo] Fallback search found {allImageFiles.Count} image files in {mineruDir}");
-                    if (allImageFiles.Count > 0)
+            // 2: Check MinerUService cache directory %LocalAppData%/Caly/mineru/{docId}/hybrid_auto/
+            // This is where MinerUService extracts the ZIP files.
+            {
+                var minerUCacheBase = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                var minerUCacheDir = Path.Combine(minerUCacheBase, "Caly", "mineru", docId, "hybrid_auto");
+                System.Diagnostics.Debug.WriteLine($"[Popo] Searching MinerUService cache: {minerUCacheDir}, exists={Directory.Exists(minerUCacheDir)}");
+                if (Directory.Exists(minerUCacheDir))
+                {
+                    var imagesDir = Path.Combine(minerUCacheDir, "images");
+                    if (Directory.Exists(imagesDir))
                     {
-                        var imageDir = Path.GetDirectoryName(allImageFiles[0]);
-                        if (imageDir is not null)
+                        var imageFiles = Directory.GetFiles(imagesDir, "*.*", SearchOption.TopDirectoryOnly)
+                            .Where(f => Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
+                            .ToList();
+                        if (imageFiles.Count > 0)
                         {
-                            System.Diagnostics.Debug.WriteLine($"[Popo] SUCCESS (fallback): Returning {imageDir}");
-                            return imageDir;
+                            System.Diagnostics.Debug.WriteLine($"[Popo] SUCCESS (MinerUService cache): Returning {minerUCacheDir}");
+                            return minerUCacheDir;
                         }
                     }
                 }
             }
 
-            // 2: Fallback to cache directory ~/.TraceView/{docId}/mineru/
+            // 3: Fallback to legacy cache directory ~/.TraceView/{docId}/mineru/
             var cacheBase = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".TraceView", docId);
             var mineruCacheDir = Path.Combine(cacheBase, "mineru");
             System.Diagnostics.Debug.WriteLine($"[Popo] Searching cache dir: {mineruCacheDir}, exists={Directory.Exists(mineruCacheDir)}");
@@ -646,24 +698,10 @@ public sealed class PopoService : IDisposable
                                 .ToList();
                             if (imageFilesInHybrid.Count > 0)
                             {
-                                System.Diagnostics.Debug.WriteLine($"[Popo] SUCCESS (cache): Returning {hybridAutoDir}");
+                                System.Diagnostics.Debug.WriteLine($"[Popo] SUCCESS (legacy cache): Returning {hybridAutoDir}");
                                 return hybridAutoDir;
                             }
                         }
-                    }
-                }
-
-                // Fallback: search the entire mineru cache directory for images
-                var imageFiles = Directory.GetFiles(mineruCacheDir, "*.*", SearchOption.AllDirectories)
-                    .Where(f => Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
-                    .ToList();
-                if (imageFiles.Count > 0)
-                {
-                    var imageDir = Path.GetDirectoryName(imageFiles[0]);
-                    if (imageDir is not null)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"[Popo] SUCCESS (cache fallback): Returning {imageDir}");
-                        return imageDir;
                     }
                 }
             }

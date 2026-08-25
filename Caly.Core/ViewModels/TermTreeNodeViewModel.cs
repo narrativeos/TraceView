@@ -76,6 +76,9 @@ public partial class TermTreeNodeViewModel : ObservableObject
     /// <summary>Whether this node has relation info to display (non-root node).</summary>
     public bool HasRelationInfo => ParentRelationType != null;
     
+    /// <summary>Whether this node has parent relation evidence to display.</summary>
+    public bool HasParentRelationEvidence => ParentRelationEvidence != null;
+    
     /// <summary>Short evidence display (truncated if too long).</summary>
     public string? RelationEvidenceDisplay => ParentRelationEvidence != null 
         ? (ParentRelationEvidence.Length > 50 
