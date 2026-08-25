@@ -93,6 +93,12 @@ public sealed partial class DocumentViewModel : ViewModelBase
     [ObservableProperty] private bool _isPagesLoading = true; // Start state is true, even if pages have not started loading just yet
 
     /// <summary>
+    /// Guard flag: prevents OnShowXxxColumnChanged partial methods from auto-loading data
+    /// during the initial LoadAllColumnsAsync() Phase 1, ensuring all columns load in Phase 3.
+    /// </summary>
+    private bool _isInitialLoading;
+
+    /// <summary>
     /// Starts at <c>1</c>, ends at <see cref="PageCount"/>.
     /// <para><c>null</c> if not selected.</para>
     /// </summary>
@@ -370,20 +376,6 @@ public sealed partial class DocumentViewModel : ViewModelBase
             _pdfPageService.Initialise();
         }
 
-        // Load cached MinerU and Popo data if available (silent, no progress UI)
-        if (pageCount > 0)
-        {
-            Dispatcher.UIThread.Invoke(() =>
-            {
-                TryLoadMinerUData();      // Load MinerU from mineru/
-                TryLoadPopoData();        // Load Popo from popo/
-                TryLoadSemanticData();    // Load Semantic from semantic/
-                TryLoadGeoData();         // Load Geo from semantic/locations.geojson
-                TryLoadEnrichedData();    // Load Enriched independently (doesn't depend on Semantic being in memory)
-                TryLoadTermData();        // Load Term from semantic/term_result.json
-            });
-        }
-
         return pageCount;
     }
     
@@ -436,6 +428,245 @@ public sealed partial class DocumentViewModel : ViewModelBase
         finally
         {
             await Dispatcher.UIThread.InvokeAsync(() => IsPagesLoading = false);
+        }
+
+        // Load all columns asynchronously in order after pages are created
+        // This allows users to see the PDF immediately while columns load in background
+        _ = LoadAllColumnsAsync();
+    }
+
+    /// <summary>
+    /// Eagerly checks for data file existence on disk and sets column visibility + loading states.
+    /// This is called on the UI thread BEFORE background loading starts, so columns appear immediately
+    /// with a spinner/progress indicator rather than hidden until data is fully loaded.
+    /// File existence checks (File.Exists/Directory.Exists) are fast metadata operations, not file reads.
+    /// </summary>
+    private void EagerCheckColumns()
+    {
+        // MinerU
+        if (HasMinerUData)
+        {
+            ShowMinerUColumn = true;
+            MinerUStatus = MinerUParseStatus.Processing;
+            IsMinerUParsing = true;
+            MinerUStatusText = "Loading MinerU data...";
+            System.Diagnostics.Debug.WriteLine("[EagerCheck] MinerU data exists on disk, showing column with loading state");
+        }
+
+        // Popo (Analysis column)
+        if (HasPopoData)
+        {
+            ShowAnalysisColumn = true;
+            IsPopoProcessing = true;
+            PopoStatusText = "Loading Popo data...";
+            System.Diagnostics.Debug.WriteLine("[EagerCheck] Popo data exists on disk, showing column with loading state");
+        }
+
+        // Semantic
+        if (HasSemanticData)
+        {
+            ShowSemanticColumn = true;
+            SemanticStatus = SemanticProcessStatus.Processing;
+            IsSemanticProcessing = true;
+            SemanticStatusText = "Loading Semantic data...";
+            System.Diagnostics.Debug.WriteLine("[EagerCheck] Semantic data exists on disk, showing column with loading state");
+        }
+
+        // Geo
+        if (HasGeoData)
+        {
+            ShowGeoColumn = true;
+            GeoStatus = GeoProcessStatus.Processing;
+            IsGeoProcessing = true;
+            GeoStatusText = "Loading Geo data...";
+            System.Diagnostics.Debug.WriteLine("[EagerCheck] Geo data exists on disk, showing column with loading state");
+        }
+
+        // Enriched
+        if (HasEnrichedData)
+        {
+            ShowEnrichedColumn = true;
+            IsEnrichProcessing = true;
+            _enrichStatusText = "Loading Enriched data...";
+            OnPropertyChanged(nameof(EnrichStatusText));
+            System.Diagnostics.Debug.WriteLine("[EagerCheck] Enriched data exists on disk, showing column with loading state");
+        }
+
+        // Term
+        if (HasTermData)
+        {
+            ShowTermColumn = true;
+            IsTermProcessing = true;
+            _termStatusText = "Loading Term data...";
+            OnPropertyChanged(nameof(TermStatusText));
+            System.Diagnostics.Debug.WriteLine("[EagerCheck] Term data exists on disk, showing column with loading state");
+        }
+    }
+
+    /// <summary>
+    /// Loads all column data asynchronously in three phases:
+    /// Phase 1: Pre-check - detect which columns have data files on disk
+    /// Phase 2: UI render - yield to UI thread so all columns appear simultaneously with loading spinners
+    /// Phase 3: Sequential load - load each column's data one by one
+    /// Order: MinerU → Popo → Semantic → Geo → Enriched → Term
+    /// After all columns are loaded, performs fit-to-page-width.
+    /// Each column's UI state is updated on the UI thread immediately after loading,
+    /// ensuring the loading spinner is hidden before the next column starts loading.
+    /// </summary>
+    private async Task LoadAllColumnsAsync()
+    {
+        _isInitialLoading = true;
+        try
+        {
+            // ================================================================
+            // Phase 1: 预先检查 - detect which columns have data on disk
+            // File existence checks are fast metadata operations, not file reads.
+            // ================================================================
+            System.Diagnostics.Debug.WriteLine("[LoadColumns] Phase 1: Pre-check columns");
+            bool hasMinerU = HasMinerUData;
+            bool hasPopo = HasPopoData;
+            bool hasSemantic = HasSemanticData;
+            bool hasGeo = HasGeoData;
+            bool hasEnriched = HasEnrichedData;
+            bool hasTerm = HasTermData;
+
+            // Phase 1 (cont.): Set column visibility + loading states
+            System.Diagnostics.Debug.WriteLine("[LoadColumns] Phase 1: Setting column visibility + loading states");
+            if (hasMinerU)
+            {
+                ShowMinerUColumn = true;
+                MinerUStatus = MinerUParseStatus.Processing;
+                IsMinerUParsing = true;
+                MinerUStatusText = "Loading MinerU data...";
+            }
+            if (hasPopo)
+            {
+                ShowAnalysisColumn = true;
+                IsPopoProcessing = true;
+                PopoStatusText = "Loading Popo data...";
+            }
+            if (hasSemantic)
+            {
+                ShowSemanticColumn = true;
+                SemanticStatus = SemanticProcessStatus.Processing;
+                IsSemanticProcessing = true;
+                SemanticStatusText = "Loading Semantic data...";
+            }
+            if (hasGeo)
+            {
+                ShowGeoColumn = true;
+                GeoStatus = GeoProcessStatus.Processing;
+                IsGeoProcessing = true;
+                GeoStatusText = "Loading Geo data...";
+            }
+            if (hasEnriched)
+            {
+                ShowEnrichedColumn = true;
+                IsEnrichProcessing = true;
+                _enrichStatusText = "Loading Enriched data...";
+                OnPropertyChanged(nameof(EnrichStatusText));
+            }
+            if (hasTerm)
+            {
+                ShowTermColumn = true;
+                IsTermProcessing = true;
+                _termStatusText = "Loading Term data...";
+                OnPropertyChanged(nameof(TermStatusText));
+            }
+            System.Diagnostics.Debug.WriteLine(
+                $"[LoadColumns] Phase 1: Columns - MinerU={hasMinerU}, Popo={hasPopo}, " +
+                $"Semantic={hasSemantic}, Geo={hasGeo}, Enriched={hasEnriched}, Term={hasTerm}");
+
+            // ================================================================
+            // Phase 2: UI render - yield to UI thread so all columns appear
+            // simultaneously with loading spinners before any data loading starts.
+            // ================================================================
+            System.Diagnostics.Debug.WriteLine("[LoadColumns] Phase 2: Yielding to UI thread for rendering + fit to page width");
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                ZoomToPageWidth();
+            });
+
+            // ================================================================
+            // Phase 3: Sequential load - each column's spinner hides before
+            // the next column starts loading.
+            // ================================================================
+            System.Diagnostics.Debug.WriteLine("[LoadColumns] Phase 3: Sequential loading started");
+
+            if (hasMinerU)
+            {
+                await Task.Run(() => TryLoadMinerUData());
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    IsMinerUParsing = false;
+                    MinerUStatus = MinerUParseStatus.Completed;
+                    MinerUStatusText = "Loaded";
+                });
+            }
+
+            if (hasPopo)
+            {
+                await Task.Run(() => TryLoadPopoData());
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    IsPopoProcessing = false;
+                    PopoStatus = PopoProcessStatus.Completed;
+                    PopoProgress = 100;
+                    PopoStatusText = $"Loaded ({PopoBlocks.Count} blocks)";
+                });
+            }
+
+            if (hasSemantic)
+            {
+                await Task.Run(() => TryLoadSemanticData());
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    IsSemanticProcessing = false;
+                    SemanticStatus = SemanticProcessStatus.Completed;
+                    SemanticStatusText = "Loaded";
+                });
+            }
+
+            if (hasGeo)
+            {
+                await Task.Run(() => TryLoadGeoData());
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    IsGeoProcessing = false;
+                    GeoStatus = GeoProcessStatus.Completed;
+                    GeoStatusText = "Loaded";
+                });
+            }
+
+            if (hasEnriched)
+            {
+                await Task.Run(() => TryLoadEnrichedData());
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    IsEnrichProcessing = false;
+                    _enrichStatusText = "Loaded";
+                    OnPropertyChanged(nameof(EnrichStatusText));
+                });
+            }
+
+            if (hasTerm)
+            {
+                await Task.Run(() => TryLoadTermData());
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    IsTermProcessing = false;
+                    _termStatusText = "Loaded";
+                    OnPropertyChanged(nameof(TermStatusText));
+                });
+            }
+
+            // Initial loading complete — allow toggle buttons to auto-load on user click
+            _isInitialLoading = false;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[LoadColumns] Error: {ex.Message}");
+            Debug.WriteExceptionToFile(ex);
         }
     }
 

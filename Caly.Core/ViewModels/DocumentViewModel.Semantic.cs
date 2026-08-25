@@ -488,6 +488,7 @@ public sealed partial class DocumentViewModel
 
             EnrichedResults = loaded;
             ShowEnrichedColumn = true;
+            IsEnrichProcessing = false;
 
             if (hasStaleBlocks)
             {
@@ -542,6 +543,7 @@ public sealed partial class DocumentViewModel
             {
                 TermResults = loaded;
                 ShowTermColumn = true;
+                IsTermProcessing = false;
                 System.Diagnostics.Debug.WriteLine($"[Term] Loaded term_result.json ({loaded.Terms.Count} terms, {loaded.Relations.Count} relations)");
             }
         }
@@ -582,24 +584,13 @@ public sealed partial class DocumentViewModel
 
     /// <summary>
     /// Called automatically when ShowSemanticColumn changes via two-way binding (ToggleButton click).
-    /// Ensures data is loaded when the column is opened, but does NOT auto-open dependent columns.
+    /// Data is pre-loaded during document open, so just toggle visibility.
     /// </summary>
     partial void OnShowSemanticColumnChanged(bool value)
     {
-        if (value && SemanticResults == null)
-        {
-            // Try loading from cache when user opens the column
-            var cachedResult = TryLoadSemanticResultFromFile();
-            if (cachedResult is not null)
-            {
-                SemanticResults = cachedResult;
-                SemanticStatus = SemanticProcessStatus.Completed;
-                SemanticProgress = 100;
-                SemanticStatusText = $"Loaded from cache ({SemanticNodeCount} nodes, {SemanticEntityCount} entities)";
-                OnPropertyChanged(nameof(HasSemanticData));
-                UpdateSemanticVisibility();
-            }
-        }
+        // Data is already loaded in LoadAllColumnsAsync()
+        // Just update visibility state
+        UpdateSemanticVisibility();
     }
 
     [RelayCommand]
@@ -616,6 +607,7 @@ public sealed partial class DocumentViewModel
     /// </summary>
     partial void OnShowEnrichedColumnChanged(bool value)
     {
+        if (_isInitialLoading) return;
         if (value && EnrichedResults == null)
             TryLoadEnrichedData();
     }
@@ -630,6 +622,7 @@ public sealed partial class DocumentViewModel
 
     partial void OnShowTermColumnChanged(bool value)
     {
+        if (_isInitialLoading) return;
         if (value && TermResults == null)
             TryLoadTermData();
     }
@@ -1155,6 +1148,7 @@ public sealed partial class DocumentViewModel
                 SemanticProgress = 100;
                 SemanticStatusText = $"Loaded from cache ({SemanticNodeCount} nodes, {SemanticEntityCount} entities)";
                 ShowSemanticColumn = true;
+                IsSemanticProcessing = false;
                 OnPropertyChanged(nameof(HasSemanticData));
                 OnPropertyChanged(nameof(CanProcessTerm));
                 OnPropertyChanged(nameof(TermButtonTooltip));
