@@ -21,6 +21,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json.Serialization;
+using Caly.Core.Services;
 
 namespace Caly.Core.Models;
 
@@ -418,6 +419,38 @@ public class SemanticBlockResult
     [System.Text.Json.Serialization.JsonIgnore]
     internal List<HanLPCorefChain>? CorefChains { get; set; }
 
+    /// <summary>
+    /// Formulas extracted from this block before NLP analysis.
+    /// Contains the original formula content and placeholder mapping.
+    /// Used for restoring formulas after NLP analysis and for formula metadata.
+    /// Not serialized to semantic_result.json (stored in EnrichedMetadata instead).
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public ExtractedFormulas? ExtractedFormulas { get; set; }
+
+    /// <summary>
+    /// Lightweight formula references for serialization.
+    /// Only stores formula IDs and placeholders, not full formula content.
+    /// This keeps semantic_result.json small while maintaining traceability.
+    /// </summary>
+    [JsonPropertyName("formula_references")]
+    public List<FormulaReference> FormulaReferences { get; set; } = new();
+
+    /// <summary>
+    /// Restores the original content with formulas (replaces placeholders with actual formulas).
+    /// Returns the original content if no formulas were extracted.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string RestoredContent
+    {
+        get
+        {
+            if (ExtractedFormulas is null || ExtractedFormulas.Formulas.Count == 0)
+                return Content;
+            return FormulaExtractor.RestoreFormulas(Content, ExtractedFormulas);
+        }
+    }
+
     [JsonPropertyName("error")]
     public string? Error { get; set; }
 
@@ -606,4 +639,12 @@ public class SemanticResultFile
     /// </summary>
     [JsonPropertyName("cross_block_relations")]
     public List<LocationRelation> CrossBlockRelations { get; set; } = new();
+
+    /// <summary>
+    /// Formula index for this document.
+    /// Contains all formulas extracted during semantic analysis.
+    /// Can also be loaded from semantic/formula_index.json.
+    /// </summary>
+    [JsonPropertyName("formula_index")]
+    public FormulaIndex? FormulaIndex { get; set; }
 }

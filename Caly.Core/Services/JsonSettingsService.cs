@@ -66,6 +66,14 @@ namespace Caly.Core.Services;
 // Reference (bibliography) models
 [JsonSerializable(typeof(ReferenceEntry), GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(List<ReferenceEntry>), GenerationMode = JsonSourceGenerationMode.Metadata)]
+// Formula/Equation models
+[JsonSerializable(typeof(FormulaEntry), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(List<FormulaEntry>), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(ExtractedFormulas), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(FormulaReference), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(List<FormulaReference>), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(FormulaIndex), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(FormulaIndexStatistics), GenerationMode = JsonSourceGenerationMode.Metadata)]
 // Enriched result models
 [JsonSerializable(typeof(Caly.Core.Models.EnrichedResultFile), GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(Caly.Core.Models.EnrichedBlockResult), GenerationMode = JsonSourceGenerationMode.Metadata)]

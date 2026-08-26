@@ -129,6 +129,15 @@ public partial class StructureDocument : ObservableObject
     private List<ReferenceEntry> _referenceEntries = new();
 
     /// <summary>
+    /// Pre-parsed formula/equation entries extracted from the document.
+    /// Each entry represents a formula with its raw content, formula code, page location,
+    /// and placeholder for NLP analysis. Extracted from MinerU blocks of type "equation"
+    /// and text blocks containing display formulas.
+    /// </summary>
+    [ObservableProperty]
+    private List<FormulaEntry> _formulaEntries = new();
+
+    /// <summary>
     /// Book copyright metadata JSON string from popo_result.json (result.metadata).
     /// Contains publisher, ISBN, authors, edition, and other bibliographic information.
     /// Serialized from the metadata dict in the Popo API response.

@@ -863,6 +863,16 @@ public static class PopoJsonService
                             doc.ReferenceEntries = referenceEntries;
                         }
 
+                        // Extract formulas from the document's blocks
+                        // Formulas are extracted from MinerU blocks of type "equation"
+                        // and from text blocks containing display formulas
+                        var formulaEntries = FormulaExtractor.ExtractFromDocument(doc, doc.PagesBlocks);
+                        if (formulaEntries.Count > 0)
+                        {
+                            doc.FormulaEntries = formulaEntries;
+                            System.Diagnostics.Debug.WriteLine($"[Popo] Extracted {formulaEntries.Count} formulas from document");
+                        }
+
                         // Parse _artifactsDir (cached image directory path) — injected by PopoService
                         if (root.TryGetProperty("_artifactsDir", out var artifactsDirElem) &&
                             artifactsDirElem.ValueKind == JsonValueKind.String)
@@ -881,7 +891,19 @@ public static class PopoJsonService
                 //   { docId, modelName, pagesBlocks, treeRoot, ... }
                 var minerUDoc = JsonSerializer.Deserialize<StructureDocument>(json, StructureDocumentOptions);
                 if (minerUDoc is not null && (minerUDoc.GetAllBlocks().Count > 0 || minerUDoc.TreeRoot is not null))
+                {
+                    // Extract formulas from the document's blocks
+                    if (minerUDoc.PagesBlocks != null && minerUDoc.PagesBlocks.Count > 0)
+                    {
+                        var formulaEntries = FormulaExtractor.ExtractFromDocument(minerUDoc, minerUDoc.PagesBlocks);
+                        if (formulaEntries.Count > 0)
+                        {
+                            minerUDoc.FormulaEntries = formulaEntries;
+                            System.Diagnostics.Debug.WriteLine($"[Popo] Extracted {formulaEntries.Count} formulas from document (direct format)");
+                        }
+                    }
                     return minerUDoc;
+                }
             }
 
             return null;

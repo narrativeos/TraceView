@@ -170,6 +170,7 @@ public sealed class SemanticAnalysisService : IDisposable
     /// Analyzes a single text block using the HanLP API.
     /// Calls /analyze once (deps are now merged into the response),
     /// saves dependency data to the result, and annotates LOCATION entities with syntactic roles.
+    /// Before NLP analysis, extracts formulas and replaces them with placeholders.
     /// </summary>
     /// <param name="node">The Popo tree node to analyze.</param>
     /// <param name="entityCategories">Optional domain-specific keyword dictionaries for entity discovery.</param>
@@ -181,10 +182,17 @@ public sealed class SemanticAnalysisService : IDisposable
     {
         System.Diagnostics.Debug.WriteLine($"[SemanticAnalysisService] Analyzing node with {node.Content.Length} chars");
         
+        // Step 1: Clean OCR markers
         var cleanText = CleanOcrMarkers(node.Content);
+        
+        // Step 2: Extract formulas and replace with placeholders for NLP analysis
+        var blockIds = new List<int>(node.BlockIds);
+        var page = node.Location.Count > 0 ? node.Location[0].Page : 0;
+        var extracted = FormulaExtractor.ExtractAndReplace(cleanText, page, blockIds);
+        
         var request = new HanLPAnalyzeRequest
         {
-            Text = cleanText,
+            Text = extracted.Text,  // Text with formulas replaced by placeholders
             Source = "hanlp_v2",
             Language = "auto",
             // ── Phase 1: Enable HanLP advanced discovery features ──
@@ -251,6 +259,29 @@ public sealed class SemanticAnalysisService : IDisposable
         // Save coreference chains for cross-block resolution (Phase 2 Step 6)
         result.CorefChains = content_obj?.Coreferences;
 
+        // Save extracted formulas as metadata for later restoration
+        if (extracted.Formulas.Count > 0)
+        {
+            // Store formula context in the result for later restoration
+            result.ExtractedFormulas = extracted;
+            
+            // Build lightweight formula references for serialization
+            result.FormulaReferences = extracted.Formulas
+                .Select(FormulaReference.FromFormulaEntry)
+                .ToList();
+            
+            // Also store in enriched metadata for persistence
+            result.EnrichedMetadata["formula_placeholder_map"] = extracted.PlaceholderMap;
+            
+            System.Diagnostics.Debug.WriteLine(
+                $"[SemanticAnalysisService] Extracted {extracted.Formulas.Count} formulas, " +
+                $"replaced with placeholders: {string.Join(", ", extracted.Formulas.Select(f => f.Placeholder))}");
+        }
+        else
+        {
+            result.ExtractedFormulas = extracted;
+        }
+
         return result;
     }
 
@@ -316,6 +347,47 @@ public sealed class SemanticAnalysisService : IDisposable
         // Cross-block definition resolution (merge same-term definitions)
         definitionExtractor.ResolveCrossBlockDefinitions(blocks);
 
+        // ── Build FormulaIndex from all blocks ──
+        var allFormulas = new List<FormulaEntry>();
+        foreach (var block in blocks)
+        {
+            if (block.ExtractedFormulas?.Formulas != null)
+            {
+                allFormulas.AddRange(block.ExtractedFormulas.Formulas);
+            }
+        }
+
+        if (allFormulas.Count > 0)
+        {
+            var displayCount = allFormulas.Count(f => f.FormulaType == "display");
+            var inlineCount = allFormulas.Count(f => f.FormulaType == "inline");
+            var pagesWithFormulas = allFormulas.Select(f => f.Page).Distinct().Count();
+
+            fileResult.FormulaIndex = new FormulaIndex
+            {
+                Version = "1.0",
+                Timestamp = DateTime.UtcNow.ToString("O"),
+                SourceDocument = outputDir,
+                Formulas = allFormulas,
+                Statistics = new FormulaIndexStatistics
+                {
+                    TotalFormulas = allFormulas.Count,
+                    DisplayFormulas = displayCount,
+                    InlineFormulas = inlineCount,
+                    PagesWithFormulas = pagesWithFormulas,
+                    AveragePerPage = pagesWithFormulas > 0
+                        ? (double)allFormulas.Count / pagesWithFormulas
+                        : 0
+                }
+            };
+
+            // Save formula_index.json to semantic directory
+            var formulaIndexPath = Path.Combine(outputDir, "formula_index.json");
+            var formulaJson = JsonSerializer.Serialize(fileResult.FormulaIndex, SourceGenerationContext.Default.FormulaIndex);
+            await File.WriteAllTextAsync(formulaIndexPath, formulaJson, cancellationToken);
+            System.Diagnostics.Debug.WriteLine($"[SemanticAnalysisService] Saved formula_index.json with {allFormulas.Count} formulas");
+        }
+
         // Save to disk
         Directory.CreateDirectory(outputDir);
         var filePath = Path.Combine(outputDir, "semantic_result.json");
@@ -367,6 +439,204 @@ public sealed class SemanticAnalysisService : IDisposable
             return null;
         }
     }
+
+    /// <summary>
+    /// Loads the formula index from the semantic directory.
+    /// </summary>
+    public static FormulaIndex? LoadFormulaIndex(string semanticDir)
+    {
+        var formulaIndexPath = Path.Combine(semanticDir, "formula_index.json");
+        if (!File.Exists(formulaIndexPath))
+            return null;
+
+        var json = File.ReadAllText(formulaIndexPath);
+        try
+        {
+            var result = JsonSerializer.Deserialize(json, SourceGenerationContext.Default.FormulaIndex);
+            System.Diagnostics.Debug.WriteLine($"[SemanticAnalysisService] LoadFormulaIndex succeeded: {result?.Formulas.Count ?? 0} formulas");
+            return result;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SemanticAnalysisService] LoadFormulaIndex failed: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Extracts formulas from MinerU blocks without running full semantic analysis.
+    /// Uses regex to extract formulas from block content (not entire blocks).
+    /// Saves the formula index to the semantic directory.
+    /// </summary>
+    public static async Task<FormulaIndex?> ExtractFormulasFromBlocksAsync(
+        StructureDocument doc,
+        Dictionary<int, List<MinerUBlock>> pagesBlocks,
+        string outputDir,
+        CancellationToken cancellationToken = default)
+    {
+        var allFormulas = new List<FormulaEntry>();
+        int formulaId = 0;
+        
+        // First, extract from equation-type blocks and text blocks that are display formulas
+        int debugCount = 0;
+        foreach (var page in pagesBlocks.Keys.OrderBy(p => p))
+        {
+            foreach (var block in pagesBlocks[page])
+            {
+                // Check if this is a formula block (via SourceLabel) OR a text block that's a display formula
+                bool isFormula = FormulaExtractor.IsFormulaBlock(block) || 
+                    (block.Type == "text" && FormulaExtractor.IsDisplayFormula(block.Content));
+                
+                // Debug: log first 30 text blocks from different pages
+                if (block.Type == "text" && debugCount < 30)
+                {
+                    var preview = block.Content?.Length > 100 ? block.Content.Substring(0, 100) + "..." : block.Content;
+                    var isDisplay = FormulaExtractor.IsDisplayFormula(block.Content);
+                    var hasLatex = block.Content?.Contains("\\[") == true || block.Content?.Contains("\\begin{equation}") == true || block.Content?.Contains("\\(") == true;
+                    System.Diagnostics.Debug.WriteLine($"[SemanticAnalysisService] Text block Page {page}, IsDisplay={isDisplay}, HasLatex={hasLatex}: \"{preview}\"");
+                    debugCount++;
+                }
+                
+                if (isFormula && !string.IsNullOrEmpty(block.Content))
+                {
+                    formulaId++;
+                    var formulasOnPage = allFormulas.Count(f => f.Page == page) + 1;
+                    var eqNumber = FormulaExtractor.ExtractEquationNumber(block.Content);
+                    var formulaCode = string.IsNullOrEmpty(eqNumber) ? $"({formulaId})" : $"({eqNumber})";
+                    
+                    var entry = new FormulaEntry
+                    {
+                        FormulaId = $"Eq.p{page}.f{formulasOnPage}",
+                        Id = formulaId,
+                        FormulaCode = formulaCode,
+                        RawContent = block.Content,
+                        FormulaType = "display",
+                        Page = page,
+                        BlockIds = { block.Id },
+                        SourceBlockIds = new List<string>(block.SourceBlockIds ?? new List<string>())
+                    };
+                    entry.EnsurePlaceholder();
+                    allFormulas.Add(entry);
+                }
+            }
+        }
+        
+        // Then, extract inline formulas using regex from all blocks
+        foreach (var page in pagesBlocks.Keys.OrderBy(p => p))
+        {
+            foreach (var block in pagesBlocks[page])
+            {
+                if (string.IsNullOrEmpty(block.Content))
+                    continue;
+
+                var blockIds = new List<int> { block.Id };
+                var formulas = FormulaExtractor.ExtractFormulasRegex(
+                    block.Content, page, blockIds, formulaId + 1);
+
+                // Update formula IDs and add global identifiers
+                foreach (var f in formulas)
+                {
+                    formulaId++;
+                    f.Id = formulaId;
+                    f.FormulaCode = $"({formulaId})";
+                    f.FormulaId = $"Eq.p{page}.f{allFormulas.Count(ff => ff.Page == page) + 1}";
+                    f.SourceBlockIds = new List<string>(block.SourceBlockIds ?? new List<string>());
+                }
+
+                allFormulas.AddRange(formulas);
+            }
+        }
+
+        // Also scan inference blocks
+        foreach (var block in doc.InferenceBlocks)
+        {
+            if (string.IsNullOrEmpty(block.Content))
+                continue;
+
+            var blockIds = new List<int> { block.Id };
+            var formulas = FormulaExtractor.ExtractFormulasRegex(
+                block.Content, block.Page, blockIds, formulaId + 1);
+
+            foreach (var f in formulas)
+            {
+                formulaId++;
+                f.Id = formulaId;
+                f.FormulaCode = $"({formulaId})";
+                f.FormulaId = $"Eq.p{block.Page}.f{allFormulas.Count(ff => ff.Page == block.Page) + 1}";
+                f.SourceBlockIds = new List<string>(block.SourceBlockIds ?? new List<string>());
+            }
+
+            allFormulas.AddRange(formulas);
+        }
+
+        if (allFormulas.Count == 0)
+        {
+            System.Diagnostics.Debug.WriteLine("[SemanticAnalysisService] No formulas found in document");
+            return null;
+        }
+
+        var displayCount = allFormulas.Count(f => f.FormulaType == "display");
+        var inlineCount = allFormulas.Count(f => f.FormulaType == "inline");
+        var pagesWithFormulas = allFormulas.Select(f => f.Page).Distinct().Count();
+
+        var formulaIndex = new FormulaIndex
+        {
+            Version = "1.0",
+            Timestamp = DateTime.UtcNow.ToString("O"),
+            SourceDocument = outputDir,
+            Formulas = allFormulas,
+            Statistics = new FormulaIndexStatistics
+            {
+                TotalFormulas = allFormulas.Count,
+                DisplayFormulas = displayCount,
+                InlineFormulas = inlineCount,
+                PagesWithFormulas = pagesWithFormulas,
+                AveragePerPage = pagesWithFormulas > 0
+                    ? (double)allFormulas.Count / pagesWithFormulas
+                    : 0
+            }
+        };
+
+        // Save formula_index.json to semantic directory
+        Directory.CreateDirectory(outputDir);
+        var formulaIndexPath = Path.Combine(outputDir, "formula_index.json");
+        var formulaJson = JsonSerializer.Serialize(formulaIndex, SourceGenerationContext.Default.FormulaIndex);
+        await File.WriteAllTextAsync(formulaIndexPath, formulaJson, cancellationToken);
+
+        System.Diagnostics.Debug.WriteLine($"[SemanticAnalysisService] Extracted and saved {allFormulas.Count} formulas");
+        return formulaIndex;
+    }
+
+    /// <summary>
+    /// Restores ExtractedFormulas for a block using FormulaReferences and the FormulaIndex.
+    /// Called after loading from file to reconstruct runtime-only data.
+    /// </summary>
+    public static void RestoreExtractedFormulas(SemanticBlockResult block, FormulaIndex? formulaIndex)
+    {
+        if (block.FormulaReferences is null || block.FormulaReferences.Count == 0)
+            return;
+        if (formulaIndex is null)
+            return;
+
+        var extracted = new ExtractedFormulas
+        {
+            Text = block.Content
+        };
+
+        foreach (var refItem in block.FormulaReferences)
+        {
+            var entry = formulaIndex.GetFormulaById(refItem.FormulaId);
+            if (entry != null)
+            {
+                extracted.Formulas.Add(entry);
+                entry.EnsurePlaceholder();
+                extracted.PlaceholderMap[entry.Placeholder] = extracted.Formulas.Count - 1;
+            }
+        }
+
+        block.ExtractedFormulas = extracted;
+    }
+
 
     /// <summary>
     /// Maps HanLP API response to our SemanticBlockResult.
@@ -1140,5 +1410,73 @@ public sealed class SemanticAnalysisService : IDisposable
             $"[SemanticAnalysisService] Resolved {relations.Count} cross-block coreference relations");
 
         return relations;
+    }
+
+    /// <summary>
+    /// Extracts formulas directly from a MinerU middle.json file, bypassing lazy-loaded ViewModel blocks.
+    /// This ensures all pages are processed regardless of scroll/view state.
+    /// </summary>
+    /// <param name="jsonPath">Path to the MinerU middle.json file.</param>
+    /// <param name="outputDir">Directory to save the formula_index.json file.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>FormulaIndex containing all extracted formulas, or null if extraction failed.</returns>
+    public static async Task<FormulaIndex?> ExtractFormulasFromMiddleJsonAsync(
+        string jsonPath, string outputDir, CancellationToken cancellationToken = default)
+    {
+        if (!File.Exists(jsonPath))
+        {
+            Log($"[SemanticAnalysisService] middle.json not found at: {jsonPath}");
+            return null;
+        }
+
+        Log($"[SemanticAnalysisService] Extracting formulas from middle.json: {jsonPath}");
+
+        // Extract formulas directly from the JSON file
+        var formulas = FormulaExtractor.ExtractFormulasFromMiddleJson(jsonPath);
+
+        if (formulas.Count == 0)
+        {
+            Log("[SemanticAnalysisService] No formulas found in middle.json");
+            return null;
+        }
+
+        Log($"[SemanticAnalysisService] Extracted {formulas.Count} formulas from middle.json");
+
+        // Build the formula index
+        var displayCount = formulas.Count(f => f.FormulaType == "display");
+        var inlineCount = formulas.Count(f => f.FormulaType == "inline");
+        var pagesWithFormulas = formulas.Select(f => f.Page).Distinct().Count();
+
+        var formulaIndex = new FormulaIndex
+        {
+            Version = "1.0",
+            Timestamp = DateTime.UtcNow.ToString("O"),
+            SourceDocument = outputDir,
+            Formulas = formulas,
+            Statistics = new FormulaIndexStatistics
+            {
+                TotalFormulas = formulas.Count,
+                DisplayFormulas = displayCount,
+                InlineFormulas = inlineCount,
+                PagesWithFormulas = pagesWithFormulas,
+                AveragePerPage = pagesWithFormulas > 0
+                    ? (double)formulas.Count / pagesWithFormulas
+                    : 0
+            }
+        };
+
+        // Ensure output directory exists
+        Directory.CreateDirectory(outputDir);
+
+        // Save formula_index.json
+        var indexPath = Path.Combine(outputDir, "formula_index.json");
+        var json = JsonSerializer.Serialize(
+            formulaIndex,
+            SourceGenerationContext.Default.FormulaIndex);
+        await File.WriteAllTextAsync(indexPath, json, cancellationToken);
+
+        Log($"[SemanticAnalysisService] Saved formula_index.json to: {indexPath}");
+
+        return formulaIndex;
     }
 }

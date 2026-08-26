@@ -118,6 +118,9 @@ public static class TermResultBuilder
                         termEntry.Context = ctx;
                 }
 
+                // P2: Build traceability information
+                termEntry.Traceability = BuildTraceability(entry, text, block, semanticResult);
+
                 textToEntry[text] = (result.Terms.Count, termEntry);
                 result.Terms.Add(termEntry);
             }
@@ -377,5 +380,64 @@ public static class TermResultBuilder
             if (lower == op) return true;
         }
         return false;
+    }
+
+    /// <summary>
+    /// Builds traceability information for a term entry.
+    /// Includes first occurrence context, extraction method, and formula context.
+    /// </summary>
+    private static TermTraceability BuildTraceability(
+        EnrichedEntityEntry entry,
+        string text,
+        EnrichedBlockResult block,
+        SemanticResultFile semanticResult)
+    {
+        var traceability = new TermTraceability
+        {
+            FirstOccurrenceBlock = block.BlockIds.Count > 0 ? block.BlockIds[0] : null,
+            ExtractionMethod = "ner"
+        };
+
+        // Find the entity in the original semantic block to get span info
+        foreach (var semanticBlock in semanticResult.Blocks)
+        {
+            if (semanticBlock.BlockIds.Count > 0 &&
+                semanticBlock.BlockIds[0] == (traceability.FirstOccurrenceBlock ?? -1))
+            {
+                foreach (var semanticEntity in semanticBlock.Entities)
+                {
+                    if (semanticEntity.Text == text || semanticEntity.Text == entry.Text)
+                    {
+                        if (semanticEntity.Span != null && semanticEntity.Span.Length >= 2)
+                        {
+                            traceability.FirstOccurrenceSpan = new[] { semanticEntity.Span[0], semanticEntity.Span[1] };
+                        }
+
+                        // Extract context snippet
+                        if (!string.IsNullOrEmpty(semanticBlock.Content) &&
+                            traceability.FirstOccurrenceSpan != null)
+                        {
+                            var start = Math.Max(0, traceability.FirstOccurrenceSpan[0] - 50);
+                            var end = Math.Min(semanticBlock.Content.Length, traceability.FirstOccurrenceSpan[1] + 50);
+                            traceability.ContextSnippet = semanticBlock.Content.Substring(start, end - start);
+                        }
+
+                        // Extract formula context if formulas were extracted from this block
+                        if (semanticBlock.ExtractedFormulas != null &&
+                            semanticBlock.ExtractedFormulas.Formulas.Count > 0)
+                        {
+                            traceability.FormulaContext = semanticBlock.ExtractedFormulas.Formulas
+                                .Select(f => $"{f.Placeholder}={f.FormulaCode}")
+                                .ToList();
+                        }
+
+                        break;
+                    }
+                }
+                break;
+            }
+        }
+
+        return traceability;
     }
 }

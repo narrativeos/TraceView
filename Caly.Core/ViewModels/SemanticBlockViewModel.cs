@@ -78,5 +78,10 @@ public partial class SemanticBlockViewModel : ObservableObject
     public System.Collections.Generic.List<Models.SemanticDepEdge> DepEdges => _result.DepEdges;
     public bool HasDepTree => _result.HasDepTree;
 
+    // Formula properties
+    public System.Collections.Generic.List<Models.FormulaReference> FormulaReferences => _result.FormulaReferences;
+    public bool HasFormulas => _result.FormulaReferences.Count > 0;
+    public Models.ExtractedFormulas? ExtractedFormulas => _result.ExtractedFormulas;
+
     #endregion
 }
