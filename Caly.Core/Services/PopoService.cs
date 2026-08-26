@@ -118,12 +118,29 @@ public sealed class PopoService : IDisposable
             throw new PopoServiceException($"ZIP file not found: {zipPath}");
 
         var zipBytes = File.ReadAllBytes(zipPath);
+        var zipFileName = Path.GetFileName(zipPath);
 
-        using var content = new MultipartFormDataContent();
-        var fileContent = new ByteArrayContent(zipBytes);
-        fileContent.Headers.ContentType = new MediaTypeHeaderValue("application/zip");
-        content.Add(fileContent, "file", Path.GetFileName(zipPath));
-        content.Add(new StringContent(model), "model");
+        // Manually build multipart body to ensure non-ASCII filenames are sent as raw UTF-8,
+        // avoiding .NET's RFC 2047 encoding which python-multipart cannot decode.
+        var boundary = "----CalyBoundary" + Guid.NewGuid().ToString("N");
+        using var bodyStream = new MemoryStream();
+        var utf8 = System.Text.Encoding.UTF8;
+
+        var fileHeader = $"--{boundary}\r\n" +
+                         $"Content-Disposition: form-data; name=\"file\"; filename=\"{zipFileName}\"\r\n" +
+                         $"Content-Type: application/zip\r\n\r\n";
+        bodyStream.Write(utf8.GetBytes(fileHeader));
+        bodyStream.Write(zipBytes, 0, zipBytes.Length);
+        bodyStream.Write(utf8.GetBytes("\r\n"));
+
+        var fieldBlock = $"--{boundary}\r\n" +
+                         $"Content-Disposition: form-data; name=\"model\"\r\n\r\n" +
+                         $"{model}\r\n";
+        bodyStream.Write(utf8.GetBytes(fieldBlock));
+        bodyStream.Write(utf8.GetBytes($"--{boundary}--\r\n"));
+
+        using var content = new ByteArrayContent(bodyStream.ToArray());
+        content.Headers.TryAddWithoutValidation("Content-Type", $"multipart/form-data; boundary={boundary}");
 
         using var response = await _httpClient.PostAsync($"{_baseUrl}/tasks", content, ct);
         response.EnsureSuccessStatusCode();

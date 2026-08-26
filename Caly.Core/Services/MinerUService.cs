@@ -19,6 +19,7 @@
 // SOFTWARE.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Net;
@@ -130,15 +131,16 @@ public sealed class MinerUService : IDisposable
     {
         var pdfBytes = File.ReadAllBytes(pdfPath);
 
-        using var content = new MultipartFormDataContent();
-        var fileContent = new ByteArrayContent(pdfBytes);
-        fileContent.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
-        content.Add(fileContent, "files", Path.GetFileName(pdfPath));
-        content.Add(new StringContent(backend), "backend");
-        content.Add(new StringContent("auto"), "parse_method");
-        content.Add(new StringContent("true"), "return_md");
-        content.Add(new StringContent("true"), "return_middle_json");
-        content.Add(new StringContent("true"), "response_format_zip");
+        using var content = BuildMultipartContent(
+            Path.GetFileName(pdfPath), pdfBytes,
+            new Dictionary<string, string>
+            {
+                ["backend"] = backend,
+                ["parse_method"] = "auto",
+                ["return_md"] = "true",
+                ["return_middle_json"] = "true",
+                ["response_format_zip"] = "true"
+            });
 
         using var response = await _httpClient.PostAsync($"{_baseUrl}/file_parse", content, ct);
         response.EnsureSuccessStatusCode();
@@ -148,6 +150,45 @@ public sealed class MinerUService : IDisposable
 
         // Also check for JSON metadata in headers or response
         return zipBytes;
+    }
+
+    /// <summary>
+    /// Builds a multipart/form-data request body with a file and form fields.
+    /// Manually constructs the body to ensure non-ASCII filenames are sent as raw UTF-8
+    /// in the Content-Disposition header, avoiding .NET's RFC 2047 encoding which
+    /// python-multipart (Starlette) cannot decode.
+    /// </summary>
+    private static HttpContent BuildMultipartContent(
+        string fileName, byte[] fileBytes, Dictionary<string, string> fields)
+    {
+        var boundary = "----CalyBoundary" + Guid.NewGuid().ToString("N");
+        using var bodyStream = new MemoryStream();
+        var utf8 = System.Text.Encoding.UTF8;
+
+        // File part
+        var fileHeader = $"--{boundary}\r\n" +
+                         $"Content-Disposition: form-data; name=\"files\"; filename=\"{fileName}\"\r\n" +
+                         $"Content-Type: application/octet-stream\r\n\r\n";
+        bodyStream.Write(utf8.GetBytes(fileHeader));
+        bodyStream.Write(fileBytes, 0, fileBytes.Length);
+        bodyStream.Write(utf8.GetBytes("\r\n"));
+
+        // Form fields
+        foreach (var (key, value) in fields)
+        {
+            var fieldBlock = $"--{boundary}\r\n" +
+                             $"Content-Disposition: form-data; name=\"{key}\"\r\n\r\n" +
+                             $"{value}\r\n";
+            bodyStream.Write(utf8.GetBytes(fieldBlock));
+        }
+
+        // Closing boundary
+        bodyStream.Write(utf8.GetBytes($"--{boundary}--\r\n"));
+
+        var content = new ByteArrayContent(bodyStream.ToArray());
+        content.Headers.TryAddWithoutValidation(
+            "Content-Type", $"multipart/form-data; boundary={boundary}");
+        return content;
     }
 
     #endregion
@@ -191,15 +232,16 @@ public sealed class MinerUService : IDisposable
     {
         var pdfBytes = File.ReadAllBytes(pdfPath);
 
-        using var content = new MultipartFormDataContent();
-        var fileContent = new ByteArrayContent(pdfBytes);
-        fileContent.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
-        content.Add(fileContent, "files", Path.GetFileName(pdfPath));
-        content.Add(new StringContent(backend), "backend");
-        content.Add(new StringContent("auto"), "parse_method");
-        content.Add(new StringContent("true"), "return_md");
-        content.Add(new StringContent("true"), "return_middle_json");
-        content.Add(new StringContent("true"), "response_format_zip");
+        using var content = BuildMultipartContent(
+            Path.GetFileName(pdfPath), pdfBytes,
+            new Dictionary<string, string>
+            {
+                ["backend"] = backend,
+                ["parse_method"] = "auto",
+                ["return_md"] = "true",
+                ["return_middle_json"] = "true",
+                ["response_format_zip"] = "true"
+            });
 
         using var response = await _httpClient.PostAsync($"{_baseUrl}/tasks", content, ct);
         response.EnsureSuccessStatusCode();
