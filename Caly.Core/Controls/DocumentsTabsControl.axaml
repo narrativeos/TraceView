@@ -913,22 +913,29 @@
                                     IsVisible="{Binding ShowSemanticColumn}">
                                 <DockPanel>
                                     <!-- Header -->
-                                    <StackPanel DockPanel.Dock="Top"
-                                                Orientation="Horizontal"
-                                                Spacing="4"
-                                                Margin="0,0,0,6">
-                                        <TextBlock Text="Semantic"
-                                                   FontWeight="Bold"
-                                                   FontSize="12"/>
-                                        <TextBlock Text="{Binding SemanticNodeCount, StringFormat='({0} nodes)'}"
-                                                   FontSize="11"
-                                                   Opacity="0.6"
-                                                   IsVisible="{Binding !IsSemanticProcessing}"/>
-                                        <TextBlock Text="{Binding SemanticEntityCount, StringFormat='({0} entities)'}"
-                                                   FontSize="10"
-                                                   Opacity="0.4"
-                                                   IsVisible="{Binding !IsSemanticProcessing}"/>
-                                    </StackPanel>
+                                    <Grid DockPanel.Dock="Top"
+                                          Margin="0,0,0,6">
+                                        <StackPanel Orientation="Horizontal"
+                                                    Spacing="4">
+                                            <TextBlock Text="Semantic"
+                                                       FontWeight="Bold"
+                                                       FontSize="12"/>
+                                            <TextBlock Text="{Binding SemanticNodeCount, StringFormat='({0} nodes)'}"
+                                                       FontSize="11"
+                                                       Opacity="0.6"
+                                                       IsVisible="{Binding !IsSemanticProcessing}"/>
+                                            <TextBlock Text="{Binding SemanticEntityCount, StringFormat='({0} entities)'}"
+                                                       FontSize="10"
+                                                       Opacity="0.4"
+                                                       IsVisible="{Binding !IsSemanticProcessing}"/>
+                                        </StackPanel>
+                                        <Button Content="公式"
+                                                HorizontalAlignment="Right"
+                                                Command="{Binding OpenFormulaPanelCommand}"
+                                                IsVisible="{Binding !IsSemanticProcessing}"
+                                                MinWidth="50"
+                                                FontSize="11"/>
+                                    </Grid>
 
                                     <!-- Progress State: shown during NLP processing -->
                                     <Border IsVisible="{Binding IsSemanticProcessing}"
@@ -1291,6 +1298,46 @@
                                                                                </ItemsControl.ItemTemplate>
                                                                            </ItemsControl>
                                                                        </StackPanel>
+
+                                                                       <!-- Formula references -->
+                                                                       <StackPanel Spacing="2"
+                                                                                   IsVisible="{Binding HasFormulas}">
+                                                                           <TextBlock Text="公式"
+                                                                                      FontSize="9"
+                                                                                      FontWeight="SemiBold"
+                                                                                      Foreground="#CE93D8"
+                                                                                      Opacity="0.8"
+                                                                                      Margin="0,0,0,2"/>
+                                                                           <ItemsControl ItemsSource="{Binding FormulaReferences}">
+                                                                               <ItemsControl.ItemsPanel>
+                                                                                   <ItemsPanelTemplate>
+                                                                                       <WrapPanel/>
+                                                                                   </ItemsPanelTemplate>
+                                                                               </ItemsControl.ItemsPanel>
+                                                                               <ItemsControl.ItemTemplate>
+                                                                                   <DataTemplate x:DataType="models:FormulaReference">
+                                                                                       <Border Padding="4,2"
+                                                                                               Margin="0,0,2,2"
+                                                                                               CornerRadius="2"
+                                                                                               Background="#9C27B018"
+                                                                                               BorderThickness="0.8"
+                                                                                               BorderBrush="#9C27B055">
+                                                                                           <TextBlock Text="{Binding FormulaId}"
+                                                                                                      FontSize="9"
+                                                                                                      FontWeight="Medium"
+                                                                                                      Foreground="#CE93D8">
+                                                                                               <ToolTip.Tip>
+                                                                                                   <TextBlock Text="{Binding Placeholder}"
+                                                                                                            TextWrapping="Wrap"
+                                                                                                            MaxWidth="300"/>
+                                                                                               </ToolTip.Tip>
+                                                                                           </TextBlock>
+                                                                                       </Border>
+                                                                                   </DataTemplate>
+                                                                               </ItemsControl.ItemTemplate>
+                                                                           </ItemsControl>
+                                                                       </StackPanel>
+
                                                                    </StackPanel>
 
                                                                     <!-- Expand/Collapse button for details (like Popo) -->
@@ -2391,13 +2438,108 @@
                                   </DockPanel>
                               </Border>
 
-                             <!-- Connection Lines overlay between all seven columns -->
                              <controls:ConnectionLinesControl 
                                  Grid.Column="0"
                                  Grid.ColumnSpan="7"
                                  Name="PART_ConnectionLinesControl"
                                  IsVisible="True"
                                  IsHitTestVisible="False"/>
+
+                             <!-- Formula Overlay (covers all columns) -->
+                             <Panel Grid.Column="0"
+                                    Grid.ColumnSpan="7"
+                                    IsVisible="{Binding ShowFormulaPanel}">
+                                 <Rectangle Fill="Gray"
+                                            Opacity="0.3"/>
+                                 <Border Background="White"
+                                         BorderBrush="Gray"
+                                         BorderThickness="1"
+                                         CornerRadius="4"
+                                         Padding="16"
+                                         HorizontalAlignment="Center"
+                                         VerticalAlignment="Center"
+                                         MaxWidth="700"
+                                         MaxHeight="600">
+                                     <DockPanel>
+                                         <!-- Header: title left, filter + close buttons right -->
+                                         <Grid DockPanel.Dock="Top"
+                                               Margin="0,0,0,12">
+                                             <StackPanel Orientation="Horizontal"
+                                                         Spacing="8">
+                                                 <TextBlock Text="公式索引"
+                                                            FontWeight="Bold"
+                                                            FontSize="16"
+                                                            Foreground="#333333"
+                                                            VerticalAlignment="Center"/>
+                                                 <TextBlock Text="{Binding FormulaStatusText}"
+                                                            FontSize="12"
+                                                            Opacity="0.5"
+                                                            VerticalAlignment="Center"/>
+                                             </StackPanel>
+                                             <StackPanel Orientation="Horizontal"
+                                                         HorizontalAlignment="Right"
+                                                         Spacing="8">
+                                                 <ToggleButton Content="📄 当前页"
+                                                               FontSize="11"
+                                                               Padding="8,4"
+                                                               IsChecked="{Binding FilterByVisiblePages}"
+                                                               ToolTip.Tip="仅显示当前可见页面上的公式"
+                                                               CornerRadius="4"/>
+                                                 <Button Content="✕"
+                                                         Command="{Binding CloseFormulaPanelCommand}"
+                                                         Padding="8,4"/>
+                                             </StackPanel>
+                                         </Grid>
+                                         <!-- Formula list (no expander, direct display) -->
+                                         <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                                       MaxHeight="500">
+                                             <ItemsControl ItemsSource="{Binding DisplayedFormulaBlockViewModels}">
+                                                 <ItemsControl.ItemTemplate>
+                                                     <DataTemplate x:DataType="vm:FormulaBlockViewModel">
+                                                         <Border Padding="10"
+                                                                 Margin="0,0,0,8"
+                                                                 BorderBrush="#E0E0E0"
+                                                                 BorderThickness="1"
+                                                                 CornerRadius="4"
+                                                                 Background="#FAFAFA">
+                                                             <StackPanel Spacing="6">
+                                                                 <StackPanel Orientation="Horizontal"
+                                                                             Spacing="6">
+                                                                     <Border Padding="4,2"
+                                                                             CornerRadius="2"
+                                                                             Background="#9C27B0">
+                                                                         <TextBlock Text="{Binding DisplayLabel}"
+                                                                                    FontSize="9"
+                                                                                    FontWeight="SemiBold"
+                                                                                    Foreground="White"/>
+                                                                     </Border>
+                                                                     <TextBlock Text="{Binding FormulaCode}"
+                                                                                FontSize="10"
+                                                                                Opacity="0.6"/>
+                                                                     <TextBlock Text="{Binding Page, StringFormat='(P{0})'}"
+                                                                                FontSize="9"
+                                                                                Opacity="0.4"/>
+                                                                 </StackPanel>
+                                                                  <TextBlock Text="{Binding RenderedContent}"
+                                                                  FontSize="14"
+                                                                  Foreground="#1A1A1A"
+                                                                  FontWeight="Medium"
+                                                                  TextWrapping="Wrap"
+                                                                  Margin="0,2,0,0"/>
+                                                                 <TextBlock Text="{Binding RawContent}"
+                                                                            FontFamily="Consolas, monospace"
+                                                                            FontSize="11"
+                                                                            Foreground="#888888"
+                                                                            TextWrapping="Wrap"/>
+                                                             </StackPanel>
+                                                         </Border>
+                                                     </DataTemplate>
+                                                 </ItemsControl.ItemTemplate>
+                                             </ItemsControl>
+                                         </ScrollViewer>
+                                     </DockPanel>
+                                 </Border>
+                             </Panel>
 
                              <!-- TOC Overlay (covers all columns) -->
                              <Panel Grid.Column="0"

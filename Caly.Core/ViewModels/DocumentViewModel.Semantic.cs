@@ -60,6 +60,86 @@ public sealed partial class DocumentViewModel
     [ObservableProperty]
     private bool _showTermColumn = false;
 
+    /// <summary>Whether the Formula Index overlay panel is visible.</summary>
+    [ObservableProperty]
+    private bool _showFormulaPanel = false;
+
+    /// <summary>
+    /// Formula index loaded from semantic/formula_index.json.
+    /// Contains all formulas extracted during semantic analysis.
+    /// </summary>
+    [ObservableProperty]
+    private FormulaIndex? _formulaIndex;
+
+    /// <summary>
+    /// Formula block view models for the formula index view.
+    /// </summary>
+    [ObservableProperty]
+    private System.Collections.ObjectModel.ObservableCollection<FormulaBlockViewModel> _formulaBlockViewModels = new();
+
+    /// <summary>Whether formula extraction is currently running.</summary>
+    [ObservableProperty]
+    private bool _isFormulaExtracting;
+
+    partial void OnIsFormulaExtractingChanged(bool value)
+    {
+        OnPropertyChanged(nameof(FormulaStatusText));
+    }
+
+    /// <summary>
+    /// Whether to filter formulas by the current visible PDF page range.
+    /// When enabled, only formulas on visible pages are shown in the panel.
+    /// </summary>
+    [ObservableProperty]
+    private bool _filterByVisiblePages;
+
+    partial void OnFilterByVisiblePagesChanged(bool value)
+    {
+        UpdateVisibleFormulaBlockViewModels();
+        OnPropertyChanged(nameof(FormulaStatusText));
+    }
+
+    /// <summary>
+    /// The formula block view models displayed in the panel.
+    /// When FilterByVisiblePages is true, only formulas on visible pages are included.
+    /// </summary>
+    [ObservableProperty]
+    private System.Collections.ObjectModel.ObservableCollection<FormulaBlockViewModel> _displayedFormulaBlockViewModels = new();
+
+    /// <summary>
+    /// Status text for the formula panel.
+    /// </summary>
+    public string FormulaStatusText
+    {
+        get
+        {
+            if (IsFormulaExtracting)
+                return "正在提取公式...";
+            if (FormulaIndex is not null)
+            {
+                if (FilterByVisiblePages && VisiblePages.HasValue)
+                {
+                    var range = VisiblePages.Value;
+                    int start = range.Start.Value;
+                    int end = range.End.Value - 1;
+                    int count = DisplayedFormulaBlockViewModels.Count;
+                    return $"当前页 {start}-{end} · {count} 个公式";
+                }
+                return $"共 {FormulaIndex.Statistics.TotalFormulas} 个公式";
+            }
+            return "尚未提取公式";
+        }
+    }
+
+    /// <summary>
+    /// Toggles the "filter by visible pages" mode for the formula panel.
+    /// </summary>
+    [RelayCommand]
+    private void ToggleFormulaPageFilter()
+    {
+        FilterByVisiblePages = !FilterByVisiblePages;
+    }
+
     /// <summary>Whether term discovery processing is running.</summary>
     [ObservableProperty]
     private bool _isTermProcessing;
@@ -629,6 +709,198 @@ public sealed partial class DocumentViewModel
     }
 
     /// <summary>
+    /// Shows the formula index overlay panel.
+    /// Extracts formulas from MinerU blocks if not already available.
+    /// </summary>
+    [RelayCommand]
+    private async Task OpenFormulaPanel()
+    {
+        System.Diagnostics.Debug.WriteLine($"[Semantic] OpenFormulaPanel called");
+        System.Diagnostics.Debug.WriteLine($"[Semantic] FormulaIndex == null: {FormulaIndex == null}");
+        System.Diagnostics.Debug.WriteLine($"[Semantic] StructureDocument == null: {StructureDocument == null}");
+        System.Diagnostics.Debug.WriteLine($"[Semantic] StructureDocument?.FormulaEntries?.Count: {StructureDocument?.FormulaEntries?.Count ?? -1}");
+        System.Diagnostics.Debug.WriteLine($"[Semantic] StructureDocument?.PagesBlocks?.Count: {StructureDocument?.PagesBlocks?.Count ?? -1}");
+        
+        // Try to load from disk first
+        if (FormulaIndex == null)
+            TryLoadFormulaIndex();
+
+        System.Diagnostics.Debug.WriteLine($"[Semantic] After TryLoadFormulaIndex, FormulaIndex == null: {FormulaIndex == null}");
+        
+        // If still not available, try to use FormulaEntries from StructureDocument
+        // (these are extracted during Popo loading via PopoJsonService)
+        if (FormulaIndex == null && StructureDocument?.FormulaEntries?.Count > 0)
+        {
+            var entries = StructureDocument.FormulaEntries;
+            var displayCount = entries.Count(f => f.FormulaType == "display");
+            var inlineCount = entries.Count(f => f.FormulaType == "inline");
+            var pagesWithFormulas = entries.Select(f => f.Page).Distinct().Count();
+
+            FormulaIndex = new FormulaIndex
+            {
+                Version = "1.0",
+                Timestamp = DateTime.UtcNow.ToString("O"),
+                SourceDocument = GetSemanticOutputDir(),
+                Formulas = entries,
+                Statistics = new FormulaIndexStatistics
+                {
+                    TotalFormulas = entries.Count,
+                    DisplayFormulas = displayCount,
+                    InlineFormulas = inlineCount,
+                    PagesWithFormulas = pagesWithFormulas,
+                    AveragePerPage = pagesWithFormulas > 0
+                        ? (double)entries.Count / pagesWithFormulas
+                        : 0
+                }
+            };
+
+            UpdateFormulaBlockViewModels();
+            System.Diagnostics.Debug.WriteLine($"[Semantic] Used {FormulaIndex.Formulas.Count} formulas from StructureDocument.FormulaEntries");
+        }
+
+        // If still not available, try to extract directly from middle.json (bypasses lazy loading)
+        if (FormulaIndex == null)
+        {
+            var middleJsonPath = GetMiddleJsonPath();
+            if (middleJsonPath is not null)
+            {
+                System.Diagnostics.Debug.WriteLine($"[Semantic] Found middle.json: {middleJsonPath}");
+                IsFormulaExtracting = true;
+                try
+                {
+                    var semanticDir = GetSemanticOutputDir();
+                    FormulaIndex = await SemanticAnalysisService.ExtractFormulasFromMiddleJsonAsync(
+                        middleJsonPath,
+                        semanticDir);
+                    
+                    if (FormulaIndex is not null)
+                    {
+                        UpdateFormulaBlockViewModels();
+                        System.Diagnostics.Debug.WriteLine($"[Semantic] Extracted {FormulaIndex.Formulas.Count} formulas from middle.json");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[Semantic] Formula extraction from middle.json failed: {ex.Message}");
+                }
+                finally
+                {
+                    IsFormulaExtracting = false;
+                }
+            }
+        }
+
+        // If still not available, extract from MinerU/Popo blocks in memory
+        if (FormulaIndex == null && HasStructureDocument)
+        {
+            if (StructureDocument?.PagesBlocks is null || StructureDocument.PagesBlocks.Count == 0)
+            {
+                System.Diagnostics.Debug.WriteLine("[Semantic] No PagesBlocks available for formula extraction");
+                ShowFormulaPanel = true;
+                return;
+            }
+
+            IsFormulaExtracting = true;
+            try
+            {
+                var semanticDir = GetSemanticOutputDir();
+                FormulaIndex = await SemanticAnalysisService.ExtractFormulasFromBlocksAsync(
+                    StructureDocument,
+                    StructureDocument.PagesBlocks,
+                    semanticDir);
+
+                if (FormulaIndex is not null)
+                {
+                    UpdateFormulaBlockViewModels();
+                    System.Diagnostics.Debug.WriteLine($"[Semantic] Extracted {FormulaIndex.Formulas.Count} formulas");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[Semantic] Formula extraction failed: {ex.Message}");
+            }
+            finally
+            {
+                IsFormulaExtracting = false;
+            }
+        }
+
+        ShowFormulaPanel = true;
+    }
+
+
+    /// <summary>
+    /// Closes the formula index overlay panel.
+    /// </summary>
+    [RelayCommand]
+    private void CloseFormulaPanel()
+    {
+        ShowFormulaPanel = false;
+    }
+
+    /// <summary>
+    /// Tries to load the formula index from the semantic directory.
+    /// </summary>
+    private void TryLoadFormulaIndex()
+    {
+        if (FormulaIndex is not null) return;
+
+        var semanticDir = GetSemanticOutputDir();
+        FormulaIndex = SemanticAnalysisService.LoadFormulaIndex(semanticDir);
+
+        if (FormulaIndex is not null)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Semantic] Loaded FormulaIndex with {FormulaIndex.Formulas.Count} formulas");
+            UpdateFormulaBlockViewModels();
+        }
+    }
+
+    /// <summary>
+    /// Updates the formula block view models from the formula index.
+    /// </summary>
+    private void UpdateFormulaBlockViewModels()
+    {
+        FormulaBlockViewModels.Clear();
+        if (FormulaIndex?.Formulas is null) return;
+
+        foreach (var formula in FormulaIndex.Formulas)
+        {
+            FormulaBlockViewModels.Add(new FormulaBlockViewModel(formula));
+        }
+
+        UpdateVisibleFormulaBlockViewModels();
+    }
+
+    /// <summary>
+    /// Updates the displayed formula collection based on FilterByVisiblePages and VisiblePages.
+    /// When filter is off, shows all formulas. When on, shows only formulas on visible pages.
+    /// </summary>
+    private void UpdateVisibleFormulaBlockViewModels()
+    {
+        DisplayedFormulaBlockViewModels.Clear();
+
+        if (!FilterByVisiblePages || !VisiblePages.HasValue)
+        {
+            // Show all formulas
+            foreach (var vm in FormulaBlockViewModels)
+                DisplayedFormulaBlockViewModels.Add(vm);
+        }
+        else
+        {
+            var range = VisiblePages.Value;
+            int start = range.Start.Value;
+            int end = range.End.Value; // exclusive
+            foreach (var vm in FormulaBlockViewModels)
+            {
+                if (vm.Page >= start && vm.Page < end)
+                    DisplayedFormulaBlockViewModels.Add(vm);
+            }
+        }
+
+        OnPropertyChanged(nameof(FormulaStatusText));
+    }
+
+    /// <summary>
     /// Build term discovery results from already-enriched data.
     /// Does NOT re-run the enrichment pipeline — only builds term_result.json
     /// from the existing enriched_result.json on disk.
@@ -806,6 +1078,7 @@ public sealed partial class DocumentViewModel
             if (cachedResult is not null)
             {
                 SemanticResults = cachedResult;
+                UpdateFormulaIndexFromResults();
                 SemanticStatus = SemanticProcessStatus.Completed;
                 SemanticProgress = 100;
                 SemanticStatusText = $"Loaded from cache ({SemanticNodeCount} nodes)";
@@ -867,6 +1140,7 @@ public sealed partial class DocumentViewModel
                 _semanticCts.Token);
 
             SemanticResults = result;
+            UpdateFormulaIndexFromResults();
             SemanticStatus = SemanticProcessStatus.Completed;
             SemanticProgress = 100;
             SemanticStatusText = $"Analysis completed ({SemanticNodeCount} nodes, {SemanticEntityCount} entities, {SemanticRelationCount} relations)";
@@ -1145,6 +1419,7 @@ public sealed partial class DocumentViewModel
             if (result is not null)
             {
                 SemanticResults = result;
+                UpdateFormulaIndexFromResults();
                 SemanticStatus = SemanticProcessStatus.Completed;
                 SemanticProgress = 100;
                 SemanticStatusText = $"Loaded from cache ({SemanticNodeCount} nodes, {SemanticEntityCount} entities)";
@@ -1301,8 +1576,39 @@ public sealed partial class DocumentViewModel
         }
         
         logLines.Add("Cache loaded successfully");
+
+        // ── Restore FormulaIndex and ExtractedFormulas ──
+        var semanticDir = Path.GetDirectoryName(filePath);
+        if (semanticDir is not null)
+        {
+            var formulaIndex = SemanticAnalysisService.LoadFormulaIndex(semanticDir);
+            if (formulaIndex is not null)
+            {
+                result.FormulaIndex = formulaIndex;
+                logLines.Add($"Loaded FormulaIndex with {formulaIndex.Formulas.Count} formulas");
+
+                // Restore ExtractedFormulas for each block using FormulaReferences
+                foreach (var block in result.Blocks)
+                {
+                    SemanticAnalysisService.RestoreExtractedFormulas(block, formulaIndex);
+                }
+            }
+        }
+
         File.WriteAllLines(diagFile, logLines);
         return result;
+    }
+
+    /// <summary>
+    /// Called after semantic results are loaded to update the formula index.
+    /// </summary>
+    private void UpdateFormulaIndexFromResults()
+    {
+        if (SemanticResults?.FormulaIndex is not null)
+        {
+            FormulaIndex = SemanticResults.FormulaIndex;
+            UpdateFormulaBlockViewModels();
+        }
     }
 
     /// <summary>

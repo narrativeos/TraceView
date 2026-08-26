@@ -302,7 +302,11 @@ public sealed partial class DocumentViewModel
 
         _visiblePagesUpdateTimer = new Timer(_ =>
         {
-            Dispatcher.UIThread.InvokeAsync(() => UpdateVisibleMinerUBlocks());
+            Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                UpdateVisibleMinerUBlocks();
+                UpdateVisibleFormulaBlockViewModels();
+            });
         }, null, 50, Timeout.Infinite);
     }
 
@@ -894,6 +898,42 @@ public sealed partial class DocumentViewModel
                 MinerUStatusText = status.ToDisplayName();
             }
         });
+    }
+
+    #endregion
+
+    #region Middle JSON Path
+
+    /// <summary>
+    /// Locates the MinerU middle.json file path for direct formula extraction.
+    /// Searches in priority order:
+    /// 1. Artifacts directory (_minerUArtifactsDirectory) for *_middle.json
+    /// 2. ProjectPath/mineru/ directory for *_middle.json
+    /// </summary>
+    /// <returns>Full path to the middle.json file, or null if not found.</returns>
+    internal string? GetMiddleJsonPath()
+    {
+        // Try artifacts directory first
+        if (!string.IsNullOrEmpty(_minerUArtifactsDirectory) && Directory.Exists(_minerUArtifactsDirectory))
+        {
+            var middleJsonFiles = Directory.GetFiles(_minerUArtifactsDirectory, "*_middle.json");
+            if (middleJsonFiles.Length > 0)
+                return middleJsonFiles[0];
+        }
+
+        // Try project mineru directory
+        if (!string.IsNullOrEmpty(ProjectPath) && Directory.Exists(ProjectPath))
+        {
+            var mineruDir = Path.Combine(ProjectPath, "mineru");
+            if (Directory.Exists(mineruDir))
+            {
+                var middleJsonFiles = Directory.GetFiles(mineruDir, "*_middle.json", SearchOption.AllDirectories);
+                if (middleJsonFiles.Length > 0)
+                    return middleJsonFiles[0];
+            }
+        }
+
+        return null;
     }
 
     #endregion
