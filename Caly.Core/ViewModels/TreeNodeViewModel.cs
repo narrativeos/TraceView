@@ -19,10 +19,16 @@
 // SOFTWARE.
 
 using System;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Data;
 using Avalonia.Collections;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using Avalonia.Input.Platform;
+using Avalonia.Threading;
 using Caly.Core.Models;
+using Caly.Core.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System.Collections.Concurrent;
@@ -30,6 +36,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace Caly.Core.ViewModels;
 
@@ -378,14 +385,301 @@ public partial class TreeNodeViewModel : ObservableObject
     public bool IsImageFootnote => Type == "image_footnote";
 
     /// <summary>
-    /// Whether to show the content preview (collapsed, non-image nodes + image_footnote).
+    /// Whether this node carries structured table data (table_data or table_key_value).
+    /// Such nodes are rendered with a DataGrid instead of plain text content.
     /// </summary>
-    public bool ShowContentPreview => !IsContentExpanded && !IsPureImage;
+    public bool IsStructuredTable => Type is "table_data" or "table_key_value";
+
+    /// <summary>
+    /// Whether this node is a legacy table whose HTML content was parsed into a grid.
+    /// </summary>
+    public bool IsHtmlTable => _node.GridRows is not null;
+
+    /// <summary>
+    /// Whether this node actually carries renderable table data:
+    /// table_data with headers + rows, table_key_value with pairs,
+    /// or a legacy table with a parsed HTML grid.
+    /// Older Popo files may carry table_data / table_key_value nodes whose
+    /// content is plain markdown without structured fields — those fall back
+    /// to plain text rendering instead of an empty DataGrid.
+    /// </summary>
+    public bool HasStructuredData =>
+        (Type == "table_data" && _node.Headers is { Count: > 0 } && _node.Rows is not null) ||
+        (Type == "table_key_value" && _node.Pairs is { Count: > 0 }) ||
+        IsHtmlTable;
+
+    /// <summary>
+    /// Whether this node should be rendered with a DataGrid
+    /// (structured table sub-nodes or legacy HTML tables).
+    /// Nodes without structured data fall back to plain text content.
+    /// A parent table node that has structured children (table_data / table_key_value)
+    /// does NOT render its own HTML-parsed grid, to avoid showing the same table twice
+    /// (the children already render the structured DataGrids).
+    /// </summary>
+    public bool ShowTableGrid => HasStructuredData && !HasStructuredTableChildren;
+
+    /// <summary>
+    /// Whether this table node has structured children (table_data / table_key_value).
+    /// The raw HTML content preview is redundant in that case.
+    /// </summary>
+    public bool HasStructuredTableChildren =>
+        Type == "table" && _node.Children.Any(c => c.Type is "table_data" or "table_key_value");
+
+    /// <summary>
+    /// DataGrid headers visibility: column headers for structured tables,
+    /// none for legacy HTML tables (faithful to the source PDF layout).
+    /// </summary>
+    public DataGridHeadersVisibility TableHeadersVisibility =>
+        IsHtmlTable ? DataGridHeadersVisibility.None : DataGridHeadersVisibility.Column;
+
+    /// <summary>
+    /// Whether the copy-markdown button should be shown for this node.
+    /// </summary>
+    public bool CanCopyTable => ShowTableGrid;
+
+    /// <summary>
+    /// Column headers for table_data nodes (null for other node types).
+    /// </summary>
+    public List<TableHeader>? Headers => _node.Headers;
+
+    /// <summary>
+    /// Structured data rows for table_data nodes (null for other node types).
+    /// </summary>
+    public List<TableDataRow>? Rows => _node.Rows;
+
+    /// <summary>
+    /// Key-value pairs for table_key_value nodes (null for other node types).
+    /// </summary>
+    public List<TableKeyValuePair>? Pairs => _node.Pairs;
+
+    private ObservableCollection<DataGridColumn>? _tableColumns;
+
+    /// <summary>
+    /// Cell template for numeric columns: right-aligned text so values line up
+    /// and numeric columns are visually distinguishable from text columns.
+    /// (Avalonia 12's DataGrid has no per-column ElementStyle, so numeric
+    /// columns use a template column with a right-aligned TextBlock.)
+    /// </summary>
+    internal static Avalonia.Controls.Templates.IDataTemplate BuildNumericCellTemplate(int index) =>
+        new Avalonia.Controls.Templates.FuncDataTemplate<object>((dataItem, _) =>
+        {
+            var textBlock = new TextBlock
+            {
+                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right
+            };
+            textBlock.Bind(TextBlock.TextProperty, new Binding($"[{index}]"));
+            return textBlock;
+        });
+
+    /// <summary>
+    /// Whether the table_data column at the given index holds numeric values.
+    /// A column is numeric when at least one non-empty cell carries a typed
+    /// numeric value (from the newer Popo format) and no non-numeric value
+    /// outnumbers the numeric ones.
+    /// </summary>
+    private bool IsNumericColumn(int index)
+    {
+        if (_node.Headers is not { } headers || index >= headers.Count)
+            return false;
+        if (_node.Rows is not { Count: > 0 } rows)
+            return false;
+
+        var name = headers[index].Name;
+        int numeric = 0, nonNumeric = 0;
+        foreach (var row in rows)
+        {
+            if (row.Cells.TryGetValue(name, out var cell) && !string.IsNullOrWhiteSpace(cell.Raw))
+            {
+                // IsNumeric is captured at parse time — never touch cell.Value here,
+                // whose backing JsonDocument may have been disposed by then.
+                if (cell.IsNumeric)
+                    numeric++;
+                else
+                    nonNumeric++;
+            }
+        }
+        return numeric > 0 && numeric >= nonNumeric;
+    }
+
+    /// <summary>
+    /// DataGrid columns for structured table nodes.
+    /// table_data: one column per header, bound to the row indexer.
+    /// table_key_value: fixed two columns (key / value).
+    /// </summary>
+    public ObservableCollection<DataGridColumn>? TableColumns
+    {
+        get
+        {
+            if (_tableColumns is not null)
+                return _tableColumns;
+
+            var columns = new ObservableCollection<DataGridColumn>();
+            if (Type == "table_data" && _node.Headers is { Count: > 0 } headers)
+            {
+                for (int i = 0; i < headers.Count; i++)
+                {
+                    // DisplayName flattens multi-tier headers: "group·name (unit)"
+                    if (IsNumericColumn(i))
+                    {
+                        // Numeric columns use a right-aligned template so values
+                        // line up and are visually distinguishable from text.
+                        columns.Add(new DataGridTemplateColumn
+                        {
+                            Header = headers[i].DisplayName,
+                            CellTemplate = BuildNumericCellTemplate(i)
+                        });
+                    }
+                    else
+                    {
+                        columns.Add(new DataGridTextColumn
+                        {
+                            Header = headers[i].DisplayName,
+                            Binding = new Binding($"[{i}]")
+                        });
+                    }
+                }
+            }
+            else if (Type == "table_key_value")
+            {
+                columns.Add(new DataGridTextColumn { Header = "键", Binding = new Binding("[0]") });
+                columns.Add(new DataGridTextColumn { Header = "值", Binding = new Binding("[1]") });
+            }
+            else if (IsHtmlTable && _node.GridRows is { } gridRows)
+            {
+                var colCount = gridRows.Max(row => row.Count);
+                for (int i = 0; i < colCount; i++)
+                {
+                    columns.Add(new DataGridTextColumn
+                    {
+                        Header = string.Empty,
+                        Binding = new Binding($"[{i}]")
+                    });
+                }
+            }
+
+            _tableColumns = columns;
+            return columns;
+        }
+    }
+
+    /// <summary>
+    /// Applies the table columns to a DataGrid. In Avalonia 12, DataGrid.Columns
+    /// is a read-only collection, so columns must be added in code.
+    /// </summary>
+    public static void ApplyTableColumns(DataGrid dataGrid)
+    {
+        if (dataGrid.DataContext is TreeNodeViewModel vm && vm.TableColumns is { } columns)
+        {
+            dataGrid.Columns.Clear();
+            foreach (var column in columns)
+                dataGrid.Columns.Add(column);
+        }
+    }
+
+    /// <summary>
+    /// Copies the node's table Markdown to the system clipboard.
+    /// Returns true if the copy succeeded.
+    /// </summary>
+    public static async Task<bool> CopyTableMarkdownAsync(Control control)
+    {
+        if (control.DataContext is not TreeNodeViewModel vm)
+            return false;
+
+        var markdown = PopoJsonService.GenerateTableMarkdown(vm.GetSourceNode());
+        if (string.IsNullOrEmpty(markdown))
+            return false;
+
+        var clipboard = TopLevel.GetTopLevel(control)?.Clipboard;
+        if (clipboard is null)
+            return false;
+
+        await clipboard.SetTextAsync(markdown);
+        return true;
+    }
+
+    /// <summary>
+    /// Shows transient "copied" feedback on a copy button (icon swap for ~1.2s).
+    /// </summary>
+    public static void ShowCopyFeedback(Control control)
+    {
+        if (control is not Button button)
+            return;
+
+        var original = button.Content;
+        button.Content = "✅";
+
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.2) };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            button.Content = original;
+        };
+        timer.Start();
+    }
+
+    private List<DynamicTableRow>? _tableRows;
+
+    /// <summary>
+    /// DataGrid rows for structured table nodes.
+    /// table_data: one row per TableDataRow, values ordered by Headers.
+    /// table_key_value: one row per pair (key, "raw unit").
+    /// </summary>
+    public List<DynamicTableRow>? TableRows
+    {
+        get
+        {
+            if (_tableRows is not null)
+                return _tableRows;
+
+            var rows = new List<DynamicTableRow>();
+            if (Type == "table_data" && _node.Headers is { Count: > 0 } headers && _node.Rows is not null)
+            {
+                foreach (var row in _node.Rows)
+                {
+                    var values = new List<string>(headers.Count);
+                    foreach (var header in headers)
+                    {
+                        values.Add(row.Cells.TryGetValue(header.Name, out var cell) ? cell.Raw : string.Empty);
+                    }
+                    rows.Add(new DynamicTableRow(values));
+                }
+            }
+            else if (Type == "table_key_value" && _node.Pairs is not null)
+            {
+                foreach (var pair in _node.Pairs)
+                {
+                    var display = string.IsNullOrEmpty(pair.Value.Unit)
+                        ? pair.Value.Raw
+                        : $"{pair.Value.Raw} {pair.Value.Unit}";
+                    rows.Add(new DynamicTableRow(new List<string> { pair.Key, display }));
+                }
+            }
+            else if (IsHtmlTable && _node.GridRows is not null)
+            {
+                foreach (var row in _node.GridRows)
+                {
+                    rows.Add(new DynamicTableRow(row));
+                }
+            }
+
+            _tableRows = rows;
+            return rows;
+        }
+    }
+
+    /// <summary>
+    /// Whether to show the content preview (collapsed, non-image nodes + image_footnote).
+    /// Table nodes show a DataGrid instead of text content; parent table nodes with
+    /// structured children hide the redundant raw HTML preview.
+    /// </summary>
+    public bool ShowContentPreview => !IsContentExpanded && !IsPureImage && !ShowTableGrid && !HasStructuredTableChildren;
 
     /// <summary>
     /// Whether to show the full content (expanded, non-image nodes + image_footnote).
+    /// Table nodes show a DataGrid instead of text content; parent table nodes with
+    /// structured children hide the redundant raw HTML preview.
     /// </summary>
-    public bool ShowFullContent => IsContentExpanded && !IsPureImage;
+    public bool ShowFullContent => IsContentExpanded && !IsPureImage && !ShowTableGrid && !HasStructuredTableChildren;
 
     /// <summary>
     /// Whether to show the metadata/caption (pure image nodes with non-empty metadata).
@@ -463,6 +757,8 @@ public partial class TreeNodeViewModel : ObservableObject
                 "image" => "\uD83D\uDD92",      // 🖼️
                 "image_footnote" => "\uD83D\uDD92", // 🖼️
                 "table" => "\uD83D\uDCCA",      // 📊
+                "table_data" => "\uD83D\uDCCA", // 📊
+                "table_key_value" => "\uD83D\uDD11", // 🔑
                 "title" => "\uD83D\uDCCC",      // 📌
                 "root" => "\uD83C\uDF33",       // 🌳
                 _ => "\uD83D\uDCC1",            // 📁
@@ -484,6 +780,8 @@ public partial class TreeNodeViewModel : ObservableObject
                 "image" => "#2196F3",     // Blue
                 "image_footnote" => "#2196F3", // Blue
                 "table" => "#FF9800",     // Orange
+                "table_data" => "#FF9800", // Orange
+                "table_key_value" => "#FF9800", // Orange
                 "title" => "#9C27B0",     // Purple
                 "root" => "#795548",      // Brown
                 _ => "#607D8B",           // Blue Gray
@@ -539,15 +837,62 @@ public partial class TreeNodeViewModel : ObservableObject
 
     /// <summary>
     /// Clean content for display (without <|txt_split|> markers).
+    /// For structured table nodes, renders the structured data as plain text
+    /// (fallback for contexts without a DataGrid, e.g., the block list).
     /// </summary>
     public string DisplayContent
     {
         get
         {
+            if (IsStructuredTable)
+            {
+                var structured = BuildStructuredTableText();
+                if (structured.Length > 0)
+                    return structured;
+                // No structured data (older Popo format): fall through to the
+                // raw content (e.g., a markdown table) so the node is not empty.
+            }
+
             if (string.IsNullOrEmpty(Content))
                 return string.Empty;
             return Content.Replace("<|txt_split|>", "\n");
         }
+    }
+
+    /// <summary>
+    /// Renders structured table data (table_data / table_key_value) as plain text.
+    /// </summary>
+    private string BuildStructuredTableText()
+    {
+        var sb = new System.Text.StringBuilder();
+
+        if (Type == "table_data" && _node.Headers is { Count: > 0 } headers && _node.Rows is not null)
+        {
+            sb.AppendLine(string.Join(" | ", headers.Select(h => h.Name)));
+            foreach (var row in _node.Rows)
+            {
+                var cells = new System.Text.StringBuilder();
+                for (int i = 0; i < headers.Count; i++)
+                {
+                    if (i > 0)
+                        cells.Append(" | ");
+                    cells.Append(row.Cells.TryGetValue(headers[i].Name, out var cell) ? cell.Raw : string.Empty);
+                }
+                sb.AppendLine(cells.ToString());
+            }
+        }
+        else if (Type == "table_key_value" && _node.Pairs is not null)
+        {
+            foreach (var pair in _node.Pairs)
+            {
+                var display = string.IsNullOrEmpty(pair.Value.Unit)
+                    ? pair.Value.Raw
+                    : $"{pair.Value.Raw} {pair.Value.Unit}";
+                sb.AppendLine($"{pair.Key}: {display}");
+            }
+        }
+
+        return sb.ToString().TrimEnd();
     }
 
     /// <summary>
@@ -561,6 +906,13 @@ public partial class TreeNodeViewModel : ObservableObject
             return clean.Length > 120;
         }
     }
+
+    /// <summary>
+    /// Whether the expand/collapse button should be shown.
+    /// Table nodes render a DataGrid (no text to expand); parent table nodes with
+    /// structured children hide the redundant raw HTML preview entirely.
+    /// </summary>
+    public bool CanToggleContentExpand => IsContentLong && !ShowTableGrid && !HasStructuredTableChildren;
 
     /// <summary>
     /// Toggle content expand/collapse.
@@ -697,4 +1049,60 @@ public partial class TreeNodeViewModel : ObservableObject
     public int TokenCount => _semanticResult?.Tokens.Count ?? 0;
 
     #endregion
+}
+
+/// <summary>
+/// A dynamic row for DataGrid display of structured Popo table data.
+/// Implements <see cref="System.Collections.IList"/> so DataGrid columns can bind
+/// to positional values via indexer bindings (e.g., "{Binding [0]}").
+/// </summary>
+public sealed class DynamicTableRow : System.Collections.IList
+{
+    private readonly List<object?> _values;
+
+    public DynamicTableRow(List<string> values)
+    {
+        _values = values.ConvertAll(v => (object?)v);
+    }
+
+    public object? this[int index]
+    {
+        get => _values[index];
+        set => _values[index] = value;
+    }
+
+    public int Count => _values.Count;
+
+    public bool IsReadOnly => false;
+    public bool IsFixedSize => false;
+    public bool IsSynchronized => false;
+    public object SyncRoot => this;
+
+    public int Add(object? value)
+    {
+        // Note: List<T>.Add returns void in .NET 10 (int in .NET 9),
+        // so capture the index before adding to stay compatible with both.
+        int index = _values.Count;
+        _values.Add(value);
+        return index;
+    }
+
+    public void Clear() => _values.Clear();
+
+    public bool Contains(object? value) => _values.Contains(value);
+
+    public void CopyTo(Array array, int index)
+    {
+        ((System.Collections.ICollection)_values).CopyTo(array, index);
+    }
+
+    public System.Collections.IEnumerator GetEnumerator() => _values.GetEnumerator();
+
+    public int IndexOf(object? value) => _values.IndexOf(value);
+
+    public void Insert(int index, object? value) => _values.Insert(index, value);
+
+    public void Remove(object? value) => _values.Remove(value);
+
+    public void RemoveAt(int index) => _values.RemoveAt(index);
 }

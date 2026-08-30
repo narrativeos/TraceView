@@ -66,6 +66,18 @@
                                 <TextBlock Text="{Binding PageRange}"
                                            FontSize="10"
                                            Foreground="#2196F3"/>
+
+                                <!-- Copy table markdown button -->
+                                <Button Content="📋"
+                                        FontSize="10"
+                                        Padding="2,0"
+                                        Margin="4,0,0,0"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        IsVisible="{Binding CanCopyTable}"
+                                        Click="OnCopyTableMarkdownClick">
+                                    <ToolTip.Tip>复制 Markdown</ToolTip.Tip>
+                                </Button>
                             </StackPanel>
 
                             <!-- Title (if present) -->
@@ -96,6 +108,18 @@
                                        HorizontalAlignment="Stretch"
                                        TextAlignment="Left"
                                        IsVisible="{Binding ShowFullContent}"/>
+
+                            <!-- Structured table (table_data / table_key_value / legacy HTML table) -->
+                            <DataGrid ItemsSource="{Binding TableRows}"
+                                      AutoGenerateColumns="False"
+                                      HeadersVisibility="{Binding TableHeadersVisibility}"
+                                      GridLinesVisibility="Horizontal"
+                                      FontSize="10"
+                                      MaxHeight="200"
+                                      HorizontalAlignment="Stretch"
+                                      IsVisible="{Binding ShowTableGrid}"
+                                      Loaded="OnTableDataGridLoaded"
+                                      DataContextChanged="OnTableDataGridDataContextChanged"/>
 
                             <!-- Image caption/metadata (image nodes) -->
                             <TextBlock Text="{Binding DisplayMetadata}"

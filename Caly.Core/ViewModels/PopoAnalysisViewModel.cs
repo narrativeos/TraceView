@@ -321,8 +321,42 @@ public partial class AnalysisViewModel : ViewModelBase
         }
         else if (type == "table")
         {
-            sb.AppendLine($"### {title}");
-            sb.AppendLine(content);
+            // If the table has structured children (table_data / table_key_value),
+            // let the children render the structured markdown to avoid duplicating
+            // the raw HTML content.
+            var hasStructuredChildren = node.Children.Any(c => c.Rows is not null || c.Pairs is not null);
+            if (!hasStructuredChildren)
+            {
+                if (!string.IsNullOrEmpty(title))
+                    sb.AppendLine($"### {title}");
+                // Prefer the parsed HTML grid as a proper markdown table;
+                // fall back to the raw content if no grid was parsed.
+                var gridMarkdown = PopoJsonService.GenerateTableMarkdown(node.GetSourceNode());
+                sb.AppendLine(string.IsNullOrEmpty(gridMarkdown) ? content : gridMarkdown);
+                sb.AppendLine();
+            }
+            else if (!string.IsNullOrEmpty(title))
+            {
+                sb.AppendLine($"### {title}");
+                sb.AppendLine();
+            }
+        }
+        else if (type == "table_data")
+        {
+            if (!string.IsNullOrEmpty(title))
+            {
+                sb.AppendLine($"#### {title}");
+            }
+            sb.Append(PopoJsonService.GenerateTableMarkdown(node.GetSourceNode()));
+            sb.AppendLine();
+        }
+        else if (type == "table_key_value")
+        {
+            if (!string.IsNullOrEmpty(title))
+            {
+                sb.AppendLine($"#### {title}");
+            }
+            sb.Append(PopoJsonService.GenerateTableMarkdown(node.GetSourceNode()));
             sb.AppendLine();
         }
         else if (type == "caption")

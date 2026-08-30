@@ -77,7 +77,7 @@ public static class PopoJsonService
         WriteIndented = true,
         PropertyNameCaseInsensitive = true,
         TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
-        Converters = { new RectJsonConverter() },
+        Converters = { new RectJsonConverter(), new TableHeaderJsonConverter() },
         MaxDepth = 256
     };
 
@@ -425,6 +425,12 @@ public static class PopoJsonService
                 node.Content = tableContent;
         }
 
+        // For legacy table nodes with HTML content: parse into a grid for DataGrid display
+        if (node.Type == "table" && node.Content.Contains("<table", StringComparison.OrdinalIgnoreCase))
+        {
+            node.GridRows = HtmlTableParser.Parse(node.Content);
+        }
+
         if (elem.TryGetProperty("level", out var levelElem))
             node.Level = levelElem.GetInt32();
 
@@ -446,6 +452,16 @@ public static class PopoJsonService
                 if (loc.TryGetProperty("page", out var pageElem))
                     entry.Page = pageElem.GetInt32();
 
+                // Parse row_range (row span within the source table, for structured table sub-nodes)
+                if (loc.TryGetProperty("row_range", out var rowRangeElem) &&
+                    rowRangeElem.ValueKind == JsonValueKind.Array &&
+                    rowRangeElem.GetArrayLength() >= 2)
+                {
+                    entry.RowRange = new int[rowRangeElem.GetArrayLength()];
+                    for (int i = 0; i < rowRangeElem.GetArrayLength(); i++)
+                        entry.RowRange[i] = rowRangeElem[i].GetInt32();
+                }
+
                 node.Location.Add(entry);
             }
         }
@@ -453,6 +469,10 @@ public static class PopoJsonService
         // Parse img_path (Popo API returns relative path like "images/xxx.jpg")
         if (elem.TryGetProperty("img_path", out var imgPathElem))
             node.ImgPath = imgPathElem.GetString() ?? string.Empty;
+
+        // Parse node_id (unique node identifier from the Popo API)
+        if (elem.TryGetProperty("node_id", out var nodeIdElem))
+            node.NodeId = nodeIdElem.GetString() ?? string.Empty;
 
         // Parse block_ids — guard against non-array values
         if (elem.TryGetProperty("block_ids", out var idsElem) &&
@@ -486,7 +506,163 @@ public static class PopoJsonService
             }
         }
 
+        // Parse headers (column definitions for table_data nodes) — guard against non-array values
+        if (elem.TryGetProperty("headers", out var headersElem) &&
+            headersElem.ValueKind == JsonValueKind.Array)
+        {
+            var headers = new List<TableHeader>();
+            foreach (var header in headersElem.EnumerateArray())
+            {
+                // Headers may be plain strings (legacy) or objects:
+                // { "index": 0, "name": "...", "group": "...", "unit": "..." }
+                if (header.ValueKind == JsonValueKind.String)
+                {
+                    var name = header.GetString();
+                    if (!string.IsNullOrEmpty(name))
+                        headers.Add(new TableHeader { Name = name });
+                }
+                else if (header.ValueKind == JsonValueKind.Object)
+                {
+                    var tableHeader = new TableHeader();
+                    if (header.TryGetProperty("index", out var indexElem) && indexElem.ValueKind == JsonValueKind.Number)
+                        tableHeader.Index = indexElem.GetInt32();
+                    if (header.TryGetProperty("name", out var nameElem))
+                        tableHeader.Name = nameElem.GetString() ?? string.Empty;
+                    if (header.TryGetProperty("group", out var groupElem) && groupElem.ValueKind == JsonValueKind.String)
+                        tableHeader.Group = groupElem.GetString();
+                    if (header.TryGetProperty("unit", out var unitElem) && unitElem.ValueKind == JsonValueKind.String)
+                        tableHeader.Unit = unitElem.GetString();
+                    if (!string.IsNullOrEmpty(tableHeader.Name))
+                        headers.Add(tableHeader);
+                }
+            }
+            node.Headers = headers;
+        }
+
+        // Parse rows (structured data rows for table_data nodes) — guard against non-array values
+        if (elem.TryGetProperty("rows", out var rowsElem) &&
+            rowsElem.ValueKind == JsonValueKind.Array)
+        {
+            var rows = new List<TableDataRow>();
+            foreach (var rowElem in rowsElem.EnumerateArray())
+            {
+                // Guard: skip non-object entries in rows array
+                if (rowElem.ValueKind != JsonValueKind.Object)
+                    continue;
+
+                var row = new TableDataRow();
+                if (rowElem.TryGetProperty("row_index", out var rowIndexElem))
+                    row.RowIndex = rowIndexElem.GetInt32();
+                if (rowElem.TryGetProperty("page", out var rowPageElem))
+                    row.Page = rowPageElem.GetInt32();
+                if (rowElem.TryGetProperty("cells", out var cellsElem) &&
+                    cellsElem.ValueKind == JsonValueKind.Object)
+                {
+                    foreach (var cellProp in cellsElem.EnumerateObject())
+                    {
+                        row.Cells[cellProp.Name] = ParseTableCellValue(cellProp.Value);
+                    }
+                }
+                rows.Add(row);
+            }
+            node.Rows = rows;
+        }
+
+        // Parse pairs (key-value pairs for table_key_value nodes) — guard against non-array values
+        if (elem.TryGetProperty("pairs", out var pairsElem) &&
+            pairsElem.ValueKind == JsonValueKind.Array)
+        {
+            var pairs = new List<TableKeyValuePair>();
+            foreach (var pairElem in pairsElem.EnumerateArray())
+            {
+                // Guard: skip non-object entries in pairs array
+                if (pairElem.ValueKind != JsonValueKind.Object)
+                    continue;
+
+                var pair = new TableKeyValuePair();
+                if (pairElem.TryGetProperty("key", out var pairKeyElem))
+                    pair.Key = pairKeyElem.GetString() ?? string.Empty;
+                if (pairElem.TryGetProperty("value", out var pairValueElem))
+                    pair.Value = ParseTableCellValue(pairValueElem);
+                if (pairElem.TryGetProperty("row_index", out var pairRowIndexElem))
+                    pair.RowIndex = pairRowIndexElem.GetInt32();
+                if (pairElem.TryGetProperty("page", out var pairPageElem))
+                    pair.Page = pairPageElem.GetInt32();
+                pairs.Add(pair);
+            }
+            node.Pairs = pairs;
+        }
+
+        // Parse node-level toc (in-table sections for table nodes) — guard against non-array values
+        if (elem.TryGetProperty("toc", out var tocElem) &&
+            tocElem.ValueKind == JsonValueKind.Array)
+        {
+            var toc = new List<TocEntry>();
+            foreach (var tocEntry in tocElem.EnumerateArray())
+            {
+                // Guard: skip non-object entries in toc array
+                if (tocEntry.ValueKind != JsonValueKind.Object)
+                    continue;
+
+                var entry = new TocEntry { Type = "toc" };
+                if (tocEntry.TryGetProperty("title", out var tocTitleElem))
+                    entry.Title = tocTitleElem.GetString() ?? string.Empty;
+                if (tocEntry.TryGetProperty("numbering", out var tocNumberingElem))
+                    entry.Numbering = tocNumberingElem.GetString() ?? string.Empty;
+                if (tocEntry.TryGetProperty("level", out var tocLevelElem))
+                    entry.Level = tocLevelElem.GetInt32();
+                if (tocEntry.TryGetProperty("page", out var tocPageElem))
+                    entry.Page = tocPageElem.GetInt32();
+                if (tocEntry.TryGetProperty("source", out var tocSourceElem))
+                    entry.Source = tocSourceElem.GetString() ?? string.Empty;
+                if (tocEntry.TryGetProperty("row_range", out var tocRowRangeElem) &&
+                    tocRowRangeElem.ValueKind == JsonValueKind.Array &&
+                    tocRowRangeElem.GetArrayLength() >= 2)
+                {
+                    entry.RowRange = new int[tocRowRangeElem.GetArrayLength()];
+                    for (int i = 0; i < tocRowRangeElem.GetArrayLength(); i++)
+                        entry.RowRange[i] = tocRowRangeElem[i].GetInt32();
+                }
+                toc.Add(entry);
+            }
+            node.Toc = toc;
+        }
+
         return node;
+    }
+
+    /// <summary>
+    /// Parses a table cell value object: { "raw": "...", "value": ..., "unit": "..." }.
+    /// The value is polymorphic (string, number, or null); Raw is used for display.
+    /// </summary>
+    private static TableCellValue ParseTableCellValue(JsonElement elem)
+    {
+        var cell = new TableCellValue();
+
+        if (elem.ValueKind != JsonValueKind.Object)
+        {
+            // Fallback: treat non-object values as plain raw strings
+            cell.Raw = elem.ValueKind == JsonValueKind.String
+                ? elem.GetString() ?? string.Empty
+                : elem.GetRawText();
+            cell.Value = elem;
+            cell.IsNumeric = elem.ValueKind == JsonValueKind.Number;
+            return cell;
+        }
+
+        if (elem.TryGetProperty("raw", out var rawElem))
+            cell.Raw = rawElem.GetString() ?? string.Empty;
+        if (elem.TryGetProperty("value", out var valueElem))
+        {
+            cell.Value = valueElem;
+            // Capture the type now, while the source JsonDocument is guaranteed
+            // to be alive — render-time code must not rely on Value being valid.
+            cell.IsNumeric = valueElem.ValueKind == JsonValueKind.Number;
+        }
+        if (elem.TryGetProperty("unit", out var unitElem))
+            cell.Unit = unitElem.GetString();
+
+        return cell;
     }
 
     private static Rect ParseBbox(JsonElement elem)
@@ -712,8 +888,13 @@ public static class PopoJsonService
         {
             var json = File.ReadAllText(jsonPath);
 
-            // Inspect root structure first to determine format — avoids double deserialization
-            using var rootDoc = JsonDocument.Parse(json);
+            // Inspect root structure first to determine format — avoids double deserialization.
+            // IMPORTANT: do NOT dispose this document (no `using`). ParseTreeNode stores
+            // JsonElement references (e.g. TableCellValue.Value) that point into it; the
+            // elements keep the document alive for as long as the parsed tree is reachable,
+            // mirroring LoadTreeJson. Disposing here would make those elements throw
+            // ObjectDisposedException on later access.
+            var rootDoc = JsonDocument.Parse(json);
             var root = rootDoc.RootElement;
             bool isWrapperFormat = root.TryGetProperty("result", out _);
 
@@ -960,6 +1141,13 @@ public static class PopoJsonService
         List<MinerUBlock> allBlocks,
         ref int blockId)
     {
+        // Skip structured table sub-nodes (table_data / table_key_value): they are
+        // subdivisions of the parent table node, which already carries the full
+        // HTML content and the same block_ids. Flattening them would create
+        // duplicate empty-content blocks in PagesBlocks and the aggregation map.
+        if (node.Type is "table_data" or "table_key_value")
+            return;
+
         // Process non-root nodes that have location data
         bool isRoot = node.Type == "root" && node.Level == 0;
 
@@ -1472,12 +1660,31 @@ public static class PopoJsonService
     /// <returns>A list of TOC entries from the API, or an empty list if the API did not return any.</returns>
     public static List<TocEntry> BuildTableOfContents(AnalysisTreeNode root, StructureDocument? doc = null)
     {
-        // Only use pre-parsed TocEntries from the API (popo_result.json result.toc.entries)
+        // Use pre-parsed TocEntries from the API (popo_result.json result.toc.entries)
+        // plus node-level toc entries (in-table sections from newer Popo output).
         // No local fallback to tree traversal.
+        var entries = new List<TocEntry>();
         if (doc?.TocEntries is { Count: > 0 })
-            return doc.TocEntries;
+            entries.AddRange(doc.TocEntries);
 
-        return new List<TocEntry>();
+        CollectNodeTocEntries(root, entries);
+
+        return entries;
+    }
+
+    /// <summary>
+    /// Recursively collects node-level toc entries (in-table sections carried by
+    /// table nodes in newer Popo output) into the given list.
+    /// </summary>
+    private static void CollectNodeTocEntries(AnalysisTreeNode node, List<TocEntry> entries)
+    {
+        if (node.Toc is { Count: > 0 })
+            entries.AddRange(node.Toc);
+
+        foreach (var child in node.Children)
+        {
+            CollectNodeTocEntries(child, entries);
+        }
     }
 
 
@@ -1647,6 +1854,75 @@ public static class PopoJsonService
         }
         return width;
     }
+
+    /// <summary>
+    /// Generates Markdown for a table node:
+    /// table_data → pipe table (headers + rows),
+    /// table_key_value → "- key: value" list,
+    /// legacy table with parsed HTML grid → pipe table (first row as header).
+    /// Returns an empty string for nodes without table data.
+    /// </summary>
+    internal static string GenerateTableMarkdown(AnalysisTreeNode node)
+    {
+        var sb = new StringBuilder();
+
+        switch (node.Type)
+        {
+            case "table_data" when node.Headers is { Count: > 0 } headers && node.Rows is not null:
+                sb.AppendLine("| " + string.Join(" | ", headers.Select(h => EscapeMarkdownCell(h.Name))) + " |");
+                sb.AppendLine("| " + string.Join(" | ", headers.Select(_ => "---")) + " |");
+                foreach (var row in node.Rows)
+                {
+                    var cells = headers.Select(h => EscapeMarkdownCell(row.Cells.TryGetValue(h.Name, out var cell) ? cell.Raw : string.Empty));
+                    sb.AppendLine("| " + string.Join(" | ", cells) + " |");
+                }
+                break;
+
+            case "table_key_value" when node.Pairs is not null:
+                foreach (var pair in node.Pairs)
+                {
+                    var display = string.IsNullOrEmpty(pair.Value.Unit)
+                        ? pair.Value.Raw
+                        : $"{pair.Value.Raw} {pair.Value.Unit}";
+                    sb.AppendLine($"- {pair.Key}: {display}");
+                }
+                break;
+
+            case "table" when node.GridRows is { Count: > 0 } grid:
+                AppendMarkdownGrid(grid, sb);
+                break;
+        }
+
+        return sb.ToString().TrimEnd();
+    }
+
+    /// <summary>
+    /// Appends a 2D grid as a Markdown pipe table. The first row is used as the
+    /// header row (Markdown tables require one); ragged rows are padded with empties.
+    /// </summary>
+    private static void AppendMarkdownGrid(List<List<string>> grid, StringBuilder sb)
+    {
+        var colCount = grid.Max(row => row.Count);
+        if (colCount == 0)
+            return;
+
+        var header = grid[0];
+        sb.AppendLine("| " + string.Join(" | ",
+            Enumerable.Range(0, colCount).Select(i => EscapeMarkdownCell(i < header.Count ? header[i] : string.Empty))) + " |");
+        sb.AppendLine("| " + string.Join(" | ", Enumerable.Repeat("---", colCount)) + " |");
+
+        for (int r = 1; r < grid.Count; r++)
+        {
+            var row = grid[r];
+            sb.AppendLine("| " + string.Join(" | ",
+                Enumerable.Range(0, colCount).Select(i => EscapeMarkdownCell(i < row.Count ? row[i] : string.Empty))) + " |");
+        }
+    }
+
+    /// <summary>
+    /// Escapes pipe characters so cell content doesn't break the markdown table layout.
+    /// </summary>
+    internal static string EscapeMarkdownCell(string text) => text.Replace("|", "\\|");
 
     /// <summary>
     /// Generates a formatted Markdown table of contents with hierarchical indentation

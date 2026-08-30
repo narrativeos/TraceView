@@ -18,7 +18,10 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+using System;
 using Avalonia.Controls;
+using Avalonia.Interactivity;
+using Caly.Core.ViewModels;
 
 namespace Caly.Core.Controls;
 
@@ -30,5 +33,26 @@ public partial class TreeViewControl : UserControl
     public TreeViewControl()
     {
         InitializeComponent();
+    }
+
+    private void OnTableDataGridLoaded(object? sender, RoutedEventArgs e)
+    {
+        if (sender is DataGrid dataGrid)
+            TreeNodeViewModel.ApplyTableColumns(dataGrid);
+    }
+
+    private void OnTableDataGridDataContextChanged(object? sender, EventArgs e)
+    {
+        if (sender is DataGrid dataGrid)
+            TreeNodeViewModel.ApplyTableColumns(dataGrid);
+    }
+
+    private async void OnCopyTableMarkdownClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Control control)
+            return;
+
+        if (await TreeNodeViewModel.CopyTableMarkdownAsync(control))
+            TreeNodeViewModel.ShowCopyFeedback(control);
     }
 }

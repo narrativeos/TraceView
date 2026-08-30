@@ -63,6 +63,12 @@ namespace Caly.Core.Services;
 // Table of Contents models
 [JsonSerializable(typeof(TocEntry), GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(List<TocEntry>), GenerationMode = JsonSourceGenerationMode.Metadata)]
+// Popo structured table models (table_data / table_key_value)
+[JsonSerializable(typeof(TableCellValue), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(TableDataRow), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(TableKeyValuePair), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(List<TableDataRow>), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(List<TableKeyValuePair>), GenerationMode = JsonSourceGenerationMode.Metadata)]
 // Reference (bibliography) models
 [JsonSerializable(typeof(ReferenceEntry), GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(List<ReferenceEntry>), GenerationMode = JsonSourceGenerationMode.Metadata)]

@@ -28,20 +28,37 @@ public sealed record TocEntry
     /// <summary>
     /// Display title of the section.
     /// </summary>
-    public string Title { get; init; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
 
     /// <summary>
     /// Hierarchical level (1-based; root is 0).
     /// </summary>
-    public int Level { get; init; }
+    public int Level { get; set; }
 
     /// <summary>
     /// Starting page number (1-based).
     /// </summary>
-    public int Page { get; init; }
+    public int Page { get; set; }
 
     /// <summary>
     /// Node type from the Popo tree (e.g., "text", "title", "image").
     /// </summary>
-    public string Type { get; init; } = string.Empty;
+    public string Type { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Section numbering prefix (e.g., "1.", "2.3"). Only populated for
+    /// node-level toc entries from table nodes.
+    /// </summary>
+    public string Numbering { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Row range [start, end] within the source table.
+    /// Only populated for node-level toc entries from table nodes.
+    /// </summary>
+    public int[]? RowRange { get; set; }
+
+    /// <summary>
+    /// Origin of the entry (e.g., "table" for in-table sections).
+    /// </summary>
+    public string Source { get; set; } = string.Empty;
 }

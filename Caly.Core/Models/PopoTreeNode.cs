@@ -90,6 +90,41 @@ public partial class AnalysisTreeNode : ObservableObject
     private string _imgPath = string.Empty;
 
     /// <summary>
+    /// Unique node identifier (UUID) returned by the Popo API.
+    /// </summary>
+    public string NodeId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Column headers for table_data nodes (null for other node types).
+    /// Each header carries name plus optional group/unit from the newer
+    /// Popo object-form headers.
+    /// </summary>
+    public List<TableHeader>? Headers { get; set; }
+
+    /// <summary>
+    /// Structured data rows for table_data nodes (null for other node types).
+    /// </summary>
+    public List<TableDataRow>? Rows { get; set; }
+
+    /// <summary>
+    /// Key-value pairs for table_key_value nodes (null for other node types).
+    /// </summary>
+    public List<TableKeyValuePair>? Pairs { get; set; }
+
+    /// <summary>
+    /// Parsed HTML table grid for legacy table nodes (rows of cell texts).
+    /// Populated when a table node's content contains an HTML &lt;table&gt;
+    /// that was parsed by HtmlTableParser; null for all other nodes.
+    /// </summary>
+    public List<List<string>>? GridRows { get; set; }
+
+    /// <summary>
+    /// Node-level table of contents (in-table sections for table nodes,
+    /// null for nodes without a node-level toc).
+    /// </summary>
+    public List<TocEntry>? Toc { get; set; }
+
+    /// <summary>
     /// Child nodes list (recursive).
     /// </summary>
     [ObservableProperty]
@@ -134,4 +169,10 @@ public sealed class LocationEntry
 {
     public Rect Bbox { get; set; }
     public int Page { get; set; }
+
+    /// <summary>
+    /// Row range [start, end] within the source table.
+    /// Only populated for structured table sub-nodes (table_data / table_key_value).
+    /// </summary>
+    public int[]? RowRange { get; set; }
 }

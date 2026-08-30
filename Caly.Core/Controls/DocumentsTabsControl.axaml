@@ -870,6 +870,27 @@
                                                                          HorizontalAlignment="Stretch"
                                                                          TextAlignment="Left"/>
 
+                                                              <!-- Structured table (table_data / table_key_value / legacy HTML table) -->
+                                                              <Button Content="📋"
+                                                                      FontSize="9"
+                                                                      Padding="4,1"
+                                                                      HorizontalAlignment="Right"
+                                                                      Background="Transparent"
+                                                                      BorderThickness="0"
+                                                                      IsVisible="{Binding CanCopyTable}"
+                                                                      Click="OnCopyTableMarkdownClick">
+                                                                  <ToolTip.Tip>复制 Markdown</ToolTip.Tip>
+                                                              </Button>
+                                                              <DataGrid ItemsSource="{Binding TableRows}"
+                                                                        AutoGenerateColumns="False"
+                                                                        HeadersVisibility="{Binding TableHeadersVisibility}"
+                                                                        GridLinesVisibility="Horizontal"
+                                                                        FontSize="10"
+                                                                        MaxHeight="200"
+                                                                        HorizontalAlignment="Stretch"
+                                                                        IsVisible="{Binding ShowTableGrid}"
+                                                                        Loaded="OnTableDataGridLoaded"
+                                                                        DataContextChanged="OnTableDataGridDataContextChanged"/>
                                                              <!-- Expand/Collapse button for long content -->
                                                              <Button Command="{Binding ToggleContentExpandCommand}"
                                                                      HorizontalAlignment="Right"
@@ -878,7 +899,7 @@
                                                                      FontSize="9"
                                                                      Background="Transparent"
                                                                      BorderThickness="0"
-                                                                     IsVisible="{Binding IsContentLong}">
+                                                                     IsVisible="{Binding CanToggleContentExpand}">
                                                                  <Button.Content>
                                                                      <StackPanel Orientation="Horizontal" Spacing="2">
                                                                          <TextBlock Text="展开"

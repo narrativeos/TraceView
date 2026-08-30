@@ -383,6 +383,27 @@ public sealed partial class DocumentsTabsControl : UserControl
         UpdateConnectionLines();
     }
 
+    private void OnTableDataGridLoaded(object? sender, RoutedEventArgs e)
+    {
+        if (sender is DataGrid dataGrid)
+            TreeNodeViewModel.ApplyTableColumns(dataGrid);
+    }
+
+    private void OnTableDataGridDataContextChanged(object? sender, EventArgs e)
+    {
+        if (sender is DataGrid dataGrid)
+            TreeNodeViewModel.ApplyTableColumns(dataGrid);
+    }
+
+    private async void OnCopyTableMarkdownClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Control control)
+            return;
+
+        if (await TreeNodeViewModel.CopyTableMarkdownAsync(control))
+            TreeNodeViewModel.ShowCopyFeedback(control);
+    }
+
     private void ToggleExpanded_Click(object? sender, RoutedEventArgs e)
     {
         if (sender is not Button btn || btn.DataContext is not GeocodingLocationViewModel vm)
