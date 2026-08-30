@@ -430,12 +430,25 @@ namespace Caly.Core.Services
                 canvas.DrawPicture(picture, in scale);
 
 #if DEBUG
-                using (var skFont = SKTypeface.Default.ToFont(tHeight * (float)_pdfDocumentService.PpiScale / 5f, 1f))
+                string uniqueIdText = picture.UniqueId.ToString();
                 using (var paint = new SKPaint())
                 {
                     paint.Style = SKPaintStyle.Fill;
                     paint.Color = SKColors.Blue.WithAlpha(150);
-                    canvas.DrawText(picture.UniqueId.ToString(), tWidth / 4f, tHeight / 2f, skFont, paint);
+
+                    // Shrink the font size until the text fits within the thumbnail width
+                    // (text starts at tWidth/4, so only ~3/4 of the width is available).
+                    float fontSize = tHeight * (float)_pdfDocumentService.PpiScale / 5f;
+                    const float maxTextWidth = 0.7f * 3f / 4f; // 70% of the available width
+                    using var skFont = SKTypeface.Default.ToFont(fontSize, 1f);
+                    while (fontSize > 1f &&
+                           skFont.MeasureText(uniqueIdText) > tWidth * maxTextWidth)
+                    {
+                        fontSize *= 0.9f;
+                        skFont.Size = fontSize;
+                    }
+
+                    canvas.DrawText(uniqueIdText, tWidth / 4f, tHeight / 2f, skFont, paint);
                 }
 #endif
 
