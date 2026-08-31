@@ -339,7 +339,10 @@ public sealed class PopoService : IDisposable
             var jsonOptions = new JsonSerializerOptions
             {
                 WriteIndented = true,
-                PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase
+                PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase,
+                // Reflection-based serialization is disabled by default in .NET 10;
+                // use the source generator resolver (see JsonSettingsService.cs).
+                TypeInfoResolver = SourceGenerationContext.Default
             };
             var json = JsonSerializer.Serialize(records, jsonOptions);
             File.WriteAllText(outputPath, json);

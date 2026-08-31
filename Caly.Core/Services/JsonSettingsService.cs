@@ -97,6 +97,9 @@ namespace Caly.Core.Services;
 // Location relation models
 [JsonSerializable(typeof(Caly.Core.Models.LocationRelation), GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(System.Collections.Generic.List<Caly.Core.Models.LocationRelation>), GenerationMode = JsonSourceGenerationMode.Metadata)]
+// Popo progress record models
+[JsonSerializable(typeof(PopoProgressRecord), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(List<PopoProgressRecord>), GenerationMode = JsonSourceGenerationMode.Metadata)]
 internal partial class SourceGenerationContext : JsonSerializerContext;
 
 internal sealed class JsonSettingsService : ISettingsService

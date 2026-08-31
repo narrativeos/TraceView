@@ -1709,4 +1709,45 @@ public class PopoJsonServiceTests
     }
 
     #endregion
+
+    #region PopoProgressRecord Serialization Tests
+
+    [Fact]
+    public void PopoProgressRecord_Serializes_WithSourceGeneratorResolver()
+    {
+        // Regression test: reflection-based serialization is disabled by default in .NET 10.
+        // PopoService.SaveProgressRecords must serialize via SourceGenerationContext.Default,
+        // otherwise it throws InvalidOperationException ("Reflection-based serialization
+        // has been disabled for this application").
+        var records = new List<PopoProgressRecord>
+        {
+            new()
+            {
+                TaskId = "task-123",
+                Status = "processing",
+                Progress = 75,
+                ProgressMessage = "image: chunk 31/31",
+                StartedAt = new DateTime(2026, 8, 30, 10, 0, 0, DateTimeKind.Utc),
+                UpdatedAt = new DateTime(2026, 8, 30, 10, 5, 0, DateTimeKind.Utc)
+            }
+        };
+
+        // Mirror the exact options used by PopoService.SaveProgressRecords
+        var jsonOptions = new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            TypeInfoResolver = SourceGenerationContext.Default
+        };
+
+        var json = JsonSerializer.Serialize(records, jsonOptions);
+        var compact = json.Replace(" ", string.Empty);
+
+        Assert.Contains("\"taskId\":\"task-123\"", compact);
+        Assert.Contains("\"progress\":75", compact);
+        Assert.Contains("\"progressMessage\":\"image:chunk31/31\"", compact);
+        Assert.Contains("\"endedAt\":null", compact);
+    }
+
+    #endregion
 }
