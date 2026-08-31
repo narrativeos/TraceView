@@ -123,7 +123,12 @@ public sealed partial class PageViewModel : ViewModelBase, IDisposable
         PageType.appendix => "附录",
         PageType.glossary => "术语表",
         PageType.reference => "参考文献",
-        PageType.preface => "前言",
+        PageType.preface => "序言",
+        PageType.title_page => "扉页",
+        PageType.announcement => "发布公告",
+        PageType.publication_info => "出版信息",
+        PageType.foreword => "前言",
+        PageType.normative_references => "引用标准",
         _ => null
     };
 

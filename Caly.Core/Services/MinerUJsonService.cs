@@ -1063,9 +1063,10 @@ public static class MinerUJsonService
 
     /// <summary>
     /// Parses a page_type string from MinerU into a PageType enum value.
-    /// Supports 15 page types: cover, half_title, toc, body, chapter_start,
-    /// image_dominant, table_dominant, blank, back_cover, copyright, colophon,
-    /// acknowledgment, appendix, glossary, reference.
+    /// Supports 20 page types (v2.2): cover, half_title, title_page, announcement,
+    /// publication_info, toc, body, chapter_start, image_dominant, table_dominant,
+    /// blank, back_cover, copyright, colophon, preface, foreword,
+    /// acknowledgment, appendix, glossary, reference, normative_references.
     /// </summary>
     static PageType ParsePageType(string pageTypeStr)
     {
@@ -1088,6 +1089,11 @@ public static class MinerUJsonService
             "glossary" => PageType.glossary,
             "reference" => PageType.reference,
             "preface" => PageType.preface,
+            "title_page" => PageType.title_page,
+            "announcement" => PageType.announcement,
+            "publication_info" => PageType.publication_info,
+            "foreword" => PageType.foreword,
+            "normative_references" => PageType.normative_references,
             _ => PageType.unknown
         };
     }

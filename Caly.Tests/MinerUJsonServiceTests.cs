@@ -550,4 +550,99 @@ public class MinerUJsonServiceTests
                 Directory.Delete(tempDir, recursive: true);
         }
     }
+
+    [Fact]
+    public void TryParseMinerUMiddleJson_V22PageTypes_ParsesNewTypes()
+    {
+        // Test that the 5 page types added in v2.2 are correctly parsed.
+        // Mirrors the front matter of a standard document (e.g. GB50150-2016):
+        // cover -> title_page -> publication_info -> announcement -> foreword -> normative_references.
+        var tempDir = Path.Combine(Path.GetTempPath(), "caly-mineru-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+
+        var jsonPath = Path.Combine(tempDir, "v22_page_types_middle.json");
+        File.WriteAllText(jsonPath, """
+        {
+          "pdf_info": [
+            {
+              "page_idx": 0,
+              "page_size": [1920, 2560],
+              "page_type": "cover",
+              "preproc_blocks": [],
+              "para_blocks": [
+                {
+                  "type": "text",
+                  "bbox": [10, 20, 100, 40],
+                  "lines": [
+                    {
+                      "bbox": [10, 20, 100, 40],
+                      "spans": [
+                        { "bbox": [10, 20, 100, 40], "type": "text", "content": "cover" }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "page_idx": 1,
+              "page_size": [1920, 2560],
+              "page_type": "title_page",
+              "preproc_blocks": [],
+              "para_blocks": []
+            },
+            {
+              "page_idx": 2,
+              "page_size": [1920, 2560],
+              "page_type": "publication_info",
+              "preproc_blocks": [],
+              "para_blocks": []
+            },
+            {
+              "page_idx": 3,
+              "page_size": [1920, 2560],
+              "page_type": "announcement",
+              "preproc_blocks": [],
+              "para_blocks": []
+            },
+            {
+              "page_idx": 4,
+              "page_size": [1920, 2560],
+              "page_type": "foreword",
+              "preproc_blocks": [],
+              "para_blocks": []
+            },
+            {
+              "page_idx": 5,
+              "page_size": [1920, 2560],
+              "page_type": "normative_references",
+              "preproc_blocks": [],
+              "para_blocks": []
+            }
+          ]
+        }
+        """);
+
+        try
+        {
+            var result = MinerUJsonService.TryParseMinerUMiddleJson(jsonPath);
+
+            Assert.NotNull(result);
+
+            Assert.Equal(Caly.Core.Models.PageType.cover, result.PageTypes[1]);
+            Assert.Equal(Caly.Core.Models.PageType.title_page, result.PageTypes[2]);
+            Assert.Equal(Caly.Core.Models.PageType.publication_info, result.PageTypes[3]);
+            Assert.Equal(Caly.Core.Models.PageType.announcement, result.PageTypes[4]);
+            Assert.Equal(Caly.Core.Models.PageType.foreword, result.PageTypes[5]);
+            Assert.Equal(Caly.Core.Models.PageType.normative_references, result.PageTypes[6]);
+
+            // None of these pages carry a secondary type
+            Assert.Empty(result.PageTypeSecondaries);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+                Directory.Delete(tempDir, recursive: true);
+        }
+    }
 }

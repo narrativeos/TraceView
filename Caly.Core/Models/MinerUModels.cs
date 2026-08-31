@@ -28,7 +28,7 @@ namespace Caly.Core.Models;
 
 /// <summary>
 /// Page type classification from MinerU's page-level analysis.
-/// Represents 15 distinct page types identified by MinerU's layout analysis.
+/// Represents 20 distinct page types identified by MinerU's layout analysis (v2.2).
 /// </summary>
 public enum PageType
 {
@@ -113,9 +113,48 @@ public enum PageType
     reference = 15,
 
     /// <summary>
-    /// Preface page (前言/序言) - The preface or foreword of the document.
+    /// Preface page (序言) - The preface of the document.
     /// </summary>
-    preface = 16
+    preface = 16,
+
+    /// <summary>
+    /// Title page (扉页) - The standard title page (distinct from cover),
+    /// typically containing the standard name, standard number (GB/JB etc.)
+    /// and structured fields such as approving department and effective date.
+    /// Added in v2.2.
+    /// </summary>
+    title_page = 17,
+
+    /// <summary>
+    /// Announcement page (发布公告) - The announcement issued by the
+    /// competent authority to publish/approve a standard,
+    /// e.g. "住房城乡建设部公告 第1093号".
+    /// Added in v2.2.
+    /// </summary>
+    announcement = 18,
+
+    /// <summary>
+    /// Publication info page (出版信息) - The publication information page of a standard
+    /// (distinct from book copyright page), containing publisher, address,
+    /// print run, price, website and other metadata.
+    /// Added in v2.2.
+    /// </summary>
+    publication_info = 19,
+
+    /// <summary>
+    /// Foreword page (前言) - The foreword and its continuation pages
+    /// (revision notes, drafting units, etc.), extending until the TOC
+    /// or the start of the main body.
+    /// Added in v2.2.
+    /// </summary>
+    foreword = 20,
+
+    /// <summary>
+    /// Normative references page (引用标准) - The "normative references" chapter
+    /// (distinct from bibliography/reference).
+    /// Added in v2.2.
+    /// </summary>
+    normative_references = 21
 }
 
 /// <summary>
