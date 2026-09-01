@@ -300,11 +300,22 @@ public partial class AnalysisViewModel : ViewModelBase
         }
         else if (type == "text")
         {
-            // Replace <|txt_split|> with newlines
-            var text = content.Replace("<|txt_split|>", "\n");
             if (!string.IsNullOrEmpty(title))
                 sb.AppendLine($"## {title}");
-            sb.AppendLine(text);
+
+            // Nodes with ordered lists render their content as markdown
+            // numbered lists (segments resolved via segment_range);
+            // fall back to the plain content otherwise.
+            var orderedMarkdown = PopoJsonService.GenerateOrderedListMarkdown(node.GetSourceNode());
+            if (!string.IsNullOrEmpty(orderedMarkdown))
+            {
+                sb.AppendLine(orderedMarkdown);
+            }
+            else
+            {
+                // Replace <|txt_split|> with newlines
+                sb.AppendLine(content.Replace("<|txt_split|>", "\n"));
+            }
             sb.AppendLine();
         }
         else if (type == "image")

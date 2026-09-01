@@ -125,6 +125,15 @@ public partial class AnalysisTreeNode : ObservableObject
     public List<TocEntry>? Toc { get; set; }
 
     /// <summary>
+    /// Ordered lists detected in this node's content by the Popo API
+    /// (typically text nodes). Each entry maps its items to a segment
+    /// range of the content (split on &lt;|txt_split|&gt;).
+    /// Null or empty for nodes without ordered lists.
+    /// Corresponds to the ordered_lists field in popo_result.json.
+    /// </summary>
+    public List<OrderedListEntry>? OrderedLists { get; set; }
+
+    /// <summary>
     /// Child nodes list (recursive).
     /// </summary>
     [ObservableProperty]

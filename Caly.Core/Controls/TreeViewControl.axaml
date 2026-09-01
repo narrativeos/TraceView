@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                 xmlns:vm="using:Caly.Core.ViewModels"
+                xmlns:models="using:Caly.Core.Models"
                 x:Class="Caly.Core.Controls.TreeViewControl"
                 x:DataType="vm:AnalysisViewModel"
                 ClipToBounds="True">
@@ -108,6 +109,58 @@
                                        HorizontalAlignment="Stretch"
                                        TextAlignment="Left"
                                        IsVisible="{Binding ShowFullContent}"/>
+
+                            <!-- Structured Content Preview (nodes with ordered lists, collapsed) -->
+                            <TextBlock Text="{Binding StructuredContentPreview}"
+                                       FontSize="11"
+                                       Opacity="0.8"
+                                       MaxLines="3"
+                                       TextWrapping="Wrap"
+                                       TextTrimming="CharacterEllipsis"
+                                       HorizontalAlignment="Stretch"
+                                       TextAlignment="Left"
+                                       IsVisible="{Binding ShowStructuredPreview}"/>
+
+                            <!-- Structured Content (nodes with ordered lists, expanded) -->
+                            <ItemsControl ItemsSource="{Binding StructuredContentLines}"
+                                          HorizontalAlignment="Stretch"
+                                          IsVisible="{Binding ShowStructuredFull}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="models:ContentDisplayLine">
+                                        <Grid ColumnDefinitions="24,*"
+                                              Margin="0,1,0,1"
+                                              RowDefinitions="Auto,*">
+                                            <!-- List separator (between a paragraph and the next list) -->
+                                            <Rectangle Grid.Row="0"
+                                                       Grid.ColumnSpan="2"
+                                                       Height="1"
+                                                       Fill="Gray"
+                                                       Opacity="0.25"
+                                                       Margin="0,4,0,3"
+                                                       IsVisible="{Binding IsListStart}"/>
+                                            <!-- Number (list items only, right-aligned) -->
+                                            <TextBlock Grid.Row="1"
+                                                       Grid.Column="0"
+                                                       Text="{Binding Number}"
+                                                       FontSize="11"
+                                                       FontWeight="SemiBold"
+                                                       Opacity="0.6"
+                                                       TextAlignment="Right"
+                                                       VerticalAlignment="Top"
+                                                       Margin="0,0,4,0"
+                                                       IsVisible="{Binding IsListItem}"/>
+                                            <!-- Line text -->
+                                            <TextBlock Grid.Row="1"
+                                                       Grid.Column="1"
+                                                       Text="{Binding Text}"
+                                                       FontSize="11"
+                                                       Opacity="0.8"
+                                                       TextWrapping="Wrap"
+                                                       TextAlignment="Left"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
 
                             <!-- Structured table (table_data / table_key_value / legacy HTML table) -->
                             <DataGrid ItemsSource="{Binding TableRows}"

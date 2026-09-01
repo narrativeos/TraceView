@@ -628,7 +628,152 @@ public static class PopoJsonService
             node.Toc = toc;
         }
 
+        // Parse ordered_lists (ordered lists detected in the node's content) — guard against non-array values
+        if (elem.TryGetProperty("ordered_lists", out var orderedListsElem) &&
+            orderedListsElem.ValueKind == JsonValueKind.Array)
+        {
+            var orderedLists = new List<OrderedListEntry>();
+            foreach (var listElem in orderedListsElem.EnumerateArray())
+            {
+                // Guard: skip non-object entries in ordered_lists array
+                if (listElem.ValueKind != JsonValueKind.Object)
+                    continue;
+
+                var list = new OrderedListEntry();
+                if (listElem.TryGetProperty("items", out var itemsElem) &&
+                    itemsElem.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var itemElem in itemsElem.EnumerateArray())
+                    {
+                        if (itemElem.ValueKind != JsonValueKind.Object)
+                            continue;
+
+                        var item = new OrderedListItem();
+                        if (itemElem.TryGetProperty("num", out var numElem) &&
+                            numElem.ValueKind == JsonValueKind.Number)
+                            item.Num = numElem.GetInt32();
+                        if (itemElem.TryGetProperty("text", out var itemTextElem))
+                            item.Text = itemTextElem.GetString() ?? string.Empty;
+                        list.Items.Add(item);
+                    }
+                }
+                if (listElem.TryGetProperty("segment_range", out var segRangeElem) &&
+                    segRangeElem.ValueKind == JsonValueKind.Array &&
+                    segRangeElem.GetArrayLength() >= 2)
+                {
+                    list.SegmentRange = new int[segRangeElem.GetArrayLength()];
+                    for (int i = 0; i < segRangeElem.GetArrayLength(); i++)
+                        list.SegmentRange[i] = segRangeElem[i].GetInt32();
+                }
+                if (listElem.TryGetProperty("starts_at_one", out var startsAtOneElem) &&
+                    startsAtOneElem.ValueKind == JsonValueKind.True)
+                    list.StartsAtOne = true;
+                orderedLists.Add(list);
+            }
+            node.OrderedLists = orderedLists;
+        }
+
         return node;
+    }
+
+    /// <summary>
+    /// Builds the structured display lines of a node's content: the content is
+    /// split on &lt;|txt_split|&gt; into segments (1-based), and segments falling
+    /// inside an ordered list's segment_range are rendered as numbered list
+    /// items (using the list's item number and cleaned text); all other
+    /// non-empty segments are rendered as plain paragraphs.
+    /// Returns an empty list when the node has no ordered lists or no content.
+    /// </summary>
+    internal static List<ContentDisplayLine> BuildContentLines(AnalysisTreeNode node)
+    {
+        var lines = new List<ContentDisplayLine>();
+        if (node.OrderedLists is not { Count: > 0 } lists)
+            return lines;
+
+        var segments = string.IsNullOrEmpty(node.Content)
+            ? Array.Empty<string>()
+            : node.Content.Split("<|txt_split|>");
+
+        // Map segment index (1-based) -> (list, position within the list)
+        var segmentMap = new Dictionary<int, (OrderedListEntry list, int pos)>();
+        foreach (var list in lists)
+        {
+            if (list.SegmentRange is not { Length: >= 2 } range)
+                continue;
+            for (int i = range[0]; i <= range[1] && i - range[0] < list.Items.Count; i++)
+            {
+                segmentMap[i] = (list, i - range[0]);
+            }
+        }
+
+        if (segments.Length == 0)
+        {
+            // No content to interleave with: render the lists' items directly.
+            foreach (var list in lists)
+            {
+                for (int i = 0; i < list.Items.Count; i++)
+                {
+                    lines.Add(new ContentDisplayLine
+                    {
+                        Number = list.Items[i].Num.ToString(),
+                        Text = StripHtmlTags(list.Items[i].Text),
+                        IsListStart = lines.Count > 0 && !lines[^1].IsListItem
+                    });
+                }
+            }
+            return lines;
+        }
+
+        for (int i = 1; i <= segments.Length; i++)
+        {
+            if (segmentMap.TryGetValue(i, out var entry))
+            {
+                var (list, pos) = entry;
+                lines.Add(new ContentDisplayLine
+                {
+                    Number = list.Items[pos].Num.ToString(),
+                    Text = StripHtmlTags(list.Items[pos].Text),
+                    // Separator only when the previous line is not a list item
+                    // (i.e., this item starts a new list after a paragraph).
+                    IsListStart = lines.Count > 0 && !lines[^1].IsListItem
+                });
+            }
+            else
+            {
+                var segment = StripHtmlTags(segments[i - 1].Trim());
+                if (segment.Length > 0)
+                    lines.Add(new ContentDisplayLine { Text = segment });
+            }
+        }
+        return lines;
+    }
+
+    /// <summary>
+    /// Generates markdown for a node's content with its ordered lists rendered
+    /// as markdown numbered lists. Returns an empty string when the node has no
+    /// ordered lists (callers should fall back to the plain content).
+    /// </summary>
+    internal static string GenerateOrderedListMarkdown(AnalysisTreeNode node)
+    {
+        var lines = BuildContentLines(node);
+        if (lines.Count == 0)
+            return string.Empty;
+
+        var sb = new StringBuilder();
+        foreach (var line in lines)
+        {
+            if (line.IsListItem)
+            {
+                sb.AppendLine($"{line.Number}. {line.Text}");
+            }
+            else
+            {
+                if (sb.Length > 0)
+                    sb.AppendLine();
+                sb.AppendLine(line.Text);
+            }
+        }
+        return sb.ToString().TrimEnd();
     }
 
     /// <summary>

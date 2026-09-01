@@ -1750,4 +1750,248 @@ public class PopoJsonServiceTests
     }
 
     #endregion
+
+    #region Ordered Lists Tests
+
+    [Fact]
+    public void ParseTreeNode_ParsesOrderedList()
+    {
+        var json = """
+        {
+          "type": "text",
+          "title": "3 基本规定",
+          "content": "3 0 1 总则<|txt_split|>1 第一项<|txt_split|>2 第二项<|txt_split|>3 第三项",
+          "ordered_lists": [
+            {
+              "items": [
+                { "num": 1, "text": "第一项" },
+                { "num": 2, "text": "第二项" },
+                { "num": 3, "text": "第三项" }
+              ],
+              "segment_range": [2, 4],
+              "starts_at_one": true
+            }
+          ]
+        }
+        """;
+        using var doc = JsonDocument.Parse(json);
+        var node = PopoJsonService.ParseTreeNode(doc.RootElement);
+
+        Assert.NotNull(node.OrderedLists);
+        var list = Assert.Single(node.OrderedLists!);
+        Assert.Equal(3, list.Items.Count);
+        Assert.Equal(1, list.Items[0].Num);
+        Assert.Equal("第一项", list.Items[0].Text);
+        Assert.Equal(3, list.Items[2].Num);
+        Assert.Equal(new[] { 2, 4 }, list.SegmentRange);
+        Assert.True(list.StartsAtOne);
+    }
+
+    [Fact]
+    public void ParseTreeNode_OrderedListsNull_LeavesNull()
+    {
+        var json = """
+        {
+          "type": "text",
+          "content": "plain text",
+          "ordered_lists": null
+        }
+        """;
+        using var doc = JsonDocument.Parse(json);
+        var node = PopoJsonService.ParseTreeNode(doc.RootElement);
+
+        Assert.Null(node.OrderedLists);
+    }
+
+    [Fact]
+    public void ParseTreeNode_MissingOrderedList_LeavesNull()
+    {
+        var json = """
+        { "type": "text", "content": "plain text" }
+        """;
+        using var doc = JsonDocument.Parse(json);
+        var node = PopoJsonService.ParseTreeNode(doc.RootElement);
+
+        Assert.Null(node.OrderedLists);
+    }
+
+    [Fact]
+    public void BuildContentLines_MapsSegmentsToLists()
+    {
+        var node = new AnalysisTreeNode
+        {
+            Type = "text",
+            Content = "总则段落<|txt_split|>1 第一项<|txt_split|>2 第二项<|txt_split|>中间段落<|txt_split|>1 第三项<|txt_split|>2 第四项",
+            OrderedLists = new List<OrderedListEntry>
+            {
+                new()
+                {
+                    Items = new List<OrderedListItem>
+                    {
+                        new() { Num = 1, Text = "第一项" },
+                        new() { Num = 2, Text = "第二项" }
+                    },
+                    SegmentRange = new[] { 2, 3 },
+                    StartsAtOne = true
+                },
+                new()
+                {
+                    Items = new List<OrderedListItem>
+                    {
+                        new() { Num = 1, Text = "第三项" },
+                        new() { Num = 2, Text = "第四项" }
+                    },
+                    SegmentRange = new[] { 5, 6 },
+                    StartsAtOne = true
+                }
+            }
+        };
+
+        var lines = PopoJsonService.BuildContentLines(node);
+
+        // 6 lines: paragraph, 2 items, paragraph, 2 items
+        Assert.Equal(6, lines.Count);
+
+        // Line 0: plain paragraph
+        Assert.False(lines[0].IsListItem);
+        Assert.Equal("总则段落", lines[0].Text);
+        Assert.False(lines[0].IsListStart);
+
+        // Lines 1-2: first list items
+        Assert.True(lines[1].IsListItem);
+        Assert.Equal("1", lines[1].Number);
+        Assert.Equal("第一项", lines[1].Text);
+        Assert.True(lines[1].IsListStart);
+        Assert.Equal("2", lines[2].Number);
+        Assert.Equal("第二项", lines[2].Text);
+        Assert.False(lines[2].IsListStart);
+
+        // Line 3: middle paragraph
+        Assert.False(lines[3].IsListItem);
+        Assert.Equal("中间段落", lines[3].Text);
+
+        // Lines 4-5: second list items (separator before the new list)
+        Assert.True(lines[4].IsListItem);
+        Assert.Equal("1", lines[4].Number);
+        Assert.Equal("第三项", lines[4].Text);
+        Assert.True(lines[4].IsListStart);
+        Assert.Equal("2", lines[5].Number);
+        Assert.Equal("第四项", lines[5].Text);
+    }
+
+    [Fact]
+    public void BuildContentLines_StripsHtmlTags()
+    {
+        var node = new AnalysisTreeNode
+        {
+            Type = "text",
+            Content = "总则<|txt_split|>1 第一项",
+            OrderedLists = new List<OrderedListEntry>
+            {
+                new()
+                {
+                    Items = new List<OrderedListItem>
+                    {
+                        new() { Num = 1, Text = "持续时间应为<sup>1min</sup>" }
+                    },
+                    SegmentRange = new[] { 2, 2 },
+                    StartsAtOne = true
+                }
+            }
+        };
+
+        var lines = PopoJsonService.BuildContentLines(node);
+
+        Assert.Equal(2, lines.Count);
+        Assert.Equal("持续时间应为1min", lines[1].Text);
+    }
+
+    [Fact]
+    public void BuildContentLines_EmptyContent_RendersItemsDirectly()
+    {
+        var node = new AnalysisTreeNode
+        {
+            Type = "text",
+            Content = string.Empty,
+            OrderedLists = new List<OrderedListEntry>
+            {
+                new()
+                {
+                    Items = new List<OrderedListItem>
+                    {
+                        new() { Num = 1, Text = "第一项" },
+                        new() { Num = 2, Text = "第二项" }
+                    },
+                    SegmentRange = new[] { 1, 2 },
+                    StartsAtOne = true
+                }
+            }
+        };
+
+        var lines = PopoJsonService.BuildContentLines(node);
+
+        Assert.Equal(2, lines.Count);
+        Assert.All(lines, l => Assert.True(l.IsListItem));
+        Assert.Equal("1", lines[0].Number);
+        Assert.Equal("2", lines[1].Number);
+    }
+
+    [Fact]
+    public void BuildContentLines_NoOrderedLists_ReturnsEmpty()
+    {
+        var node = new AnalysisTreeNode
+        {
+            Type = "text",
+            Content = "plain<|txt_split|>text"
+        };
+
+        var lines = PopoJsonService.BuildContentLines(node);
+
+        Assert.Empty(lines);
+    }
+
+    [Fact]
+    public void GenerateOrderedListMarkdown_RendersNumberedLists()
+    {
+        var node = new AnalysisTreeNode
+        {
+            Type = "text",
+            Content = "总则段落<|txt_split|>1 第一项<|txt_split|>2 第二项",
+            OrderedLists = new List<OrderedListEntry>
+            {
+                new()
+                {
+                    Items = new List<OrderedListItem>
+                    {
+                        new() { Num = 1, Text = "第一项" },
+                        new() { Num = 2, Text = "第二项" }
+                    },
+                    SegmentRange = new[] { 2, 3 },
+                    StartsAtOne = true
+                }
+            }
+        };
+
+        var markdown = PopoJsonService.GenerateOrderedListMarkdown(node);
+
+        Assert.Contains("总则段落", markdown);
+        Assert.Contains("1. 第一项", markdown);
+        Assert.Contains("2. 第二项", markdown);
+        // The paragraph must come before the list items
+        Assert.True(markdown.IndexOf("总则段落") < markdown.IndexOf("1. 第一项"));
+    }
+
+    [Fact]
+    public void GenerateOrderedListMarkdown_NoOrderedLists_ReturnsEmpty()
+    {
+        var node = new AnalysisTreeNode
+        {
+            Type = "text",
+            Content = "plain text"
+        };
+
+        Assert.Equal(string.Empty, PopoJsonService.GenerateOrderedListMarkdown(node));
+    }
+
+    #endregion
 }

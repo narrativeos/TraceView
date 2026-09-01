@@ -670,16 +670,80 @@ public partial class TreeNodeViewModel : ObservableObject
     /// <summary>
     /// Whether to show the content preview (collapsed, non-image nodes + image_footnote).
     /// Table nodes show a DataGrid instead of text content; parent table nodes with
-    /// structured children hide the redundant raw HTML preview.
+    /// structured children hide the redundant raw HTML preview. Nodes with ordered
+    /// lists render structured content instead of the plain text preview.
     /// </summary>
-    public bool ShowContentPreview => !IsContentExpanded && !IsPureImage && !ShowTableGrid && !HasStructuredTableChildren;
+    public bool ShowContentPreview => !IsContentExpanded && !IsPureImage && !ShowTableGrid && !HasStructuredTableChildren && !HasStructuredContent;
 
     /// <summary>
     /// Whether to show the full content (expanded, non-image nodes + image_footnote).
     /// Table nodes show a DataGrid instead of text content; parent table nodes with
-    /// structured children hide the redundant raw HTML preview.
+    /// structured children hide the redundant raw HTML preview. Nodes with ordered
+    /// lists render structured content instead of the plain text.
     /// </summary>
-    public bool ShowFullContent => IsContentExpanded && !IsPureImage && !ShowTableGrid && !HasStructuredTableChildren;
+    public bool ShowFullContent => IsContentExpanded && !IsPureImage && !ShowTableGrid && !HasStructuredTableChildren && !HasStructuredContent;
+
+    // === Structured content (nodes with ordered lists) ===
+
+    /// <summary>
+    /// Whether the node carries ordered lists detected by the Popo API.
+    /// </summary>
+    public bool HasOrderedLists => _node.OrderedLists is { Count: > 0 };
+
+    private List<ContentDisplayLine>? _structuredContentLines;
+
+    /// <summary>
+    /// Structured display lines of the node's content: content segments mapped
+    /// against the ordered lists' segment ranges. List segments become numbered
+    /// lines; other segments become plain paragraphs. Cached after first build.
+    /// </summary>
+    public List<ContentDisplayLine>? StructuredContentLines
+    {
+        get
+        {
+            if (_structuredContentLines is not null)
+                return _structuredContentLines;
+            _structuredContentLines = PopoJsonService.BuildContentLines(_node);
+            return _structuredContentLines;
+        }
+    }
+
+    /// <summary>
+    /// Whether the node's content should be rendered in structured mode
+    /// (ordered lists resolved into numbered lines).
+    /// </summary>
+    public bool HasStructuredContent =>
+        HasOrderedLists && (StructuredContentLines?.Count ?? 0) > 0;
+
+    /// <summary>
+    /// Whether to show the structured content preview (collapsed).
+    /// </summary>
+    public bool ShowStructuredPreview => HasStructuredContent && !IsContentExpanded;
+
+    /// <summary>
+    /// Whether to show the full structured content (expanded).
+    /// </summary>
+    public bool ShowStructuredFull => HasStructuredContent && IsContentExpanded;
+
+    /// <summary>
+    /// Collapsed preview of the structured content: the first few lines joined
+    /// with newlines, with an ellipsis when truncated.
+    /// </summary>
+    public string StructuredContentPreview
+    {
+        get
+        {
+            var lines = StructuredContentLines;
+            if (lines is null || lines.Count == 0)
+                return string.Empty;
+
+            var preview = lines.Take(3)
+                .Select(l => l.IsListItem ? $"{l.Number} {l.Text}" : l.Text)
+                .ToList();
+            var text = string.Join("\n", preview);
+            return lines.Count > 3 ? text + "\n..." : text;
+        }
+    }
 
     /// <summary>
     /// Whether to show the metadata/caption (pure image nodes with non-empty metadata).
