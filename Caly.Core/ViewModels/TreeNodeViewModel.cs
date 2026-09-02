@@ -710,7 +710,10 @@ public partial class TreeNodeViewModel : ObservableObject
 
     /// <summary>
     /// Whether the node's content should be rendered in structured mode
-    /// (ordered lists resolved into numbered lines).
+    /// (ordered lists resolved into numbered lines). Aggregation nodes
+    /// (chapter nodes that carry their children's lists but no content of
+    /// their own) yield no structured lines, so they render nothing here —
+    /// the children already render the lists.
     /// </summary>
     public bool HasStructuredContent =>
         HasOrderedLists && (StructuredContentLines?.Count ?? 0) > 0;

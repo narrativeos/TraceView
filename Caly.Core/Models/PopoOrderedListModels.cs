@@ -54,7 +54,7 @@ public sealed class OrderedListEntry
     public List<OrderedListItem> Items { get; set; } = new();
 
     /// <summary>
-    /// Segment range [start, end] (1-based, inclusive) of this list's items
+    /// Segment range [start, end] (0-based, inclusive) of this list's items
     /// within the node's content, where content is split on &lt;|txt_split|&gt;.
     /// Null when the API did not report a range.
     /// </summary>

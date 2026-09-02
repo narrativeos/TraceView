@@ -1768,7 +1768,7 @@ public class PopoJsonServiceTests
                 { "num": 2, "text": "第二项" },
                 { "num": 3, "text": "第三项" }
               ],
-              "segment_range": [2, 4],
+              "segment_range": [1, 3],
               "starts_at_one": true
             }
           ]
@@ -1783,7 +1783,7 @@ public class PopoJsonServiceTests
         Assert.Equal(1, list.Items[0].Num);
         Assert.Equal("第一项", list.Items[0].Text);
         Assert.Equal(3, list.Items[2].Num);
-        Assert.Equal(new[] { 2, 4 }, list.SegmentRange);
+        Assert.Equal(new[] { 1, 3 }, list.SegmentRange);
         Assert.True(list.StartsAtOne);
     }
 
@@ -1831,7 +1831,7 @@ public class PopoJsonServiceTests
                         new() { Num = 1, Text = "第一项" },
                         new() { Num = 2, Text = "第二项" }
                     },
-                    SegmentRange = new[] { 2, 3 },
+                    SegmentRange = new[] { 1, 2 },
                     StartsAtOne = true
                 },
                 new()
@@ -1841,7 +1841,7 @@ public class PopoJsonServiceTests
                         new() { Num = 1, Text = "第三项" },
                         new() { Num = 2, Text = "第四项" }
                     },
-                    SegmentRange = new[] { 5, 6 },
+                    SegmentRange = new[] { 4, 5 },
                     StartsAtOne = true
                 }
             }
@@ -1880,6 +1880,172 @@ public class PopoJsonServiceTests
     }
 
     [Fact]
+    public void BuildContentLines_RangeStartingAtZero_CoversFirstSegments()
+    {
+        // The API reports segment_range as 0-based; a range starting at 0
+        // covers the very first content segments (regression test for the
+        // off-by-one that dropped the first item and demoted the rest to
+        // plain paragraphs).
+        var node = new AnalysisTreeNode
+        {
+            Type = "text",
+            Content = "1 第一项<|txt_split|>2 第二项",
+            OrderedLists = new List<OrderedListEntry>
+            {
+                new()
+                {
+                    Items = new List<OrderedListItem>
+                    {
+                        new() { Num = 1, Text = "第一项" },
+                        new() { Num = 2, Text = "第二项" }
+                    },
+                    SegmentRange = new[] { 0, 1 },
+                    StartsAtOne = true
+                }
+            }
+        };
+
+        var lines = PopoJsonService.BuildContentLines(node);
+
+        Assert.Equal(2, lines.Count);
+        Assert.All(lines, l => Assert.True(l.IsListItem));
+        Assert.Equal("1", lines[0].Number);
+        Assert.Equal("第一项", lines[0].Text);
+        Assert.False(lines[0].IsListStart);
+        Assert.Equal("2", lines[1].Number);
+        Assert.Equal("第二项", lines[1].Text);
+    }
+
+
+    [Fact]
+    public void BuildContentLines_AggregationNode_ReturnsEmpty()
+    {
+        // The Popo API aggregates a chapter's ordered lists onto the chapter
+        // node (empty content). The children render their own lists, so the
+        // aggregation node must yield no lines (avoids duplicating them).
+        var child = new AnalysisTreeNode
+        {
+            Type = "text",
+            Content = "1 第一项<|txt_split|>2 第二项",
+            OrderedLists = new List<OrderedListEntry>
+            {
+                new()
+                {
+                    Items = new List<OrderedListItem>
+                    {
+                        new() { Num = 1, Text = "第一项" },
+                        new() { Num = 2, Text = "第二项" }
+                    },
+                    SegmentRange = new[] { 0, 1 },
+                    StartsAtOne = true
+                }
+            }
+        };
+
+        var node = new AnalysisTreeNode
+        {
+            Type = "text",
+            Content = string.Empty,
+            OrderedLists = new List<OrderedListEntry>
+            {
+                new()
+                {
+                    Items = new List<OrderedListItem>
+                    {
+                        new() { Num = 1, Text = "第一项" },
+                        new() { Num = 2, Text = "第二项" }
+                    },
+                    SegmentRange = new[] { 0, 1 },
+                    StartsAtOne = true
+                }
+            }
+        };
+        node.Children.Add(child);
+
+        var lines = PopoJsonService.BuildContentLines(node);
+
+        Assert.Empty(lines);
+    }
+
+    [Fact]
+    public void BuildContentLines_NodeWithContentAndListChildren_RendersOwnLists()
+    {
+        // A node that has its own content is never an aggregation node, even
+        // when its children also carry lists — it renders its own lists.
+        var child = new AnalysisTreeNode
+        {
+            Type = "text",
+            Content = "1 子项一",
+            OrderedLists = new List<OrderedListEntry>
+            {
+                new()
+                {
+                    Items = new List<OrderedListItem> { new() { Num = 1, Text = "子项一" } },
+                    SegmentRange = new[] { 0, 0 },
+                    StartsAtOne = true
+                }
+            }
+        };
+
+        var node = new AnalysisTreeNode
+        {
+            Type = "text",
+            Content = "总则<|txt_split|>1 第一项",
+            OrderedLists = new List<OrderedListEntry>
+            {
+                new()
+                {
+                    Items = new List<OrderedListItem> { new() { Num = 1, Text = "第一项" } },
+                    SegmentRange = new[] { 1, 1 },
+                    StartsAtOne = true
+                }
+            }
+        };
+        node.Children.Add(child);
+
+        var lines = PopoJsonService.BuildContentLines(node);
+
+        Assert.Equal(2, lines.Count);
+        Assert.Equal("总则", lines[0].Text);
+        Assert.True(lines[1].IsListItem);
+        Assert.Equal("1", lines[1].Number);
+        Assert.Equal("第一项", lines[1].Text);
+    }
+
+    [Fact]
+    public void BuildContentLines_EmptyContentWithoutListChildren_RendersItemsDirectly()
+    {
+        // A node with empty content and lists but no list-bearing children is
+        // NOT an aggregation node — it renders its items directly.
+        var node = new AnalysisTreeNode
+        {
+            Type = "text",
+            Content = string.Empty,
+            OrderedLists = new List<OrderedListEntry>
+            {
+                new()
+                {
+                    Items = new List<OrderedListItem>
+                    {
+                        new() { Num = 1, Text = "第一项" },
+                        new() { Num = 2, Text = "第二项" }
+                    },
+                    SegmentRange = new[] { 0, 1 },
+                    StartsAtOne = true
+                }
+            }
+        };
+
+        var lines = PopoJsonService.BuildContentLines(node);
+
+        Assert.Equal(2, lines.Count);
+        Assert.All(lines, l => Assert.True(l.IsListItem));
+        Assert.Equal("1", lines[0].Number);
+        Assert.Equal("2", lines[1].Number);
+    }
+
+
+    [Fact]
     public void BuildContentLines_StripsHtmlTags()
     {
         var node = new AnalysisTreeNode
@@ -1894,7 +2060,7 @@ public class PopoJsonServiceTests
                     {
                         new() { Num = 1, Text = "持续时间应为<sup>1min</sup>" }
                     },
-                    SegmentRange = new[] { 2, 2 },
+                    SegmentRange = new[] { 1, 1 },
                     StartsAtOne = true
                 }
             }
@@ -1922,7 +2088,7 @@ public class PopoJsonServiceTests
                         new() { Num = 1, Text = "第一项" },
                         new() { Num = 2, Text = "第二项" }
                     },
-                    SegmentRange = new[] { 1, 2 },
+                    SegmentRange = new[] { 0, 1 },
                     StartsAtOne = true
                 }
             }
@@ -1966,7 +2132,7 @@ public class PopoJsonServiceTests
                         new() { Num = 1, Text = "第一项" },
                         new() { Num = 2, Text = "第二项" }
                     },
-                    SegmentRange = new[] { 2, 3 },
+                    SegmentRange = new[] { 1, 2 },
                     StartsAtOne = true
                 }
             }

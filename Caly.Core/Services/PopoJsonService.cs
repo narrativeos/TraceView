@@ -678,11 +678,14 @@ public static class PopoJsonService
 
     /// <summary>
     /// Builds the structured display lines of a node's content: the content is
-    /// split on &lt;|txt_split|&gt; into segments (1-based), and segments falling
-    /// inside an ordered list's segment_range are rendered as numbered list
-    /// items (using the list's item number and cleaned text); all other
-    /// non-empty segments are rendered as plain paragraphs.
-    /// Returns an empty list when the node has no ordered lists or no content.
+    /// split on &lt;|txt_split|&gt; into segments, and segments falling inside an
+    /// ordered list's segment_range (0-based, inclusive) are rendered as
+    /// numbered list items (using the list's item number and cleaned text);
+    /// all other non-empty segments are rendered as plain paragraphs.
+    /// Returns an empty list when the node has no ordered lists or no content,
+    /// or when the node is an aggregation node (it carries its children's
+    /// ordered lists but no content of its own — the children render the
+    /// lists, so rendering them here would duplicate them).
     /// </summary>
     internal static List<ContentDisplayLine> BuildContentLines(AnalysisTreeNode node)
     {
@@ -690,11 +693,23 @@ public static class PopoJsonService
         if (node.OrderedLists is not { Count: > 0 } lists)
             return lines;
 
+        // Aggregation nodes: the Popo API aggregates a chapter's ordered lists
+        // onto the chapter node (which has no content of its own). The children
+        // render their own lists, so return empty here to avoid duplicating them.
+        // Nodes that have their own content are never treated as aggregation
+        // nodes, even when their children also carry lists.
+        if (string.IsNullOrEmpty(node.Content) &&
+            node.Children.Any(c => c.OrderedLists is { Count: > 0 } childLists && childLists.Any(l => l.Items.Count > 0)))
+            return lines;
+
         var segments = string.IsNullOrEmpty(node.Content)
             ? Array.Empty<string>()
             : node.Content.Split("<|txt_split|>");
 
-        // Map segment index (1-based) -> (list, position within the list)
+        // Map segment index (1-based) -> (list, position within the list).
+        // The API reports segment_range as 0-based indices into the split
+        // content, so each index is shifted by one to match the 1-based
+        // segment loop below.
         var segmentMap = new Dictionary<int, (OrderedListEntry list, int pos)>();
         foreach (var list in lists)
         {
@@ -702,7 +717,7 @@ public static class PopoJsonService
                 continue;
             for (int i = range[0]; i <= range[1] && i - range[0] < list.Items.Count; i++)
             {
-                segmentMap[i] = (list, i - range[0]);
+                segmentMap[i + 1] = (list, i - range[0]);
             }
         }
 
