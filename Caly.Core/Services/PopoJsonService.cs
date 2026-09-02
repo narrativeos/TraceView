@@ -1093,47 +1093,29 @@ public static class PopoJsonService
                             var tocEntries = new List<TocEntry>();
                             foreach (var entry in entriesElem.EnumerateArray())
                             {
-                                // Guard: skip non-object entries (e.g., plain strings) in toc array
-                                if (entry.ValueKind != JsonValueKind.Object)
-                                    continue;
+                                var tocEntry = ParseTocEntryElement(entry);
+                                if (tocEntry is not null)
+                                    tocEntries.Add(tocEntry);
+                            }
 
-                                // Prefer linked_body_title (actual body title) over TOC page title
-                                string title = string.Empty;
-                                if (entry.TryGetProperty("linked_body_title", out var linkedTitleElem) &&
-                                    !string.IsNullOrEmpty(linkedTitleElem.GetString()))
+                            // Parse result.toc.back_matter_toc.entries (back-matter TOC, e.g.
+                            // 条文说明 of GB standards) — same entry schema as the main toc.
+                            if (tocElem.TryGetProperty("back_matter_toc", out var backMatterElem) &&
+                                backMatterElem.ValueKind == JsonValueKind.Object &&
+                                backMatterElem.TryGetProperty("entries", out var backMatterEntriesElem) &&
+                                backMatterEntriesElem.ValueKind == JsonValueKind.Array)
+                            {
+                                foreach (var entry in backMatterEntriesElem.EnumerateArray())
                                 {
-                                    title = linkedTitleElem.GetString()!;
-                                }
-                                else if (entry.TryGetProperty("title", out var titleElem))
-                                {
-                                    title = titleElem.GetString() ?? string.Empty;
-                                }
-
-                                if (!string.IsNullOrEmpty(title))
-                                {
-                                    int level = 1;
-                                    if (entry.TryGetProperty("level", out var lvlElem) && lvlElem.ValueKind == JsonValueKind.Number)
-                                        level = lvlElem.GetInt32();
-
-                                    int page = 0;
-                                    if (entry.TryGetProperty("linked_body_page", out var pageElem) && pageElem.ValueKind == JsonValueKind.Number)
+                                    var backMatterEntry = ParseTocEntryElement(entry);
+                                    if (backMatterEntry is not null)
                                     {
-                                        page = pageElem.GetInt32();
+                                        backMatterEntry.Source = "back_matter";
+                                        tocEntries.Add(backMatterEntry);
                                     }
-                                    else if (entry.TryGetProperty("page", out var fallbackPageElem) && fallbackPageElem.ValueKind == JsonValueKind.Number)
-                                    {
-                                        page = fallbackPageElem.GetInt32();
-                                    }
-
-                                    tocEntries.Add(new TocEntry
-                                    {
-                                        Title = title,
-                                        Level = level,
-                                        Page = page,
-                                        Type = "toc"
-                                    });
                                 }
                             }
+
                             doc.TocEntries = tocEntries;
                             System.Diagnostics.Debug.WriteLine($"[Popo] result.toc.entries parsed: {tocEntries.Count} entries from {Path.GetFileName(jsonPath)}");
                         }
@@ -1254,6 +1236,56 @@ public static class PopoJsonService
             System.Diagnostics.Debug.WriteLine($"[PopoJsonService] TryParsePopoResultJson failed for '{jsonPath}': {ex.GetType().Name}: {ex.Message}");
             return null;
         }
+    }
+
+    /// <summary>
+    /// Parses a single TOC entry element from popo_result.json (result.toc.entries or
+    /// result.toc.back_matter_toc.entries share the same schema).
+    /// Prefers linked_body_title/linked_body_page (actual body location) over the
+    /// TOC page title/page. Returns null for non-object entries or entries without a title.
+    /// </summary>
+    private static TocEntry? ParseTocEntryElement(JsonElement entry)
+    {
+        // Guard: skip non-object entries (e.g., plain strings) in toc array
+        if (entry.ValueKind != JsonValueKind.Object)
+            return null;
+
+        // Prefer linked_body_title (actual body title) over TOC page title
+        string title = string.Empty;
+        if (entry.TryGetProperty("linked_body_title", out var linkedTitleElem) &&
+            !string.IsNullOrEmpty(linkedTitleElem.GetString()))
+        {
+            title = linkedTitleElem.GetString()!;
+        }
+        else if (entry.TryGetProperty("title", out var titleElem))
+        {
+            title = titleElem.GetString() ?? string.Empty;
+        }
+
+        if (string.IsNullOrEmpty(title))
+            return null;
+
+        int level = 1;
+        if (entry.TryGetProperty("level", out var lvlElem) && lvlElem.ValueKind == JsonValueKind.Number)
+            level = lvlElem.GetInt32();
+
+        int page = 0;
+        if (entry.TryGetProperty("linked_body_page", out var pageElem) && pageElem.ValueKind == JsonValueKind.Number)
+        {
+            page = pageElem.GetInt32();
+        }
+        else if (entry.TryGetProperty("page", out var fallbackPageElem) && fallbackPageElem.ValueKind == JsonValueKind.Number)
+        {
+            page = fallbackPageElem.GetInt32();
+        }
+
+        return new TocEntry
+        {
+            Title = title,
+            Level = level,
+            Page = page,
+            Type = "toc"
+        };
     }
 
     /// <summary>
@@ -2101,8 +2133,18 @@ public static class PopoJsonService
         // Target visual width for dot leaders (accounts for CJK double-width characters)
         const int targetVisualWidth = 50;
 
+        var backMatterHeaderEmitted = false;
         foreach (var entry in entries)
         {
+            // Back-matter TOC entries (e.g. 条文说明 of GB standards) follow the main
+            // TOC — emit a section header before the first one for clarity.
+            if (entry.Source == "back_matter" && !backMatterHeaderEmitted)
+            {
+                sb.AppendLine("## 条文说明");
+                sb.AppendLine();
+                backMatterHeaderEmitted = true;
+            }
+
             var indent = new string(' ', (entry.Level - 1) * 2);
             var title = entry.Title.Trim();
             var page = entry.Page;

@@ -1402,6 +1402,105 @@ public class PopoJsonServiceTests
     }
 
     [Fact]
+    public void TryParsePopoResultJson_ParsesBackMatterTocEntries()
+    {
+        // Regression: the TOC panel only showed result.toc.entries and dropped
+        // result.toc.back_matter_toc.entries (e.g. 条文说明 of GB standards).
+        var tempDir = Path.Combine(Path.GetTempPath(), "caly-popo-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+
+        var jsonPath = Path.Combine(tempDir, "popo_result.json");
+        File.WriteAllText(jsonPath, """
+        {
+          "task_id": "t1",
+          "status": "completed",
+          "result": {
+            "doc_id": "d1",
+            "status": "completed",
+            "message": "",
+            "tree": {
+              "type": "root",
+              "title": "",
+              "content": "",
+              "level": 0,
+              "location": [],
+              "block_ids": [],
+              "children": []
+            },
+            "toc": {
+              "entries": [
+                {
+                  "title": "1 总 则",
+                  "level": 1,
+                  "page": 12,
+                  "linked_body_title": "1 总则",
+                  "linked_body_page": 12
+                },
+                {
+                  "title": "2 术语",
+                  "level": 1,
+                  "page": 13,
+                  "linked_body_title": "2 术语",
+                  "linked_body_page": 13
+                }
+              ],
+              "back_matter_toc": {
+                "language": "zh",
+                "entries": [
+                  {
+                    "title": "1 总 则",
+                    "level": 1,
+                    "page": 108,
+                    "linked_body_title": "1 总则",
+                    "linked_body_page": 108
+                  },
+                  {
+                    "title": "2 术语",
+                    "level": 1,
+                    "page": 109,
+                    "linked_body_title": "2 术语",
+                    "linked_body_page": 109
+                  }
+                ]
+              }
+            }
+          }
+        }
+        """);
+
+        try
+        {
+            var doc = PopoJsonService.TryParsePopoResultJson(jsonPath);
+            Assert.NotNull(doc);
+
+            // Main entries + back-matter entries, in document order.
+            Assert.Equal(4, doc!.TocEntries.Count);
+            Assert.Equal("1 总则", doc.TocEntries[0].Title);
+            Assert.Equal(12, doc.TocEntries[0].Page);
+            Assert.Equal(string.Empty, doc.TocEntries[0].Source);
+            Assert.Equal("2 术语", doc.TocEntries[1].Title);
+            Assert.Equal(13, doc.TocEntries[1].Page);
+            Assert.Equal("1 总则", doc.TocEntries[2].Title);
+            Assert.Equal(108, doc.TocEntries[2].Page);
+            Assert.Equal("back_matter", doc.TocEntries[2].Source);
+            Assert.Equal("2 术语", doc.TocEntries[3].Title);
+            Assert.Equal(109, doc.TocEntries[3].Page);
+            Assert.Equal("back_matter", doc.TocEntries[3].Source);
+
+            // Markdown groups back-matter entries under a 条文说明 header.
+            var markdown = PopoJsonService.GenerateTocMarkdown(doc.TocEntries);
+            Assert.Contains("## 条文说明", markdown);
+            Assert.True(markdown.IndexOf("## 条文说明") < markdown.IndexOf("109"));
+            Assert.True(markdown.IndexOf("## 条文说明") > markdown.IndexOf("13"));
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+                Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void TableHeader_DisplayName_FlattensGroupAndUnitWithoutDuplication()
     {
         // Plain name
