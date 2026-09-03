@@ -446,57 +446,36 @@ public sealed partial class DocumentViewModel
 
     /// <summary>
     /// Semantic blocks wrapped in ViewModels for UI binding with expand/collapse support.
-    /// Cached to preserve IsDetailsExpanded state.
+    /// Backed by a stable collection that is rebuilt in place when SemanticResults changes,
+    /// so the ItemsControl's ItemsSource is never replaced. Replacing the ItemsSource would
+    /// raise a Reset event, and the generator would enumerate the new collection while it is
+    /// still being built, risking a re-entrant "Collection was modified" exception.
     /// </summary>
-    private ObservableCollection<SemanticBlockViewModel>? _semanticBlockViewModels;
+    private readonly ObservableCollection<SemanticBlockViewModel> _semanticBlockViewModels = new();
 
-    public ObservableCollection<SemanticBlockViewModel> SemanticBlockViewModels
-    {
-        get
-        {
-            if (_semanticBlockViewModels is not null) return _semanticBlockViewModels;
-            System.Diagnostics.Debug.WriteLine($"[Semantic] SemanticBlockViewModels getter: SemanticResults={SemanticResults != null}, Blocks={SemanticResults?.Blocks.Count ?? 0}");
-            if (SemanticResults?.Blocks is null)
-            {
-                _semanticBlockViewModels = new ObservableCollection<SemanticBlockViewModel>();
-                System.Diagnostics.Debug.WriteLine("[Semantic] Returning empty collection (no data)");
-                return _semanticBlockViewModels;
-            }
-            _semanticBlockViewModels = new ObservableCollection<SemanticBlockViewModel>(
-                SemanticResults.Blocks.Select(b => new SemanticBlockViewModel(b)));
-            System.Diagnostics.Debug.WriteLine($"[Semantic] Created {_semanticBlockViewModels.Count} view models");
-            return _semanticBlockViewModels;
-        }
-    }
+    public ObservableCollection<SemanticBlockViewModel> SemanticBlockViewModels => _semanticBlockViewModels;
 
     /// <summary>Enriched entity results loaded from enriched_result.json.</summary>
     [ObservableProperty]
     private EnrichedResultFile? _enrichedResults;
 
-    private ObservableCollection<EnrichedBlockViewModel>? _enrichedBlockViewModels;
+    private readonly ObservableCollection<EnrichedBlockViewModel> _enrichedBlockViewModels = new();
 
-    public ObservableCollection<EnrichedBlockViewModel> EnrichedBlockViewModels
-    {
-        get
-        {
-            if (_enrichedBlockViewModels is not null) return _enrichedBlockViewModels;
-            if (EnrichedResults?.Blocks is null)
-            {
-                _enrichedBlockViewModels = new();
-                return _enrichedBlockViewModels;
-            }
-            _enrichedBlockViewModels = new(
-                EnrichedResults.Blocks.Select(b => new EnrichedBlockViewModel(b)));
-            return _enrichedBlockViewModels;
-        }
-    }
+    public ObservableCollection<EnrichedBlockViewModel> EnrichedBlockViewModels => _enrichedBlockViewModels;
 
     partial void OnEnrichedResultsChanged(EnrichedResultFile? value)
     {
-        _enrichedBlockViewModels = null;
-        OnPropertyChanged(nameof(EnrichedBlockViewModels));
+        // Rebuild the collection in place instead of replacing it (see OnSemanticResultsChanged).
+        _enrichedBlockViewModels.Clear();
+        if (value?.Blocks is not null)
+        {
+            foreach (var b in value.Blocks)
+                _enrichedBlockViewModels.Add(new EnrichedBlockViewModel(b));
+        }
         OnPropertyChanged(nameof(HasEnrichedData));
         OnPropertyChanged(nameof(EnrichButtonTooltip));
+        // No need to raise PropertyChanged for EnrichedBlockViewModels: the collection
+        // itself raises CollectionChanged events that the ItemsControl listens to.
     }
 
     /// <summary>Term discovery results loaded from term_result.json.</summary>
@@ -638,7 +617,16 @@ public sealed partial class DocumentViewModel
     /// </summary>
     partial void OnSemanticResultsChanged(SemanticResultFile? value)
     {
-        _semanticBlockViewModels = null; // Reset cache to rebuild when accessed
+        // Rebuild the collection in place instead of replacing it. Replacing the
+        // ItemsSource would raise a Reset event, and the generator would enumerate
+        // the new collection while it is still being built, risking a re-entrant
+        // "Collection was modified" exception.
+        _semanticBlockViewModels.Clear();
+        if (value?.Blocks is not null)
+        {
+            foreach (var b in value.Blocks)
+                _semanticBlockViewModels.Add(new SemanticBlockViewModel(b));
+        }
         // Notify dependent properties so the UI updates correctly
         OnPropertyChanged(nameof(SemanticNodeCount));
         OnPropertyChanged(nameof(SemanticEntityCount));
@@ -648,8 +636,8 @@ public sealed partial class DocumentViewModel
         OnPropertyChanged(nameof(CanProcessTerm));
         OnPropertyChanged(nameof(TermButtonTooltip));
         OnPropertyChanged(nameof(TermStatusText));
-        // Critical: notify that SemanticBlockViewModels has changed so the ItemsControl re-reads the property
-        OnPropertyChanged(nameof(SemanticBlockViewModels));
+        // No need to raise PropertyChanged for SemanticBlockViewModels: the collection
+        // itself raises CollectionChanged events (Reset + Add) that the ItemsControl listens to.
     }
 
     #endregion
