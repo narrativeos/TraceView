@@ -129,6 +129,21 @@ public sealed partial class DocumentViewModel
     private CancellationTokenSource? _minerUCts;
 
     /// <summary>
+    /// When true, skips the cached parse result and forces a full re-parse via the MinerU API.
+    /// Set by the UI before calling ParseWithMinerUCommand for re-parsing.
+    /// </summary>
+    private bool _forceMinerUReparse;
+
+    /// <summary>
+    /// Marks that the next MinerU parse should skip cached results and re-parse.
+    /// Called from the UI click handler when the user confirms re-parsing.
+    /// </summary>
+    public void MarkMinerUForReparse()
+    {
+        _forceMinerUReparse = true;
+    }
+
+    /// <summary>
     /// Cached MinerUService instance per configuration key.
     /// Reuses HttpClient connections across parse operations.
     /// </summary>
@@ -437,21 +452,31 @@ public sealed partial class DocumentViewModel
 
         var service = GetMinerUService();
 
-        // Step 1: Try to load from cache first (avoids unnecessary network requests)
-        var cachedResult = service.TryLoadFromCache(LocalPath);
-        if (cachedResult?.StructureDocument is not null)
+        // Step 1: Try to load from cache first (avoids unnecessary network requests).
+        // Skipped when the user explicitly requested a re-parse.
+        if (!_forceMinerUReparse)
         {
-            LoadParseResult(cachedResult);
-            MinerUStatus = MinerUParseStatus.Completed;
-            MinerUProgress = 100;
-            MinerUStatusText = "Loaded from cache";
-            IsMinerUParsing = false;
-            OnPropertyChanged(nameof(HasMinerUData));
-            return;
+            var cachedResult = service.TryLoadFromCache(LocalPath);
+            if (cachedResult?.StructureDocument is not null)
+            {
+                LoadParseResult(cachedResult);
+                MinerUStatus = MinerUParseStatus.Completed;
+                MinerUProgress = 100;
+                MinerUStatusText = "Loaded from cache";
+                IsMinerUParsing = false;
+                OnPropertyChanged(nameof(HasMinerUData));
+                return;
+            }
         }
 
-        // Step 2: Check for a pending task ID from a previous session
-        var pendingTaskId = service.LoadTaskId(LocalPath, ProjectPath);
+        // Step 2: Check for a pending task ID from a previous session.
+        // On forced re-parse, clear any stale task ID so a fresh task is submitted.
+        var pendingTaskId = _forceMinerUReparse
+            ? null
+            : service.LoadTaskId(LocalPath, ProjectPath);
+        if (_forceMinerUReparse)
+            service.ClearTaskId(LocalPath, ProjectPath);
+        _forceMinerUReparse = false;
         if (pendingTaskId is not null)
         {
             _minerUCts = new CancellationTokenSource();

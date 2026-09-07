@@ -434,6 +434,8 @@ public sealed partial class DocumentsTabsControl : UserControl
                     return;
                 }
             }
+            // Mark for re-parse to skip cached results
+            docVm.MarkMinerUForReparse();
         }
 
         docVm.ParseWithMinerUCommand?.Execute(null);
