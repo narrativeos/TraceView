@@ -139,6 +139,7 @@ public sealed class MinerUService : IDisposable
                 ["parse_method"] = "auto",
                 ["return_md"] = "true",
                 ["return_middle_json"] = "true",
+                ["return_layout_quality"] = "true",
                 ["response_format_zip"] = "true"
             });
 
@@ -240,6 +241,7 @@ public sealed class MinerUService : IDisposable
                 ["parse_method"] = "auto",
                 ["return_md"] = "true",
                 ["return_middle_json"] = "true",
+                ["return_layout_quality"] = "true",
                 ["response_format_zip"] = "true"
             });
 
