@@ -272,9 +272,12 @@ public class NlpUnitCollectorTests
         var unit = Assert.Single(units);
         Assert.Equal("table_data", unit.UnitType);
         Assert.Equal("n-table", unit.OriginNodeId);
+        // Compact NLP view: header row + first column (row label) are kept.
         Assert.Contains("项目", unit.Text);
+        Assert.Contains("数值", unit.Text);
         Assert.Contains("绝缘电阻", unit.Text);
-        Assert.Contains("100MΩ", unit.Text);
+        // Numeric data cells (second column) are dropped.
+        Assert.DoesNotContain("100MΩ", unit.Text);
         Assert.Equal(new List<string> { "sb-t1" }, unit.SourceBlockIds);
     }
 

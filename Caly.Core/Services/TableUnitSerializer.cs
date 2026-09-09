@@ -18,6 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -26,23 +27,22 @@ using Caly.Core.Models;
 namespace Caly.Core.Services;
 
 /// <summary>
-/// Serializes structured Popo tables into natural-language text for NLP analysis
-/// (entity-extraction-quality-spec §14.1 A4).
+/// Serializes structured Popo tables into compact natural-language text for NLP
+/// analysis (entity-extraction-quality-spec §14.1 A4). The goal is to feed the
+/// NLP the table's <em>indicators</em> (metric names / labels) without the bulk
+/// of numeric data cells, keeping the request small enough to avoid timeouts.
 ///
-/// table_data: a header line ("group·name (unit) | ...") followed by one
-/// "名称(单位): 值" sentence per row. Large tables (&gt; 20 rows) skip rows whose
-/// cells are all numeric/empty (pure data grids carry no term value); in-table
-/// TOC groups are marked with "# {numbering} {title}" comment lines.
+/// table_data: the header row (column indicators, "group·name (unit) | ...")
+/// plus the first column's deduplicated values (the row labels). Numeric data
+/// cells carry no term value for entity extraction and are dropped.
 ///
-/// table_key_value: one "键: 值" line per pair.
+/// table_key_value: one "键: 值" line per pair. Both key and value are kept —
+/// the value often carries the entities (company names, model numbers, ratings).
 ///
 /// Pure unit: no I/O, no UI dependencies.
 /// </summary>
 public static class TableUnitSerializer
 {
-    /// <summary>Row count above which a table is considered "large" (numeric rows skipped).</summary>
-    public const int LargeTableThreshold = 20;
-
     /// <summary>
     /// Serializes a table node by its type. Returns an empty string for
     /// non-table types or tables without structured data.
@@ -58,7 +58,10 @@ public static class TableUnitSerializer
     }
 
     /// <summary>
-    /// Serializes a table_data node: header line + one "名称: 值" sentence per row.
+    /// Serializes a table_data node into a compact NLP view: the header row
+    /// (the column indicators) plus the first column's deduplicated values
+    /// (the row labels). Numeric data cells are dropped — they carry no term
+    /// value for entity extraction and would bloat the NLP request.
     /// </summary>
     public static string SerializeTableData(AnalysisTreeNode node)
     {
@@ -67,55 +70,43 @@ public static class TableUnitSerializer
         if ((headers == null || headers.Count == 0) && (rows == null || rows.Count == 0))
             return string.Empty;
 
-        var sb = new StringBuilder();
         var headerList = (headers ?? new List<TableHeader>()).OrderBy(h => h.Index).ToList();
         var rowList = (rows ?? new List<TableDataRow>()).OrderBy(r => r.RowIndex).ToList();
-        var isLarge = rowList.Count > LargeTableThreshold;
 
-        // In-table TOC: row index → group comment line (inserted at group start).
-        var groupComments = new Dictionary<int, string>();
-        if (node.Toc != null)
-        {
-            foreach (var item in node.Toc)
-            {
-                if (item.RowRange == null || item.RowRange.Length < 1)
-                    continue;
-                var label = string.IsNullOrEmpty(item.Numbering)
-                    ? item.Title
-                    : $"{item.Numbering} {item.Title}".Trim();
-                if (!string.IsNullOrEmpty(label))
-                    groupComments[item.RowRange[0]] = $"# {label}";
-            }
-        }
+        var sb = new StringBuilder();
 
+        // First row: the column headers (the table's indicators).
         if (headerList.Count > 0)
-        {
             sb.AppendLine(string.Join(" | ", headerList.Select(h => h.DisplayName)));
-        }
 
+        // First column: the row labels, deduplicated (order-preserving).
+        var first = headerList.Count > 0 ? headerList[0] : null;
+        var values = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var row in rowList)
         {
-            if (groupComments.TryGetValue(row.RowIndex, out var comment))
-                sb.AppendLine(comment);
-
-            if (isLarge && IsAllNumericOrEmpty(row))
-                continue;
-
-            var cells = new List<string>();
-            foreach (var header in headerList)
+            string? raw = null;
+            if (first != null)
             {
-                if (!row.Cells.TryGetValue(header.Name, out var cell) &&
-                    !row.Cells.TryGetValue(header.DisplayName, out cell))
-                    continue;
-                var raw = cell.Raw?.Trim() ?? string.Empty;
-                if (string.IsNullOrEmpty(raw))
-                    continue;
-                cells.Add($"{header.DisplayName}: {raw}");
+                if (row.Cells.TryGetValue(first.Name, out var cell))
+                    raw = cell.Raw;
+                else if (row.Cells.TryGetValue(first.DisplayName, out var cell2))
+                    raw = cell2.Raw;
+            }
+            else if (row.Cells.Count > 0)
+            {
+                raw = row.Cells.Values.FirstOrDefault()?.Raw;
             }
 
-            if (cells.Count > 0)
-                sb.AppendLine(string.Join(", ", cells));
+            var value = raw?.Trim();
+            if (!string.IsNullOrEmpty(value) && seen.Add(value))
+                values.Add(value);
         }
+
+        if (values.Count > 0)
+            sb.AppendLine(first != null
+                ? $"{first.DisplayName}: {string.Join(", ", values)}"
+                : string.Join(", ", values));
 
         return sb.ToString().TrimEnd();
     }
@@ -142,12 +133,4 @@ public static class TableUnitSerializer
 
         return sb.ToString().TrimEnd();
     }
-
-    /// <summary>
-    /// True when every cell of the row is numeric or empty — such rows are pure
-    /// data and carry no term value in large tables.
-    /// </summary>
-    private static bool IsAllNumericOrEmpty(TableDataRow row)
-        => row.Cells.Count > 0 &&
-           row.Cells.Values.All(c => c.IsNumeric || string.IsNullOrWhiteSpace(c.Raw));
 }

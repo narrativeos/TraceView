@@ -44,24 +44,30 @@ public class TableUnitSerializerTests
         };
 
     [Fact]
-    public void SerializeTableData_SmallTable_HeaderAndRows()
+    public void SerializeTableData_Compact_HeaderAndFirstColumn()
     {
         var node = new AnalysisTreeNode
         {
             Type = "table_data",
-            Headers = new() { H(0, "绝缘电阻", unit: "GΩ"), H(1, "15s"), H(2, "60s") },
+            Headers = new() { H(0, "绕组"), H(1, "分接开关位置"), H(2, "实测值", unit: "Ω") },
             Rows = new()
             {
-                Row(0, ("绝缘电阻", "1000", true), ("15s", "950", true), ("60s", "980", true)),
-                Row(1, ("绝缘电阻", "2000", true), ("15s", "1900", true), ("60s", "1950", true)),
+                Row(0, ("绕组", "高压绕组", false), ("分接开关位置", "1", true), ("实测值", "0.35", true)),
+                Row(1, ("绕组", "高压绕组", false), ("分接开关位置", "2", true), ("实测值", "0.36", true)),
+                Row(2, ("绕组", "低压绕组", false), ("分接开关位置", "1", true), ("实测值", "0.10", true)),
             }
         };
 
         var text = TableUnitSerializer.Serialize(node);
+        var lines = text.Split('\n');
 
-        Assert.Contains("绝缘电阻 (GΩ) | 15s | 60s", text);
-        Assert.Contains("绝缘电阻 (GΩ): 1000, 15s: 950, 60s: 980", text);
-        Assert.Contains("绝缘电阻 (GΩ): 2000, 15s: 1900, 60s: 1950", text);
+        // Header row: all column indicators.
+        Assert.Equal("绕组 | 分接开关位置 | 实测值 (Ω)", lines[0]);
+        // First column: deduplicated row labels.
+        Assert.Equal("绕组: 高压绕组, 低压绕组", lines[1]);
+        // Numeric data cells (second/third columns) are dropped.
+        Assert.DoesNotContain("0.35", text);
+        Assert.DoesNotContain("分接开关位置: 1", text);
     }
 
     [Fact]
@@ -80,72 +86,57 @@ public class TableUnitSerializerTests
     }
 
     [Fact]
-    public void SerializeTableData_LargeTable_SkipsAllNumericRows()
+    public void SerializeTableData_FirstColumn_Deduplicated()
     {
         var rows = new List<TableDataRow>();
-        for (int i = 0; i < TableUnitSerializer.LargeTableThreshold + 1; i++)
-            rows.Add(Row(i, ("值", i.ToString(), true)));
+        for (int i = 0; i < 30; i++)
+            rows.Add(Row(i, ("相别", i % 3 == 0 ? "A相" : i % 3 == 1 ? "B相" : "C相", false)));
 
         var node = new AnalysisTreeNode
         {
             Type = "table_data",
-            Headers = new() { H(0, "值") },
+            Headers = new() { H(0, "相别"), H(1, "实测值", unit: "Ω") },
             Rows = rows
         };
 
         var text = TableUnitSerializer.Serialize(node);
 
-        // Only the header line remains — all numeric rows skipped.
-        Assert.Equal("值", text);
+        // 30 rows collapse to the three unique phase labels.
+        Assert.Contains("相别: A相, B相, C相", text);
     }
 
     [Fact]
-    public void SerializeTableData_LargeTable_KeepsTextRows()
-    {
-        var rows = new List<TableDataRow>();
-        for (int i = 0; i < TableUnitSerializer.LargeTableThreshold + 1; i++)
-            rows.Add(Row(i, ("值", i.ToString(), true), ("备注", i == 5 ? "异常" : "", false)));
-
-        var node = new AnalysisTreeNode
-        {
-            Type = "table_data",
-            Headers = new() { H(0, "值"), H(1, "备注") },
-            Rows = rows
-        };
-
-        var text = TableUnitSerializer.Serialize(node);
-
-        Assert.Contains("备注: 异常", text);
-        // Numeric-only rows are not serialized.
-        Assert.DoesNotContain("值: 3, ", text);
-    }
-
-    [Fact]
-    public void SerializeTableData_InTableToc_InsertsGroupComments()
+    public void SerializeTableData_NoHeaders_UsesFirstCell()
     {
         var node = new AnalysisTreeNode
         {
             Type = "table_data",
-            Headers = new() { H(0, "项目") },
             Rows = new()
             {
-                Row(0, ("项目", "变压器油", false)),
-                Row(10, ("项目", "电缆", false)),
-            },
-            Toc = new()
-            {
-                new TocEntry { Numbering = "A", Title = "变压器", RowRange = new[] { 0, 9 } },
-                new TocEntry { Numbering = "B", Title = "电缆", RowRange = new[] { 10, 19 } },
+                Row(0, ("col0", "高压", false), ("col1", "100", true)),
+                Row(1, ("col0", "低压", false), ("col1", "200", true)),
             }
         };
 
         var text = TableUnitSerializer.Serialize(node);
-        var lines = text.Split('\n');
 
-        Assert.Contains("# A 变压器", lines);
-        Assert.Contains("# B 电缆", lines);
-        // Group comment precedes its first row.
-        Assert.True(Array.IndexOf(lines, "# A 变压器") < Array.IndexOf(lines, "项目: 变压器油"));
+        // No header line; first-cell values are the row labels.
+        Assert.Contains("高压", text);
+        Assert.Contains("低压", text);
+    }
+
+    [Fact]
+    public void SerializeTableData_OnlyHeaders_NoRows()
+    {
+        var node = new AnalysisTreeNode
+        {
+            Type = "table_data",
+            Headers = new() { H(0, "绕组"), H(1, "实测值", unit: "Ω") }
+        };
+
+        var text = TableUnitSerializer.Serialize(node);
+
+        Assert.Equal("绕组 | 实测值 (Ω)", text);
     }
 
     [Fact]
