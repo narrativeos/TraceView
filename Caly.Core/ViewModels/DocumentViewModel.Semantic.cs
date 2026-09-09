@@ -1845,7 +1845,20 @@ public sealed partial class DocumentViewModel
             if (!string.IsNullOrWhiteSpace(text))
             {
                 foreach (var sbid in node.SourceBlockIds)
-                    map.TryAdd(sbid, text);
+                {
+                    // Several Popo table nodes may reference the same source block
+                    // (one MinerU table split into multiple logical tables) —
+                    // accumulate all serializations so no data is lost.
+                    if (map.TryGetValue(sbid, out var existing))
+                    {
+                        if (!existing.Contains(text))
+                            map[sbid] = existing + "\n" + text;
+                    }
+                    else
+                    {
+                        map[sbid] = text;
+                    }
+                }
             }
         }
 

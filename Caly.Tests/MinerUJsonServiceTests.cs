@@ -645,4 +645,83 @@ public class MinerUJsonServiceTests
                 Directory.Delete(tempDir, recursive: true);
         }
     }
+
+    [Fact]
+    public void TryParseMinerUMiddleJson_TableBodySubBlock_ParsesHtmlAndPropagatesParaId()
+    {
+        // Regression test (洛口主变试验报告_6): MinerU table para_blocks nest a
+        // table_body sub-block whose span carries the table HTML in "html"
+        // (plus a fallback image_path). Previously the sub-block was typed
+        // "text" with content = the .jpg filename, and the para-level block_id
+        // (the ID Popo source_block_ids reference) was lost.
+        var tempDir = Path.Combine(Path.GetTempPath(), "caly-mineru-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+
+        var jsonPath = Path.Combine(tempDir, "table_body_middle.json");
+        File.WriteAllText(jsonPath, """
+        {
+          "pdf_info": [
+            {
+              "page_idx": 1,
+              "page_size": [1920, 2560],
+              "para_blocks": [
+                {
+                  "type": "table",
+                  "block_id": "para-uuid-1",
+                  "block_ids": ["preproc-uuid-1"],
+                  "bbox": [38, 69, 556, 781],
+                  "blocks": [
+                    {
+                      "type": "table_body",
+                      "block_id": "preproc-uuid-1",
+                      "bbox": [38, 69, 556, 781],
+                      "lines": [
+                        {
+                          "bbox": [38, 69, 556, 781],
+                          "spans": [
+                            {
+                              "bbox": [38, 69, 556, 781],
+                              "type": "table",
+                              "html": "<table><tr><td>绕组</td><td>实测值(Ω)</td></tr><tr><td>高压侧</td><td>0.3523</td></tr></table>",
+                              "image_path": "abc123.jpg"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+        """);
+
+        try
+        {
+            var result = MinerUJsonService.TryParseMinerUMiddleJson(jsonPath);
+
+            Assert.NotNull(result);
+            var block = Assert.Single(result!.GetAllBlocks());
+
+            // table_body sub-block maps to the "table" block type (A4 gate).
+            Assert.Equal("table", block.Type);
+
+            // Span "html" is parsed to structured text — not the image filename.
+            Assert.Contains("绕组: 高压侧", block.Content);
+            Assert.Contains("实测值(Ω): 0.3523", block.Content);
+            Assert.DoesNotContain("abc123.jpg", block.Content);
+
+            // The sub-block keeps its own (preproc-level) BlockId...
+            Assert.Equal("preproc-uuid-1", block.BlockId);
+            // ...and inherits the para-level ID referenced by Popo trees.
+            Assert.Contains("preproc-uuid-1", block.SourceBlockIds);
+            Assert.Contains("para-uuid-1", block.SourceBlockIds);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+                Directory.Delete(tempDir, recursive: true);
+        }
+    }
 }

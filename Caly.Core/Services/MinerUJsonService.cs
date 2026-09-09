@@ -676,6 +676,13 @@ public static class MinerUJsonService
                     }
                 }
             }
+
+            // The parent section's own block_id (para-level) is the ID that
+            // downstream trees (e.g., Popo source_block_ids) reference. Sub-blocks
+            // otherwise only carry preproc-level IDs, which breaks A3/A4 lookups
+            // (section paths, structured table text) for nested structures like
+            // table para_blocks containing table_body sub-blocks.
+            var parentOwnBlockId = GetStringProperty(sectionElem, "block_id") ?? string.Empty;
             
             var blocksCount = blocksElem.GetArrayLength();
             
@@ -704,7 +711,13 @@ public static class MinerUJsonService
                         block.SourceBlockIds = new System.Collections.Generic.List<string>(parentBlockIds);
                     }
                 }
-                
+
+                // Also carry the para-level ID (see parentOwnBlockId above) so
+                // lookups keyed by the Popo tree's source_block_ids can find this
+                // sub-block.
+                if (!string.IsNullOrEmpty(parentOwnBlockId) && !block.SourceBlockIds.Contains(parentOwnBlockId))
+                    block.SourceBlockIds.Add(parentOwnBlockId);
+
                 results.Add(block);
             }
         }
@@ -810,6 +823,17 @@ public static class MinerUJsonService
                         if (!string.IsNullOrEmpty(content))
                         {
                             parts.Add(content);
+                        }
+                        // Table spans carry the extracted table HTML in "html"
+                        // (alongside a fallback image_path) — parse it to
+                        // structured text instead of emitting the image filename.
+                        else if (spanElem.TryGetProperty("html", out var htmlElem) && htmlElem.ValueKind == JsonValueKind.String)
+                        {
+                            var html = htmlElem.GetString() ?? string.Empty;
+                            if (!string.IsNullOrEmpty(html))
+                            {
+                                parts.AddRange(ParseHtmlTableRows(html));
+                            }
                         }
                         // For image spans, extract image_path instead
                         else
@@ -960,7 +984,7 @@ public static class MinerUJsonService
             "paragraph_title" or "title" or "section_title" => "title",
             "paragraph" or "text" or "plain_text" or "body_text" => "text",
             "figure" or "image" or "picture" or "photo" or "image_body" => "image",
-            "table" or "tabular" => "table",
+            "table" or "tabular" or "table_body" => "table",
             "figure_footnote" or "table_footnote" or "caption" or "image_caption" or "table_caption" or "image_footnote" => "caption",
             "header" or "footnote" or "footer" => "text",
             "equation" or "formula" => "text",
