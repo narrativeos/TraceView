@@ -75,6 +75,41 @@ public class SectionPathResolverTests
     }
 
     [Fact]
+    public void Resolve_DefaultTitlePlaceholder_DoesNotExtendPath()
+    {
+        // The Popo API fills missing titles with the "Default Title"
+        // placeholder — it must not become a section path (it leaked into
+        // LLM prompts and was extracted as a bogus entity).
+        var body = Node("text", "", "正文内容。", "body-uuid");
+        var placeholder = Node("text", "Default Title", "110kV 洛口变电站主变改造工程");
+        placeholder.Children.Add(body);
+        var root = Node("root", "", "");
+        root.Children.Add(placeholder);
+
+        var doc = new StructureDocument { TreeRoot = root };
+        var result = SectionPathResolver.Resolve(doc);
+
+        Assert.False(result.BlockSectionPaths.ContainsKey("body-uuid"));
+    }
+
+    [Fact]
+    public void Resolve_DefaultTitlePlaceholder_RealHeadingStillWorks()
+    {
+        var body = Node("text", "", "正文内容。", "body-uuid");
+        var s51 = Node("title", "5.1 绝缘电阻", "");
+        s51.Children.Add(body);
+        var placeholder = Node("text", "Default Title", "封面文本");
+        placeholder.Children.Add(s51);
+        var root = Node("root", "", "");
+        root.Children.Add(placeholder);
+
+        var doc = new StructureDocument { TreeRoot = root };
+        var result = SectionPathResolver.Resolve(doc);
+
+        Assert.Equal("5.1 绝缘电阻", result.BlockSectionPaths["body-uuid"]);
+    }
+
+    [Fact]
     public void Resolve_TitleNodeWithEmptyTitleAndContent_DoesNotExtendPath()
     {
         var body = Node("text", "", "正文内容。", "body-uuid");

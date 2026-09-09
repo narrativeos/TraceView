@@ -113,12 +113,17 @@ public static class SectionPathResolver
         // Section headings extend the section path. The Popo tree represents
         // headings either as dedicated "title" nodes or (in the current API
         // format) as "text" nodes carrying a non-empty Title field — the same
-        // convention used by PopoJsonService.BuildTocFromSubtree.
+        // convention used by PopoJsonService.BuildTocFromSubtree. The API
+        // placeholder "Default Title" is not a real heading (same filter as
+        // TreeNodeViewModel / GeoStoryBuilder).
+        var title = node.Title?.Trim();
+        if (title == "Default Title")
+            title = null;
         bool pushed = false;
-        if (node.Type == "title" || (node.Type == "text" && !string.IsNullOrWhiteSpace(node.Title)))
+        if (node.Type == "title" || (node.Type == "text" && !string.IsNullOrWhiteSpace(title)))
         {
-            var label = !string.IsNullOrWhiteSpace(node.Title)
-                ? node.Title.Trim()
+            var label = !string.IsNullOrWhiteSpace(title)
+                ? title
                 : Truncate(node.Content, FallbackTitleLength);
             if (!string.IsNullOrEmpty(label))
             {

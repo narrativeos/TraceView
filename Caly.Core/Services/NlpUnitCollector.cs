@@ -21,6 +21,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using Caly.Core.Models;
 
 namespace Caly.Core.Services;
@@ -112,6 +113,12 @@ public static class NlpUnitCollector
 
             case "text":
                 CollectTextUnits(node, sectionPath, blockMap, output);
+                break;
+
+            case "table":
+                // A table parent with HTML content but no serializable
+                // structured children would otherwise lose its content.
+                CollectTableFallback(node, sectionPath, blockMap, output);
                 break;
 
             case "table_data":
@@ -283,6 +290,86 @@ public static class NlpUnitCollector
         };
         ApplyTraceability(unit, node, null, TraceTier.Node);
         output.Add(unit);
+    }
+
+    /// <summary>
+    /// A "table" parent whose children carry no structured serialization
+    /// (no table_data / table_key_value with data) would otherwise lose its
+    /// content entirely — degrade to a unit from the sanitized HTML. When
+    /// structured children exist they cover the content, so nothing is
+    /// emitted here (no duplication).
+    /// </summary>
+    private static void CollectTableFallback(
+        AnalysisTreeNode node,
+        string? sectionPath,
+        IReadOnlyDictionary<string, MinerUBlock> blockMap,
+        List<NlpUnit> output)
+    {
+        if (HasSerializableTableChild(node))
+            return;
+
+        var content = node.Content;
+        if (string.IsNullOrWhiteSpace(content))
+            return;
+
+        var cleanText = SemanticAnalysisService.SanitizeTextForNlp(TableHtmlToText(content));
+        if (cleanText.Length <= 1)
+            return;
+
+        var (prefixed, prefixLen) = SemanticAnalysisService.ApplySectionPathPrefix(cleanText, sectionPath);
+        var unit = new NlpUnit
+        {
+            Text = prefixed,
+            PrefixLen = prefixLen,
+            UnitType = "table_data",
+            OriginNodeId = node.NodeId,
+            SectionPath = sectionPath,
+        };
+        ApplyTraceability(unit, node, null, TraceTier.Node);
+        output.Add(unit);
+    }
+
+    private static bool HasSerializableTableChild(AnalysisTreeNode node)
+    {
+        foreach (var child in node.Children)
+        {
+            if (child.Type == "table_data" || child.Type == "table_key_value")
+            {
+                if (!string.IsNullOrWhiteSpace(TableUnitSerializer.Serialize(child)))
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Converts table HTML (MinerU table_body / Popo table content) to
+    /// pipe-separated plain text: one row per line, cells joined with " | ".
+    /// Non-HTML or tag-less input falls back to plain tag stripping.
+    /// </summary>
+    internal static string TableHtmlToText(string html)
+    {
+        var rows = new List<string>();
+        foreach (Match rowMatch in Regex.Matches(html, @"<tr[^>]*>(.*?)</tr>", RegexOptions.Singleline))
+        {
+            var cells = new List<string>();
+            foreach (Match cellMatch in Regex.Matches(rowMatch.Groups[1].Value, @"<t[dh][^>]*>(.*?)</t[dh]>", RegexOptions.Singleline))
+            {
+                var cell = Regex.Replace(cellMatch.Groups[1].Value, @"<[^>]+>", string.Empty).Trim();
+                if (cell.Length > 0)
+                    cells.Add(cell);
+            }
+            if (cells.Count > 0)
+                rows.Add(string.Join(" | ", cells));
+        }
+
+        if (rows.Count == 0)
+        {
+            // No <tr>/<td> structure — strip any tags and collapse whitespace.
+            return Regex.Replace(Regex.Replace(html, @"<[^>]+>", " "), @" {2,}", " ").Trim();
+        }
+
+        return string.Join("\n", rows);
     }
 
     // ── caption / image_footnote nodes ───────────────────────────────────────

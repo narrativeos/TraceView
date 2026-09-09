@@ -279,6 +279,66 @@ public class NlpUnitCollectorTests
     }
 
     [Fact]
+    public void Collect_TableWithoutStructuredChildren_FallsBackToHtmlText()
+    {
+        // A "table" parent with HTML content but no table_data /
+        // table_key_value children must not lose its content.
+        var table = Node("table", "",
+            "<table><tr><td colspan=\"8\">2.试验依据</td></tr><tr><td>GB 50150-2016 电力设备交接试验标准</td></tr></table>",
+            "sb-t3");
+        table.NodeId = "n-table3";
+        var root = Node("root", "", "");
+        root.Children.Add(table);
+
+        var units = NlpUnitCollector.Collect(new StructureDocument { TreeRoot = root }, Map());
+
+        var unit = Assert.Single(units);
+        Assert.Equal("table_data", unit.UnitType);
+        Assert.Equal("n-table3", unit.OriginNodeId);
+        Assert.Contains("2.试验依据", unit.Text);
+        Assert.Contains("GB 50150-2016", unit.Text);
+        Assert.DoesNotContain("<td", unit.Text);
+    }
+
+    [Fact]
+    public void Collect_TableWithStructuredChildren_ParentNotDuplicated()
+    {
+        // The structured children cover the parent's content — the parent
+        // itself must not emit a second (duplicated) unit.
+        var kv = Node("table_key_value", "", "", "sb-t1");
+        kv.NodeId = "n-kv";
+        kv.Pairs = new List<TableKeyValuePair>
+        {
+            new() { Key = "设备名称", Value = new TableCellValue { Raw = "110kV 主变" } }
+        };
+        var table = Node("table", "", "<table><tr><td>设备名称</td><td>110kV 主变</td></tr></table>", "sb-t1");
+        table.NodeId = "n-table";
+        table.Children.Add(kv);
+        var root = Node("root", "", "");
+        root.Children.Add(table);
+
+        var units = NlpUnitCollector.Collect(new StructureDocument { TreeRoot = root }, Map());
+
+        var unit = Assert.Single(units);
+        Assert.Equal("table_kv", unit.UnitType);
+        Assert.Equal("n-kv", unit.OriginNodeId);
+    }
+
+    [Fact]
+    public void TableHtmlToText_MultiRowTable_PipeSeparated()
+    {
+        var html = "<table><tr><td>绕组</td><td>实测值(Ω)</td></tr><tr><td>高压侧</td><td>0.3523</td></tr></table>";
+        Assert.Equal("绕组 | 实测值(Ω)\n高压侧 | 0.3523", NlpUnitCollector.TableHtmlToText(html));
+    }
+
+    [Fact]
+    public void TableHtmlToText_NonHtml_StripsTagsOnly()
+    {
+        Assert.Equal("纯文本 内容", NlpUnitCollector.TableHtmlToText("纯文本 内容"));
+        Assert.Equal("甲 乙", NlpUnitCollector.TableHtmlToText("<p>甲</p><p>乙</p>"));
+    }
+
+    [Fact]
     public void Collect_CaptionNode_Unit()
     {
         var caption = Node("caption", "", "表 5.1.1 试验设备", "sb-c1");

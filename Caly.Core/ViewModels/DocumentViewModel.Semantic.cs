@@ -1715,12 +1715,22 @@ public sealed partial class DocumentViewModel
             var content = block.Content;
             if (block.Type == "table")
             {
-                foreach (var sbid in block.SourceBlockIds)
+                // The Popo tree's SourceBlockIds reference para-level block IDs
+                // (the block's own BlockId) as well as preproc-level IDs — check
+                // both (same pattern as the section path lookup below).
+                if (tableTexts.TryGetValue(block.BlockId, out var bySelf) && !string.IsNullOrWhiteSpace(bySelf))
                 {
-                    if (tableTexts.TryGetValue(sbid, out var serialized) && !string.IsNullOrWhiteSpace(serialized))
+                    content = bySelf;
+                }
+                else
+                {
+                    foreach (var sbid in block.SourceBlockIds)
                     {
-                        content = serialized;
-                        break;
+                        if (tableTexts.TryGetValue(sbid, out var serialized) && !string.IsNullOrWhiteSpace(serialized))
+                        {
+                            content = serialized;
+                            break;
+                        }
                     }
                 }
             }
