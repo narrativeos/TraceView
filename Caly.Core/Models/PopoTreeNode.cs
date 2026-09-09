@@ -95,6 +95,14 @@ public partial class AnalysisTreeNode : ObservableObject
     public string NodeId { get; set; } = string.Empty;
 
     /// <summary>
+    /// Transient section path (e.g. "第5章 总则 &gt; 5.13 绝缘电阻试验") resolved by
+    /// <c>SectionPathResolver</c> before NLP analysis. Prepended to the NLP request
+    /// text as a 【...】 prefix for disambiguation. Not persisted to popo_result.json.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? SectionPath { get; set; }
+
+    /// <summary>
     /// Column headers for table_data nodes (null for other node types).
     /// Each header carries name plus optional group/unit from the newer
     /// Popo object-form headers.

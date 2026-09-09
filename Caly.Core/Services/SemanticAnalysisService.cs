@@ -58,6 +58,50 @@ public sealed class SemanticAnalysisService : IDisposable
         _httpClient.DefaultRequestHeaders.Add("Accept", "application/json");
     }
 
+    /// <summary>
+    /// Entity quality policy (F1 shape + F2 confidence/evidence) sent to the NLP on each
+    /// /analyze call. Set to null to disable F1/F2 (NLP stays backward compatible).
+    /// Defaults to the spec-recommended policy (entity-extraction-quality-spec §4).
+    /// </summary>
+    public Dictionary<string, object>? QualityPolicy { get; set; } = DefaultQualityPolicy;
+
+    /// <summary>
+    /// Noun-signal extraction config (Step A POS gating + Step B syntactic role) sent to the
+    /// NLP on each /analyze call. Set to null (or enabled=false) to disable noun signals.
+    /// </summary>
+    public Dictionary<string, object>? NounSignalConfig { get; set; } = DefaultNounSignalConfig;
+
+    /// <summary>
+    /// Spec-recommended default entity quality policy (F1 + F2). Values mirror the NLP's
+    /// own defaults (see entity-extraction-quality-spec §4).
+    /// </summary>
+    public static Dictionary<string, object> DefaultQualityPolicy => new()
+    {
+        ["version"] = 1,
+        ["f1_shape"] = new Dictionary<string, object>
+        {
+            ["section_ref"] = new Dictionary<string, object> { ["enabled"] = true },
+            ["demote_bare_number"] = true,
+        },
+        ["f2_confidence"] = new Dictionary<string, object>
+        {
+            ["enabled"] = true,
+            ["min_confidence"] = new Dictionary<string, object> { ["default"] = 0.6 },
+            ["demote_categories"] = new List<object> { "NUMBER", "STANDARD", "PRODUCT", "UNKNOWN" },
+            ["keyword_require_injected"] = true,
+        },
+    };
+
+    /// <summary>
+    /// Default noun-signal extraction config (Step A + B), enabled.
+    /// </summary>
+    public static Dictionary<string, object> DefaultNounSignalConfig => new()
+    {
+        ["enabled"] = true,
+        ["min_score"] = 0.3,
+        ["max_per_block"] = 30,
+    };
+
     public void Dispose()
     {
         _httpClient.Dispose();
@@ -157,13 +201,60 @@ public sealed class SemanticAnalysisService : IDisposable
     }
     
     /// <summary>
-    /// Removes OCR connection markers from text before sending to HanLP.
-    /// Removes patterns like <|txt_split|>, <|line_break|>, etc.
+    /// Inline HTML tags whose markup is stripped while the inner text is kept
+    /// (e.g. &lt;sub&gt;6&lt;/sub&gt; → 6). Alternatives ordered longest-first so that
+    /// &lt;big&gt; is not mis-matched as &lt;b&gt;.
     /// </summary>
-    private static string CleanOcrMarkers(string text)
+    private const string InlineHtmlTagPattern =
+        @"</?(?:strong|small|span|font|sub|sup|big|em|b|i|u)(?:\s[^>]*)?/?>";
+
+    /// <summary>
+    /// Block / line-break HTML tags replaced with a single space so adjacent words
+    /// are not merged (e.g. &lt;p&gt;A&lt;/p&gt;&lt;p&gt;B&lt;/p&gt; → "A B").
+    /// </summary>
+    private const string BlockHtmlTagPattern =
+        @"</?(?:br|p|div|hr)(?:\s[^>]*)?/?>";
+
+    /// <summary>
+    /// Cleans raw block text before sending to HanLP (F0 input hygiene).
+    /// 1. Removes OCR connection markers like &lt;|txt_split|&gt;, &lt;|line_break|&gt;.
+    /// 2. Replaces block/line-break HTML tags (br/p/div/hr) with a single space.
+    /// 3. Strips inline HTML tags (sub/sup/b/i/u/em/strong/span/...) keeping inner text.
+    /// 4. Collapses runs of spaces introduced by tag removal and trims the ends.
+    /// Legitimate angle brackets in prose (e.g. "U &lt; 5") are preserved because the
+    /// patterns only match known tag names.
+    /// </summary>
+    internal static string SanitizeTextForNlp(string text)
     {
-        // Remove <|...|> style markers (e.g., <|txt_split|>, <|line_break|>)
-        return Regex.Replace(text, "<\\|[^\\|]*\\|>", string.Empty);
+        if (string.IsNullOrEmpty(text))
+            return text;
+
+        // 1. OCR connection markers: <|txt_split|>, <|line_break|>, ...
+        var result = Regex.Replace(text, @"<\|[^|]*\|>", string.Empty);
+
+        // 2. Block / line-break tags → single space (preserve word separation)
+        result = Regex.Replace(result, BlockHtmlTagPattern, " ");
+
+        // 3. Inline tags → removed, inner text kept (e.g. <sub>6</sub> → 6)
+        result = Regex.Replace(result, InlineHtmlTagPattern, string.Empty);
+
+        // 4. Collapse runs of spaces introduced by tag removal and trim the ends.
+        result = Regex.Replace(result, " {2,}", " ").Trim();
+
+        return result;
+    }
+
+    /// <summary>
+    /// Prepends the section path as a 【...】 prefix to the NLP request text
+    /// (spec §14.1 A3). Returns the prefixed text and the prefix length
+    /// (0 when no prefix is applied).
+    /// </summary>
+    internal static (string Text, int PrefixLen) ApplySectionPathPrefix(string cleanText, string? sectionPath)
+    {
+        if (string.IsNullOrWhiteSpace(sectionPath))
+            return (cleanText, 0);
+        var prefix = $"【{sectionPath}】";
+        return (prefix + cleanText, prefix.Length);
     }
 
     /// <summary>
@@ -182,8 +273,15 @@ public sealed class SemanticAnalysisService : IDisposable
     {
         System.Diagnostics.Debug.WriteLine($"[SemanticAnalysisService] Analyzing node with {node.Content.Length} chars");
         
-        // Step 1: Clean OCR markers
-        var cleanText = CleanOcrMarkers(node.Content);
+        // Step 1: Sanitize text for NLP (OCR markers + HTML tags)
+        var cleanText = SanitizeTextForNlp(node.Content);
+        
+        // Step 1.5: Prepend the section path as a 【...】 prefix for disambiguation
+        // (spec §14.1 A3). Spans in the response are relative to the prefixed text;
+        // the prefix length is recorded on the result so consumers can map spans
+        // back onto the original Content.
+        var (prefixedText, prefixLen) = ApplySectionPathPrefix(cleanText, node.SectionPath);
+        cleanText = prefixedText;
         
         // Step 2: Extract formulas and replace with placeholders for NLP analysis
         var blockIds = new List<int>(node.BlockIds);
@@ -199,7 +297,10 @@ public sealed class SemanticAnalysisService : IDisposable
             Discover = true,                  // Enable new word discovery
             Enhance = true,                   // Auto-apply discovered words & re-analyze
             AutoDiscoverEntities = true,      // Promote high-score candidates to entities
-            EntityCategories = entityCategories // Domain-specific keyword injection
+            EntityCategories = entityCategories, // Domain-specific keyword injection
+            // ── Entity quality (F1/F2) + noun signals (Step A/B) ──
+            Policy = QualityPolicy,           // F1 shape + F2 confidence/evidence (null = skip)
+            NounSignals = NounSignalConfig    // Block-level noun signals (null = off)
         };
 
         var json = JsonSerializer.Serialize(request, SourceGenerationContext.Default.HanLPAnalyzeRequest);
@@ -220,6 +321,8 @@ public sealed class SemanticAnalysisService : IDisposable
         var analyzeResponse = JsonSerializer.Deserialize(responseJson, SourceGenerationContext.Default.HanLPAnalyzeResponse);
 
         var result = MapToSemanticResult(node, analyzeResponse);
+        result.SectionPath = node.SectionPath;
+        result.PrefixLen = prefixLen;
 
         // Extract dependency parsing data from the /analyze response (merged in backend)
         var content_obj = analyzeResponse?.Content;
@@ -319,6 +422,7 @@ public sealed class SemanticAnalysisService : IDisposable
                     BlockIds = nodes[i].BlockIds,
                     SourceBlockIds = nodes[i].SourceBlockIds,
                     Content = nodes[i].Content,
+                    SectionPath = nodes[i].SectionPath,
                     Error = ex.Message
                 });
             }
@@ -346,6 +450,13 @@ public sealed class SemanticAnalysisService : IDisposable
         }
         // Cross-block definition resolution (merge same-term definitions)
         definitionExtractor.ResolveCrossBlockDefinitions(blocks);
+
+        // ── Document-level aggregation (Step C noun signals + F3/F4 entity quality) ──
+        var documentAggregator = new DocumentSignalAggregator();
+        fileResult.DocumentAggregation = documentAggregator.Aggregate(blocks);
+        System.Diagnostics.Debug.WriteLine(
+            $"[SemanticAnalysisService] Document aggregation: {fileResult.DocumentAggregation.NounSignals.Count} noun signals, " +
+            $"{fileResult.DocumentAggregation.EntityQuality.Count} entity quality entries");
 
         // ── Build FormulaIndex from all blocks ──
         var allFormulas = new List<FormulaEntry>();
@@ -699,7 +810,30 @@ public sealed class SemanticAnalysisService : IDisposable
                     Span = entity.Span.Count >= 2 
                         ? new int[] { entity.Span[0], entity.Span[1] } 
                         : new int[] { 0, entity.Text.Length },
-                    Attributes = attributes
+                    Attributes = attributes,
+                    Keep = entity.Keep,
+                    Filter = entity.Filter,
+                    FilterReason = entity.FilterReason
+                });
+            }
+        }
+
+        // Map noun signals (Step A POS gating + Step B syntactic role)
+        if (content.NounSignals is not null && content.NounSignals.Count > 0)
+        {
+            result.NounSignals = new List<SemanticNounSignal>();
+            foreach (var signal in content.NounSignals)
+            {
+                result.NounSignals.Add(new SemanticNounSignal
+                {
+                    Text = signal.Text,
+                    Pos = signal.Pos,
+                    SyntacticRole = signal.SyntacticRole,
+                    Score = signal.Score,
+                    Span = signal.Span.Count >= 2
+                        ? new int[] { signal.Span[0], signal.Span[1] }
+                        : new int[] { 0, signal.Text.Length },
+                    Evidence = signal.Evidence
                 });
             }
         }

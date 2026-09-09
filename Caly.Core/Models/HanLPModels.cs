@@ -79,6 +79,24 @@ public class HanLPAnalyzeRequest
     /// Run new word discovery and promote high-score candidates.
     /// </summary>
     public bool? AutoDiscoverEntities { get; set; }
+
+    /// <summary>
+    /// Optional entity quality policy (F1 shape + F2 confidence/evidence). When null,
+    /// the NLP skips F1/F2 (backward compatible). See entity-extraction-quality-spec §4.
+    /// Schema: {version, f1_shape:{section_ref:{enabled,patterns}, demote_bare_number},
+    ///          f2_confidence:{enabled, min_confidence:{default,by_source}, demote_categories,
+    ///          keyword_require_injected}}.
+    /// </summary>
+    [JsonPropertyName("policy")]
+    public Dictionary<string, object>? Policy { get; set; }
+
+    /// <summary>
+    /// Optional noun-signal extraction config (Step A POS gating + Step B syntactic role).
+    /// When null or enabled=false, no noun signals are produced.
+    /// Schema: {enabled, min_score, max_per_block, pos_whitelist}.
+    /// </summary>
+    [JsonPropertyName("noun_signals")]
+    public Dictionary<string, object>? NounSignals { get; set; }
 }
 
 /// <summary>
@@ -134,6 +152,13 @@ public class HanLPContent
     /// </summary>
     [JsonPropertyName("events")]
     public List<HanLPEvent>? Events { get; set; }
+
+    /// <summary>
+    /// Block-level noun-phrase signals (Step A POS gating + Step B syntactic role).
+    /// Not entities — linguistic candidates for caller-side aggregation/clustering/audit.
+    /// </summary>
+    [JsonPropertyName("noun_signals")]
+    public List<HanLPNounSignal>? NounSignals { get; set; }
 }
 
 /// <summary>
@@ -194,6 +219,51 @@ public class HanLPEntity
     
     [JsonPropertyName("evidence")]
     public HanLPEvidence? Evidence { get; set; }
+
+    /// <summary>
+    /// Whether downstream should consume this entity. False = soft-demoted by the NLP
+    /// quality pipeline (F1/F2). Defaults to true for backward compatibility.
+    /// </summary>
+    [JsonPropertyName("keep")]
+    public bool Keep { get; set; } = true;
+
+    /// <summary>
+    /// Which quality layer demoted this entity (e.g. "F1_shape", "F2_confidence"). Null when kept.
+    /// </summary>
+    [JsonPropertyName("filter")]
+    public string? Filter { get; set; }
+
+    /// <summary>
+    /// Human-readable, auditable reason for demotion. Null when kept.
+    /// </summary>
+    [JsonPropertyName("filter_reason")]
+    public string? FilterReason { get; set; }
+}
+
+/// <summary>
+/// A block-level noun-phrase signal from the NLP (Step A POS gating + Step B
+/// syntactic-role weighting). Not an entity — a linguistic candidate surfaced
+/// for caller-side aggregation, clustering, and audit.
+/// </summary>
+public class HanLPNounSignal
+{
+    [JsonPropertyName("text")]
+    public string Text { get; set; } = "";
+
+    [JsonPropertyName("pos")]
+    public string Pos { get; set; } = "";
+
+    [JsonPropertyName("syntactic_role")]
+    public string SyntacticRole { get; set; } = "unknown";
+
+    [JsonPropertyName("score")]
+    public double Score { get; set; }
+
+    [JsonPropertyName("span")]
+    public List<int> Span { get; set; } = new();
+
+    [JsonPropertyName("evidence")]
+    public Dictionary<string, object>? Evidence { get; set; }
 }
 
 public class HanLPEntityAttribute

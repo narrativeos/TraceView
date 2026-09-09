@@ -58,6 +58,17 @@ namespace Caly.Core.Services;
 [JsonSerializable(typeof(HanLPToken), GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(HanLPEntity), GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(HanLPRelation), GenerationMode = JsonSourceGenerationMode.Metadata)]
+// The entity-quality policy / noun-signal config are carried as Dictionary<string, object>;
+// register the collection runtime types that may appear as values so source-generated
+// serialization can handle them polymorphically (e.g. demote_categories: List<object>).
+[JsonSerializable(typeof(List<object>), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(List<string>), GenerationMode = JsonSourceGenerationMode.Metadata)]
+// Document-level aggregation (Step C + F3/F4) result models.
+[JsonSerializable(typeof(DocumentNounSignal), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(DocumentEntityQuality), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(DocumentAggregationResult), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(List<DocumentNounSignal>), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(List<DocumentEntityQuality>), GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(SemanticAnalysisService.TitleRequest), GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(SemanticAnalysisService.TitleResponse), GenerationMode = JsonSourceGenerationMode.Metadata)]
 // Table of Contents models

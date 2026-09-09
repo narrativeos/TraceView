@@ -1113,6 +1113,9 @@ public sealed partial class DocumentViewModel
 
             SemanticStatusText = $"Analyzing {nodes.Count} nodes...";
 
+            // A6: entity_categories = TOC title terms + profile dictionaries (spec §14.1 A6).
+            var entityCategories = BuildEntityCategories();
+
             var result = await service.ProcessAllNodesAsync(
                 nodes,
                 outputDir,
@@ -1124,8 +1127,12 @@ public sealed partial class DocumentViewModel
                         SemanticStatusText = $"Analyzing node {current + 1}/{total}...";
                     });
                 },
-                entityCategories: null, // Phase 5 will inject domain dictionaries
+                entityCategories: entityCategories,
                 _semanticCts.Token);
+
+            // A5: persist the SECTION_REF anchor table (spec §14.1 A5).
+            if (StructureDocument?.TocEntries.Count > 0)
+                result.SectionAnchors = StructureDocument.TocEntries.ToList();
 
             SemanticResults = result;
             UpdateFormulaIndexFromResults();
@@ -1624,12 +1631,24 @@ public sealed partial class DocumentViewModel
     /// Collects all text para_blocks from MinerUBlocks for NLP analysis.
     /// Filters for para_blocks (adopted blocks) with text content, excluding images.
     /// Tables with extracted content (from table_body HTML) are now included.
+    ///
+    /// Phase A enhancements (spec §14.1):
+    /// - A3: each node carries a transient SectionPath (from SectionPathResolver)
+    ///   that SemanticAnalysisService prepends to the NLP request text.
+    /// - A4: table blocks prefer the structured Popo serialization
+    ///   (TableUnitSerializer) over the flattened table_body HTML text.
     /// </summary>
     private List<AnalysisTreeNode> CollectTextNodesFromMinerUBlocks()
     {
         var result = new List<AnalysisTreeNode>();
         System.Diagnostics.Debug.WriteLine($"[Semantic] CollectTextNodesFromMinerUBlocks: {MinerUBlocks.Count} blocks");
-        
+
+        // A3: resolve block → section path (tree walk + page fallback).
+        var sectionPaths = SectionPathResolver.Resolve(StructureDocument);
+
+        // A4: source_block_id → structured table text (from the Popo tree).
+        var tableTexts = BuildTableTextMap();
+
         foreach (var block in MinerUBlocks)
         {
             // Only analyze para_blocks (adopted) with text content
@@ -1644,37 +1663,140 @@ public sealed partial class DocumentViewModel
                 System.Diagnostics.Debug.WriteLine($"[Semantic]   Skipped (image): BlockId={block.BlockId}");
                 continue;
             }
-            
-            if (string.IsNullOrWhiteSpace(block.Content) || block.Content.Length <= 1)
+
+            // A4: for table blocks, prefer the structured Popo serialization.
+            // Known limitation (spec §14.1 A4): when several para blocks map to the
+            // same Popo table node, each receives the full serialization (duplication);
+            // the Phase B unit collector resolves this.
+            var content = block.Content;
+            if (block.Type == "table")
             {
-                System.Diagnostics.Debug.WriteLine($"[Semantic]   Skipped (empty): BlockId={block.BlockId}, Content='{block.Content?.Substring(0, Math.Min(30, block.Content?.Length ?? 0))}...'");
+                foreach (var sbid in block.SourceBlockIds)
+                {
+                    if (tableTexts.TryGetValue(sbid, out var serialized) && !string.IsNullOrWhiteSpace(serialized))
+                    {
+                        content = serialized;
+                        break;
+                    }
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(content) || content.Length <= 1)
+            {
+                System.Diagnostics.Debug.WriteLine($"[Semantic]   Skipped (empty): BlockId={block.BlockId}, Content='{content?.Substring(0, Math.Min(30, content?.Length ?? 0))}...'");
                 continue;
             }
             
-            // Skip tables only if they have no extracted content (empty table_body)
-            // Tables with content from table_body HTML parsing should be included
-            if (block.Type == "table" && string.IsNullOrWhiteSpace(block.Content))
+            System.Diagnostics.Debug.WriteLine($"[Semantic]   Collected: BlockId={block.BlockId}, Type={block.Type}, Content length={content.Length}");
+
+            // A3: the Popo tree's SourceBlockIds may reference para-level or
+            // preproc-level UUIDs, so check both the block's own BlockId and
+            // its SourceBlockIds.
+            string? sectionPath = null;
+            if (sectionPaths.BlockSectionPaths.TryGetValue(block.BlockId, out var sp))
             {
-                System.Diagnostics.Debug.WriteLine($"[Semantic]   Skipped (empty table): BlockId={block.BlockId}");
-                continue;
+                sectionPath = sp;
             }
-            
-            System.Diagnostics.Debug.WriteLine($"[Semantic]   Collected: BlockId={block.BlockId}, Type={block.Type}, Content length={block.Content.Length}");
-            
+            else
+            {
+                foreach (var sbid in block.SourceBlockIds)
+                {
+                    if (sectionPaths.BlockSectionPaths.TryGetValue(sbid, out sp))
+                    {
+                        sectionPath = sp;
+                        break;
+                    }
+                }
+            }
+
             var node = new AnalysisTreeNode
             {
                 Type = block.Type,
                 Title = block.Level > 0 ? block.Content : string.Empty,
-                Content = block.Content,
+                Content = content,
                 Level = block.Level,
                 BlockIds = new List<int> { block.Id },
-                SourceBlockIds = new List<string>(block.SourceBlockIds)
+                SourceBlockIds = new List<string>(block.SourceBlockIds),
+                SectionPath = sectionPath
             };
             
             result.Add(node);
         }
         
         return result;
+    }
+
+    /// <summary>
+    /// A6: builds entity_categories from TOC title terms (TitleTermExtractor)
+    /// merged with the profile-based term dictionaries (TermDictionaryService).
+    /// The "general" profile is used because entity-category counts are not
+    /// available before the first analysis pass.
+    /// Returns null when no terms are available (NLP falls back to defaults).
+    /// </summary>
+    private Dictionary<string, List<string>>? BuildEntityCategories()
+    {
+        var merged = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+
+        void AddTerms(string category, IEnumerable<string> terms)
+        {
+            if (!merged.TryGetValue(category, out var list))
+            {
+                list = new List<string>();
+                merged[category] = list;
+            }
+            var seen = new HashSet<string>(list, StringComparer.Ordinal);
+            foreach (var term in terms)
+            {
+                if (!string.IsNullOrWhiteSpace(term) && seen.Add(term))
+                    list.Add(term);
+            }
+        }
+
+        // TOC title terms (high-density domain vocabulary, spec §13.6 / §14.1 A2).
+        AddTerms("TERM", TitleTermExtractor.Extract(StructureDocument?.TocEntries));
+
+        // Profile-based dictionaries (existing mechanism).
+        try
+        {
+            var dictService = new TermDictionaryService();
+            foreach (var (category, terms) in dictService.LoadDictionariesForProfile("general"))
+                AddTerms(category, terms);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Semantic] TermDictionaryService failed: {ex.Message}");
+        }
+
+        return merged.Count > 0 ? merged : null;
+    }
+
+    /// <summary>
+    /// A4: walks the Popo tree and maps each table node's source_block_id to its
+    /// structured serialization (TableUnitSerializer). Empty when no Popo tree.
+    /// </summary>
+    private Dictionary<string, string> BuildTableTextMap()
+    {
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (StructureDocument?.TreeRoot == null)
+            return map;
+        CollectTableTexts(StructureDocument.TreeRoot, map);
+        return map;
+    }
+
+    private static void CollectTableTexts(AnalysisTreeNode node, Dictionary<string, string> map)
+    {
+        if (node.Type == "table_data" || node.Type == "table_key_value")
+        {
+            var text = TableUnitSerializer.Serialize(node);
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                foreach (var sbid in node.SourceBlockIds)
+                    map.TryAdd(sbid, text);
+            }
+        }
+
+        foreach (var child in node.Children)
+            CollectTableTexts(child, map);
     }
 
     #endregion

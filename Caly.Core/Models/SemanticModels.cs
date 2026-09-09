@@ -104,6 +104,144 @@ public class SemanticDepEdge
 /// <summary>
 /// Represents a tokenized word from NLP analysis.
 /// </summary>
+/// <summary>
+/// A block-level noun-phrase signal (Step A POS gating + Step B syntactic role).
+/// Not an entity — a linguistic candidate for caller-side aggregation/clustering/audit.
+/// </summary>
+public class SemanticNounSignal
+{
+    [JsonPropertyName("text")]
+    public string Text { get; set; } = string.Empty;
+
+    [JsonPropertyName("pos")]
+    public string Pos { get; set; } = string.Empty;
+
+    [JsonPropertyName("syntactic_role")]
+    public string SyntacticRole { get; set; } = "unknown";
+
+    [JsonPropertyName("score")]
+    public double Score { get; set; }
+
+    [JsonPropertyName("span")]
+    public int[] Span { get; set; } = new int[2];
+
+    [JsonPropertyName("evidence")]
+    public Dictionary<string, object>? Evidence { get; set; }
+}
+
+/// <summary>
+/// A document-level aggregated noun signal (Step C): the same noun text
+/// deduplicated across all blocks, with occurrence count, dominant syntactic
+/// role, best block-level score, and sample evidence. Feeds the "addition"
+/// (加法) discovery of high-value nouns that HanLP did not surface as entities.
+/// </summary>
+public class DocumentNounSignal
+{
+    [JsonPropertyName("text")]
+    public string Text { get; set; } = string.Empty;
+
+    [JsonPropertyName("pos")]
+    public string Pos { get; set; } = string.Empty;
+
+    /// <summary>Dominant syntactic role (highest-priority role observed: Subject &gt; Object &gt; Attributive &gt; Adverbial).</summary>
+    [JsonPropertyName("syntactic_role")]
+    public string SyntacticRole { get; set; } = "unknown";
+
+    /// <summary>Highest block-level salience score observed for this text.</summary>
+    [JsonPropertyName("best_score")]
+    public double BestScore { get; set; }
+
+    /// <summary>Number of times this text appeared as a noun signal across all blocks.</summary>
+    [JsonPropertyName("occurrences")]
+    public int Occurrences { get; set; }
+
+    /// <summary>Number of distinct blocks in which this text appeared.</summary>
+    [JsonPropertyName("block_count")]
+    public int BlockCount { get; set; }
+
+    /// <summary>Distinct syntactic roles observed for this text (highest-priority first).</summary>
+    [JsonPropertyName("roles")]
+    public List<string> Roles { get; set; } = new();
+
+    /// <summary>Sample evidence strings (capped), e.g. "head_rel=dobj; governing_verb=进行".</summary>
+    [JsonPropertyName("evidence")]
+    public List<string> Evidence { get; set; } = new();
+}
+
+/// <summary>
+/// Document-level entity quality assessment combining F3 (cross-block frequency
+/// demotion) and F4 (cross-signal validation). Pure aggregation over block-level
+/// results; no I/O.
+/// </summary>
+public class DocumentEntityQuality
+{
+    [JsonPropertyName("text")]
+    public string Text { get; set; } = string.Empty;
+
+    [JsonPropertyName("category")]
+    public string Category { get; set; } = string.Empty;
+
+    /// <summary>F3: number of times this entity text appears across the document (deduplicated by text).</summary>
+    [JsonPropertyName("occurrences")]
+    public int Occurrences { get; set; }
+
+    /// <summary>F4 signal: appears in the aggregated noun-signal list.</summary>
+    [JsonPropertyName("in_noun_signals")]
+    public bool InNounSignals { get; set; }
+
+    /// <summary>F4 signal: appears as a Subject/Object (core) component in the dependency parse.</summary>
+    [JsonPropertyName("in_dep_core")]
+    public bool InDepCore { get; set; }
+
+    /// <summary>F4: count of supporting signals (1 = entity only; +1 noun; +1 dep core). Range 1-3.</summary>
+    [JsonPropertyName("signal_support")]
+    public int SignalSupport { get; set; }
+
+    /// <summary>F4: boosted by multi-evidence (present in noun signals AND dep core).</summary>
+    [JsonPropertyName("boosted")]
+    public bool Boosted { get; set; }
+
+    /// <summary>F3: flagged as high-frequency noise (occurrences &gt;= threshold).</summary>
+    [JsonPropertyName("is_high_frequency_noise")]
+    public bool IsHighFrequencyNoise { get; set; }
+
+    /// <summary>Final keep decision (false = demoted by F3/F4/block-level).</summary>
+    [JsonPropertyName("keep")]
+    public bool Keep { get; set; } = true;
+
+    /// <summary>Primary demotion tag (null when kept), e.g. "high_frequency_noise".</summary>
+    [JsonPropertyName("filter")]
+    public string? Filter { get; set; }
+
+    /// <summary>Audit trail of every quality decision applied.</summary>
+    [JsonPropertyName("reasons")]
+    public List<string> Reasons { get; set; } = new();
+}
+
+/// <summary>
+/// Result of document-level aggregation (Step C noun-signal aggregation + F3
+/// frequency demotion + F4 cross-signal validation).
+/// </summary>
+public class DocumentAggregationResult
+{
+    [JsonPropertyName("total_blocks")]
+    public int TotalBlocks { get; set; }
+
+    [JsonPropertyName("total_entities")]
+    public int TotalEntities { get; set; }
+
+    [JsonPropertyName("total_noun_signals")]
+    public int TotalNounSignals { get; set; }
+
+    /// <summary>Step C: document-level noun signals, sorted by (role priority, best score, occurrences).</summary>
+    [JsonPropertyName("noun_signals")]
+    public List<DocumentNounSignal> NounSignals { get; set; } = new();
+
+    /// <summary>F3 + F4: per-entity-text quality assessment, kept entities first.</summary>
+    [JsonPropertyName("entity_quality")]
+    public List<DocumentEntityQuality> EntityQuality { get; set; } = new();
+}
+
 public class SemanticToken
 {
     [JsonPropertyName("text")]
@@ -168,6 +306,25 @@ public class SemanticEntity
     /// </summary>
     [JsonPropertyName("verb_spatial_class")]
     public string? VerbSpatialClass { get; set; }
+
+    /// <summary>
+    /// Whether downstream should consume this entity. False = soft-demoted by the NLP
+    /// quality pipeline (F1/F2). Defaults to true for backward compatibility.
+    /// </summary>
+    [JsonPropertyName("keep")]
+    public bool Keep { get; set; } = true;
+
+    /// <summary>
+    /// Which quality layer demoted this entity (e.g. "F1_shape", "F2_confidence"). Null when kept.
+    /// </summary>
+    [JsonPropertyName("filter")]
+    public string? Filter { get; set; }
+
+    /// <summary>
+    /// Human-readable, auditable reason for demotion. Null when kept.
+    /// </summary>
+    [JsonPropertyName("filter_reason")]
+    public string? FilterReason { get; set; }
 
     /// <summary>
     /// Chinese display name for the syntactic role (for LOCATION entities).
@@ -358,6 +515,21 @@ public class SemanticBlockResult
     [JsonPropertyName("source_block_ids")]
     public List<string> SourceBlockIds { get; set; } = new();
 
+    /// <summary>
+    /// Section path (e.g. "第5章 总则 &gt; 5.13 绝缘电阻试验") that was prepended to
+    /// the NLP request text as a 【...】 prefix. Null when no prefix was applied.
+    /// </summary>
+    [JsonPropertyName("section_path")]
+    public string? SectionPath { get; set; }
+
+    /// <summary>
+    /// Length of the 【section path】 prefix prepended to the NLP request text.
+    /// Entity/token spans are relative to the prefixed text; subtract this value
+    /// to map them back onto <see cref="Content"/> (which stores the original text).
+    /// </summary>
+    [JsonPropertyName("prefix_len")]
+    public int PrefixLen { get; set; }
+
     [JsonPropertyName("content")]
     public string Content { get; set; } = string.Empty;
 
@@ -403,6 +575,14 @@ public class SemanticBlockResult
     /// </summary>
     [JsonPropertyName("term_definitions")]
     public List<TermDefinition> TermDefinitions { get; set; } = new();
+
+    /// <summary>
+    /// Block-level noun-phrase signals from the NLP (Step A POS gating + Step B
+    /// syntactic role). Not entities — linguistic candidates for caller-side
+    /// aggregation, clustering, and audit (see entity-extraction-quality-spec §6).
+    /// </summary>
+    [JsonPropertyName("noun_signals")]
+    public List<SemanticNounSignal> NounSignals { get; set; } = new();
 
     /// <summary>
     /// Block-level enriched metadata from entity processors.
@@ -647,4 +827,19 @@ public class SemanticResultFile
     /// </summary>
     [JsonPropertyName("formula_index")]
     public FormulaIndex? FormulaIndex { get; set; }
+
+    /// <summary>
+    /// Document-level aggregation (Step C noun signals + F3/F4 entity quality),
+    /// computed after all blocks are analyzed. See <c>DocumentSignalAggregator</c>.
+    /// </summary>
+    [JsonPropertyName("document_aggregation")]
+    public DocumentAggregationResult? DocumentAggregation { get; set; }
+
+    /// <summary>
+    /// SECTION_REF anchor table: the document TOC entries (numbering → title/page),
+    /// persisted for resolving "见 5.13"-style section references.
+    /// Null for results produced before this field existed.
+    /// </summary>
+    [JsonPropertyName("section_anchors")]
+    public List<TocEntry>? SectionAnchors { get; set; }
 }

@@ -383,6 +383,19 @@ public static class TermResultBuilder
     }
 
     /// <summary>
+    /// Maps an NLP span (relative to the request text, which may carry a
+    /// 【section path】 prefix, spec §14.1 A3) back onto the original Content
+    /// by subtracting the prefix length. Spans falling into the prefix itself
+    /// are clamped to the start of the content.
+    /// </summary>
+    internal static int[] MapSpanToContent(int[] span, int prefixLen)
+    {
+        var start = Math.Max(0, span[0] - prefixLen);
+        var end = Math.Max(start, span[1] - prefixLen);
+        return new[] { start, end };
+    }
+
+    /// <summary>
     /// Builds traceability information for a term entry.
     /// Includes first occurrence context, extraction method, and formula context.
     /// </summary>
@@ -410,7 +423,10 @@ public static class TermResultBuilder
                     {
                         if (semanticEntity.Span != null && semanticEntity.Span.Length >= 2)
                         {
-                            traceability.FirstOccurrenceSpan = new[] { semanticEntity.Span[0], semanticEntity.Span[1] };
+                            // Spans are relative to the NLP request text, which may carry a
+                            // 【section path】 prefix (spec §14.1 A3). Subtract the prefix
+                            // length to map back onto the original Content.
+                            traceability.FirstOccurrenceSpan = MapSpanToContent(semanticEntity.Span, semanticBlock.PrefixLen);
                         }
 
                         // Extract context snippet
