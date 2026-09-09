@@ -110,9 +110,12 @@ public static class SectionPathResolver
 
     private static void Traverse(AnalysisTreeNode node, List<string> stack, ResolutionResult result)
     {
-        // Only title nodes extend the section path.
+        // Section headings extend the section path. The Popo tree represents
+        // headings either as dedicated "title" nodes or (in the current API
+        // format) as "text" nodes carrying a non-empty Title field — the same
+        // convention used by PopoJsonService.BuildTocFromSubtree.
         bool pushed = false;
-        if (node.Type == "title")
+        if (node.Type == "title" || (node.Type == "text" && !string.IsNullOrWhiteSpace(node.Title)))
         {
             var label = !string.IsNullOrWhiteSpace(node.Title)
                 ? node.Title.Trim()

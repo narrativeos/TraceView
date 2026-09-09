@@ -271,22 +271,90 @@ public sealed class SemanticAnalysisService : IDisposable
         Dictionary<string, List<string>>? entityCategories = null,
         CancellationToken cancellationToken = default)
     {
-        System.Diagnostics.Debug.WriteLine($"[SemanticAnalysisService] Analyzing node with {node.Content.Length} chars");
-        
         // Step 1: Sanitize text for NLP (OCR markers + HTML tags)
         var cleanText = SanitizeTextForNlp(node.Content);
-        
+
         // Step 1.5: Prepend the section path as a 【...】 prefix for disambiguation
         // (spec §14.1 A3). Spans in the response are relative to the prefixed text;
         // the prefix length is recorded on the result so consumers can map spans
         // back onto the original Content.
         var (prefixedText, prefixLen) = ApplySectionPathPrefix(cleanText, node.SectionPath);
-        cleanText = prefixedText;
-        
-        // Step 2: Extract formulas and replace with placeholders for NLP analysis
-        var blockIds = new List<int>(node.BlockIds);
         var page = node.Location.Count > 0 ? node.Location[0].Page : 0;
-        var extracted = FormulaExtractor.ExtractAndReplace(cleanText, page, blockIds);
+
+        return await AnalyzeCoreAsync(
+            requestText: prefixedText,
+            prefixLen: prefixLen,
+            contentForResult: node.Content,
+            blockIds: node.BlockIds,
+            sourceBlockIds: node.SourceBlockIds,
+            page: page,
+            sectionPath: node.SectionPath,
+            type: node.Type,
+            title: node.Title,
+            nodeId: null,
+            segmentRange: null,
+            unitType: null,
+            entityCategories: entityCategories,
+            cancellationToken: cancellationToken);
+    }
+
+    /// <summary>
+    /// Analyzes a single NLP unit (spec §14.2 B3). The unit's Text is already
+    /// F0-sanitized and section-prefixed by NlpUnitCollector; the result's
+    /// Content stores the unit text without the prefix, so response spans map
+    /// onto it exactly (span − PrefixLen).
+    /// </summary>
+    public async Task<SemanticBlockResult> AnalyzeAsync(
+        NlpUnit unit,
+        Dictionary<string, List<string>>? entityCategories = null,
+        CancellationToken cancellationToken = default)
+    {
+        var contentForResult = unit.PrefixLen < unit.Text.Length
+            ? unit.Text[unit.PrefixLen..]
+            : string.Empty;
+        var page = unit.Locations.Count > 0 ? unit.Locations[0].Page : 0;
+
+        return await AnalyzeCoreAsync(
+            requestText: unit.Text,
+            prefixLen: unit.PrefixLen,
+            contentForResult: contentForResult,
+            blockIds: unit.BlockIds,
+            sourceBlockIds: unit.SourceBlockIds,
+            page: page,
+            sectionPath: unit.SectionPath,
+            type: unit.UnitType,
+            title: string.Empty,
+            nodeId: unit.OriginNodeId,
+            segmentRange: unit.SegmentRange,
+            unitType: unit.UnitType,
+            entityCategories: entityCategories,
+            cancellationToken: cancellationToken);
+    }
+
+    /// <summary>
+    /// Shared /analyze pipeline (spec §14.2 B3): formula extraction, HTTP call,
+    /// response mapping, and dependency/coreference/formula post-processing.
+    /// </summary>
+    private async Task<SemanticBlockResult> AnalyzeCoreAsync(
+        string requestText,
+        int prefixLen,
+        string contentForResult,
+        List<int> blockIds,
+        List<string> sourceBlockIds,
+        int page,
+        string? sectionPath,
+        string type,
+        string title,
+        string? nodeId,
+        int[]? segmentRange,
+        string? unitType,
+        Dictionary<string, List<string>>? entityCategories,
+        CancellationToken cancellationToken)
+    {
+        System.Diagnostics.Debug.WriteLine($"[SemanticAnalysisService] Analyzing {requestText.Length} chars");
+
+        // Step 2: Extract formulas and replace with placeholders for NLP analysis
+        var extracted = FormulaExtractor.ExtractAndReplace(requestText, page, blockIds);
         
         var request = new HanLPAnalyzeRequest
         {
@@ -320,9 +388,10 @@ public sealed class SemanticAnalysisService : IDisposable
 
         var analyzeResponse = JsonSerializer.Deserialize(responseJson, SourceGenerationContext.Default.HanLPAnalyzeResponse);
 
-        var result = MapToSemanticResult(node, analyzeResponse);
-        result.SectionPath = node.SectionPath;
-        result.PrefixLen = prefixLen;
+        var result = CreateSemanticResult(
+            blockIds, sourceBlockIds, contentForResult, type, title,
+            sectionPath, prefixLen, nodeId, segmentRange, unitType);
+        MapResponseToResult(result, analyzeResponse);
 
         // Extract dependency parsing data from the /analyze response (merged in backend)
         var content_obj = analyzeResponse?.Content;
@@ -351,7 +420,7 @@ public sealed class SemanticAnalysisService : IDisposable
 
             // Extract intra-block location relationships (nn, assmod/assm, conj)
             var relations = ExtractLocationRelations(
-                content_obj.Tokens, content_obj.Deps, result.Entities, node.Content);
+                content_obj.Tokens, content_obj.Deps, result.Entities, contentForResult);
             result.LocationRelations = relations;
         }
         else if (content_obj?.Deps is null)
@@ -430,6 +499,64 @@ public sealed class SemanticAnalysisService : IDisposable
             progressCallback(i, nodes.Count);
         }
 
+        return await BuildResultFileAsync(blocks, outputDir, cancellationToken);
+    }
+
+    /// <summary>
+    /// Analyzes multiple NLP units in sequence (spec §14.2 B3).
+    /// </summary>
+    public async Task<SemanticResultFile> ProcessAllUnitsAsync(
+        List<NlpUnit> units,
+        string outputDir,
+        Action<int, int> progressCallback,
+        Dictionary<string, List<string>>? entityCategories = null,
+        CancellationToken cancellationToken = default)
+    {
+        var blocks = new List<SemanticBlockResult>();
+
+        for (int i = 0; i < units.Count; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            try
+            {
+                var blockResult = await AnalyzeAsync(units[i], entityCategories, cancellationToken);
+                blocks.Add(blockResult);
+            }
+            catch (Exception ex)
+            {
+                // Store error result for this unit
+                var unit = units[i];
+                blocks.Add(new SemanticBlockResult
+                {
+                    BlockIds = unit.BlockIds,
+                    SourceBlockIds = unit.SourceBlockIds,
+                    Content = unit.PrefixLen < unit.Text.Length ? unit.Text[unit.PrefixLen..] : string.Empty,
+                    SectionPath = unit.SectionPath,
+                    PrefixLen = unit.PrefixLen,
+                    NodeId = unit.OriginNodeId,
+                    SegmentRange = unit.SegmentRange,
+                    UnitType = unit.UnitType,
+                    Error = ex.Message
+                });
+            }
+
+            progressCallback(i, units.Count);
+        }
+
+        return await BuildResultFileAsync(blocks, outputDir, cancellationToken);
+    }
+
+    /// <summary>
+    /// Shared post-processing tail for ProcessAllNodesAsync / ProcessAllUnitsAsync:
+    /// cross-block relations, term definitions, document aggregation, formula
+    /// index, and writing semantic_result.json to disk.
+    /// </summary>
+    private async Task<SemanticResultFile> BuildResultFileAsync(
+        List<SemanticBlockResult> blocks,
+        string outputDir,
+        CancellationToken cancellationToken)
+    {
         var fileResult = new SemanticResultFile
         {
             Version = "1.0",
@@ -752,21 +879,40 @@ public sealed class SemanticAnalysisService : IDisposable
     /// <summary>
     /// Maps HanLP API response to our SemanticBlockResult.
     /// </summary>
-    private static SemanticBlockResult MapToSemanticResult(AnalysisTreeNode node, HanLPAnalyzeResponse? response)
+    private static SemanticBlockResult CreateSemanticResult(
+        List<int> blockIds,
+        List<string> sourceBlockIds,
+        string content,
+        string type,
+        string title,
+        string? sectionPath,
+        int prefixLen,
+        string? nodeId,
+        int[]? segmentRange,
+        string? unitType)
     {
-        var result = new SemanticBlockResult
+        return new SemanticBlockResult
         {
-            BlockIds = node.BlockIds,
-            SourceBlockIds = node.SourceBlockIds,
-            Content = node.Content,
-            Type = node.Type,
-            Title = node.Title
+            BlockIds = blockIds,
+            SourceBlockIds = sourceBlockIds,
+            Content = content,
+            Type = type,
+            Title = title,
+            SectionPath = sectionPath,
+            PrefixLen = prefixLen,
+            NodeId = nodeId,
+            SegmentRange = segmentRange,
+            UnitType = unitType
         };
+    }
+
+    private static void MapResponseToResult(SemanticBlockResult result, HanLPAnalyzeResponse? response)
+    {
 
         if (response?.Content is null)
         {
             result.Error = "Empty response from NLP API";
-            return result;
+            return;
         }
 
         var content = response.Content;
@@ -877,7 +1023,6 @@ public sealed class SemanticAnalysisService : IDisposable
             }
         }
 
-        return result;
     }
 
     /// <summary>

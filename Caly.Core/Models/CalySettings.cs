@@ -84,6 +84,15 @@ public sealed class CalySettings
     /// </summary>
     public string PopoModel { get; set; } = "mineru";
 
+    // ========== NLP Pipeline Configuration ==========
+
+    /// <summary>
+    /// When true, semantic analysis consumes NLP units collected from the Popo
+    /// tree (NlpUnitCollector) instead of the legacy MinerU block path.
+    /// Default: false (legacy behavior).
+    /// </summary>
+    public bool UseNlpUnitPipeline { get; set; } = false;
+
     // ========== GeoLibre Configuration ==========
 
     /// <summary>

@@ -539,6 +539,29 @@ public class SemanticBlockResult
     [JsonPropertyName("title")]
     public string Title { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Popo node id (NodeId) of the origin node for NlpUnit-pipeline results
+    /// (spec §14.2 B3). Null for legacy MinerU block path results.
+    /// </summary>
+    [JsonPropertyName("node_id")]
+    public string? NodeId { get; set; }
+
+    /// <summary>
+    /// 0-based inclusive [start, end] range of &lt;|txt_split|&gt; segments of
+    /// the origin node covered by this result (spec §14.2 B3). Null = whole
+    /// node or a non-segmented unit.
+    /// </summary>
+    [JsonPropertyName("segment_range")]
+    public int[]? SegmentRange { get; set; }
+
+    /// <summary>
+    /// NLP unit type for NlpUnit-pipeline results: "text" | "table_data" |
+    /// "table_kv" | "caption" | "toc" (spec §14.2 B3). Null for legacy
+    /// MinerU block path results (which use <see cref="Type"/> instead).
+    /// </summary>
+    [JsonPropertyName("unit_type")]
+    public string? UnitType { get; set; }
+
     [JsonPropertyName("tokens")]
     public List<SemanticToken> Tokens { get; set; } = new();
 

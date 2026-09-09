@@ -1095,40 +1095,84 @@ public sealed partial class DocumentViewModel
         {
             using var service = new SemanticAnalysisService();
 
-            // Collect all text para_blocks from MinerU blocks
-            var nodes = CollectTextNodesFromMinerUBlocks();
-
-            System.Diagnostics.Debug.WriteLine($"[Semantic] Collected {nodes.Count} text nodes from MinerU para_blocks");
-
-            if (nodes.Count == 0)
-            {
-                SemanticStatus = SemanticProcessStatus.Failed;
-                SemanticStatusText = "No text blocks found to analyze.";
-                System.Diagnostics.Debug.WriteLine("[Semantic] Failed: No text blocks found");
-                IsSemanticProcessing = false;
-                _semanticCts?.Dispose();
-                _semanticCts = null;
-                return;
-            }
-
-            SemanticStatusText = $"Analyzing {nodes.Count} nodes...";
-
             // A6: entity_categories = TOC title terms + profile dictionaries (spec §14.1 A6).
             var entityCategories = BuildEntityCategories();
 
-            var result = await service.ProcessAllNodesAsync(
-                nodes,
-                outputDir,
-                (current, total) =>
+            SemanticResultFile result;
+
+            if (_settingsService.GetSettings().UseNlpUnitPipeline)
+            {
+                // Phase B: NLP units collected from the Popo tree (spec §14.2).
+                var blockMap = StructureDocument?.GetAllBlocks()
+                    .Where(b => !string.IsNullOrEmpty(b.BlockId))
+                    .GroupBy(b => b.BlockId)
+                    .ToDictionary(g => g.Key, g => g.First())
+                    ?? new Dictionary<string, MinerUBlock>();
+
+                var units = NlpUnitCollector.Collect(StructureDocument, blockMap);
+                System.Diagnostics.Debug.WriteLine($"[Semantic] Collected {units.Count} NLP units from Popo tree");
+
+                if (units.Count == 0)
                 {
-                    Dispatcher.UIThread.Invoke(() =>
+                    SemanticStatus = SemanticProcessStatus.Failed;
+                    SemanticStatusText = "No NLP units found to analyze.";
+                    System.Diagnostics.Debug.WriteLine("[Semantic] Failed: No NLP units found");
+                    IsSemanticProcessing = false;
+                    _semanticCts?.Dispose();
+                    _semanticCts = null;
+                    return;
+                }
+
+                SemanticStatusText = $"Analyzing {units.Count} units...";
+
+                result = await service.ProcessAllUnitsAsync(
+                    units,
+                    outputDir,
+                    (current, total) =>
                     {
-                        SemanticProgress = (int)((current + 1) * 100.0 / total);
-                        SemanticStatusText = $"Analyzing node {current + 1}/{total}...";
-                    });
-                },
-                entityCategories: entityCategories,
-                _semanticCts.Token);
+                        Dispatcher.UIThread.Invoke(() =>
+                        {
+                            SemanticProgress = (int)((current + 1) * 100.0 / total);
+                            SemanticStatusText = $"Analyzing unit {current + 1}/{total}...";
+                        });
+                    },
+                    entityCategories: entityCategories,
+                    _semanticCts.Token);
+            }
+            else
+            {
+                // Legacy: collect all text para_blocks from MinerU blocks.
+                var nodes = CollectTextNodesFromMinerUBlocks();
+
+                System.Diagnostics.Debug.WriteLine($"[Semantic] Collected {nodes.Count} text nodes from MinerU para_blocks");
+
+                if (nodes.Count == 0)
+                {
+                    SemanticStatus = SemanticProcessStatus.Failed;
+                    SemanticStatusText = "No text blocks found to analyze.";
+                    System.Diagnostics.Debug.WriteLine("[Semantic] Failed: No text blocks found");
+                    IsSemanticProcessing = false;
+                    _semanticCts?.Dispose();
+                    _semanticCts = null;
+                    return;
+                }
+
+                SemanticStatusText = $"Analyzing {nodes.Count} nodes...";
+
+                result = await service.ProcessAllNodesAsync(
+                    nodes,
+                    outputDir,
+                    (current, total) =>
+                    {
+                        Dispatcher.UIThread.Invoke(() =>
+                        {
+                            SemanticProgress = (int)((current + 1) * 100.0 / total);
+                            SemanticStatusText = $"Analyzing node {current + 1}/{total}...";
+                        });
+                    },
+                    entityCategories: entityCategories,
+                    _semanticCts.Token);
+            }
 
             // A5: persist the SECTION_REF anchor table (spec §14.1 A5).
             if (StructureDocument?.TocEntries.Count > 0)
