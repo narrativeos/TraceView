@@ -1560,7 +1560,8 @@
                                        <Border IsVisible="{Binding IsGeoProcessing}"
                                                VerticalAlignment="Center"
                                                HorizontalAlignment="Stretch"
-                                               Margin="0,20,0,0">
+                                               DockPanel.Dock="Top"
+                                               Margin="0,12,0,12">
                                            <StackPanel VerticalAlignment="Center"
                                                        HorizontalAlignment="Center"
                                                        Spacing="12">
