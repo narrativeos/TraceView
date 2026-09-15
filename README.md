@@ -1,10 +1,10 @@
-## Caly Pdf Reader: A Fast, Cross-Platform Pdf Reader
+## TraceView: A Fast, Cross-Platform Pdf Reader
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/604c1d8a-5cdf-49c6-8be3-d85bfb680a99" />
 </p>
 
-**Caly Pdf Reader** is a free, cross-platform and open-source Pdf reader built with performance and efficiency in mind. Written in C# (net10.0 with AOT), it's designed to be lightweight, fast, and consume minimal memory.
+**TraceView** is a free, cross-platform and open-source Pdf reader built with performance and efficiency in mind. Written in C# (net10.0 with AOT), it's designed to be lightweight, fast, and consume minimal memory.
 
 > [!IMPORTANT]
 > The development is currently in alpha.
@@ -13,7 +13,7 @@ https://github.com/user-attachments/assets/2c577270-3bc8-4583-9fbe-e37228bb9ce4
 
 ### Cross-Platform Compatibility
 
-Caly Pdf Reader leverages the power of [Avalonia UI](https://github.com/AvaloniaUI/Avalonia), [SkiaSharp](https://github.com/mono/SkiaSharp) and [PdfPig](https://github.com/UglyToad/PdfPig) to run seamlessly on Windows, macOS, and Linux.
+TraceView leverages the power of [Avalonia UI](https://github.com/AvaloniaUI/Avalonia), [SkiaSharp](https://github.com/mono/SkiaSharp) and [PdfPig](https://github.com/UglyToad/PdfPig) to run seamlessly on Windows, macOS, and Linux.
 
 As of now, only the Windows, Linux and Android versions have been tested. Android version runs, but is not optimised for the platfotm. Better mobile support is planned, including iOS.
 
@@ -33,7 +33,7 @@ As of now, only the Windows, Linux and Android versions have been tested. Androi
 
 ## Usage
 
-1. Open the application and click on the "+" (New Tab) button to open a new Pdf document. You can also drag and drop your document or set Caly Pdf Reader as your default reader application.
+1. Open the application and click on the "+" (New Tab) button to open a new Pdf document. You can also drag and drop your document or set TraceView as your default reader application.
 2. Select a Pdf file to open using the file dialog.
 3. The document will be displayed in the tab, and you can navigate through the pages using the navigation buttons.
 4. To select text in the document, click and drag the mouse over the text.
@@ -45,21 +45,21 @@ As of now, only the Windows, Linux and Android versions have been tested. Androi
 10. To pan / move the view in your document, use left-click while pressing `Ctrl`.
 11. To rotate pages, either right-click and select one of the rotate options, or use the "Rotate" buttons in the top menu.
 
-## Why Caly Pdf Reader?
+## Why TraceView?
 
 * **Open Source:** The source code is freely available on GitHub, allowing for community contributions and customization.
-* **Cross-Platform:** Run Caly Pdf Reader on your preferred operating system.
+* **Cross-Platform:** Run TraceView on your preferred operating system.
 * **Lightweight & Fast:** Designed for optimal performance and minimal resource consumption.
-* **Active Development:** We are constantly working on improving Caly Pdf Reader with new features and bug fixes.
+* **Active Development:** We are constantly working on improving TraceView with new features and bug fixes.
 
 ![caly preview 2](https://github.com/user-attachments/assets/f850dc94-cefb-43c7-b856-acd34e2fc373)
 
 ## Getting Started
 ### `master` branch
-The `master` branch of Caly Pdf Reader uses NuGet packages. You can ignore the `external` folder.
+The `master` branch of TraceView uses NuGet packages. You can ignore the `external` folder.
 
 ### `develop` branch
-The `develop` branch of Caly Pdf Reader uses submodules (located in the `external` folder), you will need to run the following command after cloning it:
+The `develop` branch of TraceView uses submodules (located in the `external` folder), you will need to run the following command after cloning it:
 ```
 git submodule update --init --recursive
 ```
@@ -68,7 +68,7 @@ git submodule update --init --recursive
 > If the submodule branches appear as 'detached', you can re-link each of them to their respective `develop-caly` branches.
 
 ### Publishing
-Caly Pdf Reader is a net10.0 application with Native AOT enabled.
+TraceView is a net10.0 application with Native AOT enabled.
 
 To publish the application (`AOT`), run the following (example for Windows):
 ```
@@ -84,12 +84,12 @@ dotnet publish -r win-x64 -c Release -f net10.0
 
 We welcome contributions from the community! If you find a bug, have a feature request, or want to contribute code, please feel free to do it!
 
-You can also help Caly Pdf Reader by contributing to:
+You can also help TraceView by contributing to:
 - https://github.com/UglyToad/PdfPig
 - https://github.com/BobLd/PdfPig.Rendering.Skia
 
 ## License
 
-Caly Pdf Reader is licensed under the [MIT License](https://github.com/CalyPdf/Caly/blob/master/LICENSE).
+TraceView is licensed under the [MIT License](https://github.com/CalyPdf/Caly/blob/master/LICENSE).
 
 ![caly preview 3](https://github.com/user-attachments/assets/49a5cea8-a407-48b2-9f53-3d3022a120ba)

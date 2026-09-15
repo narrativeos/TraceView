@@ -1,7 +1,7 @@
 {
     "GeneralSettings": {
         "NetProjectPath": "Caly.Desktop.csproj",
-        "ApplicationName": "Caly Pdf Reader",
+        "ApplicationName": "TraceView",
         "Version": {
             "$type": "msbuild",
             "property": "Version"
@@ -19,14 +19,14 @@
         "CreateBinSymlink": "True"
     },
     "Win32Settings": {
-        "InstallerIcon": "../Logo/Favicon Transparent.ico",
+        "InstallerIcon": "../Caly.Core/Assets/caly-logo.ico",
         "InstallerLicense": "../LICENSE",
         "InstallerRequiresAdmin": "False",
         "IncludeUninstaller": "True"
     },
     "MacOsSettings": {
         "CreateBundle": true,
-        "BundleIdentifier": "com.CompanyName.Caly",
+        "BundleIdentifier": "com.CompanyName.TraceView",
         "SigningCredentialsType": "AdHoc"
     },
     "PublishSettings": {

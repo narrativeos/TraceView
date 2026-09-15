@@ -7,7 +7,7 @@
 		<Nullable>enable</Nullable>
 		<BuiltInComInteropSupport>true</BuiltInComInteropSupport>
 		<ApplicationManifest>app.manifest</ApplicationManifest>
-		<AssemblyName>Caly</AssemblyName>
+		<AssemblyName>TraceView</AssemblyName>
 		<Version>0.2.0.0</Version>
 		<JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
 		<Deterministic>true</Deterministic>
@@ -96,6 +96,19 @@
 		<AvaloniaUseCompiledBindingsByDefault>True</AvaloniaUseCompiledBindingsByDefault>
 		<ApplicationIcon>..\Caly.Core\Assets\caly-logo.ico</ApplicationIcon>
 	</PropertyGroup>
+
+	<!-- macOS: after each build, assemble TraceView.app so the Dock shows the app icon.
+	     Files are hard-linked (cp -al) into the bundle: zero extra disk usage, and the
+	     apphost is a real file inside the bundle so LaunchServices/Dock pick up AppIcon.icns.
+	     The bundle is staged in a sibling temp dir first (so cp never recurses into itself),
+	     then moved into place. -->
+	<Target Name="CreateMacAppBundle" AfterTargets="Build" Condition="$([MSBuild]::IsOSPlatform('OSX'))">
+		<PropertyGroup>
+			<AppBundlePath>$(OutDir)TraceView.app</AppBundlePath>
+			<AppBundleStaging>$(MSBuildProjectDirectory)/obj/.TraceView.app.staging</AppBundleStaging>
+		</PropertyGroup>
+		<Exec Command="rm -rf &quot;$(AppBundleStaging)&quot; &quot;$(AppBundlePath)&quot; &amp;&amp; mkdir -p &quot;$(AppBundleStaging)/Contents/MacOS&quot; &quot;$(AppBundleStaging)/Contents/Resources&quot; &amp;&amp; cp -al &quot;$(OutDir).&quot; &quot;$(AppBundleStaging)/Contents/MacOS/&quot; &amp;&amp; cp &quot;$(MSBuildProjectDirectory)/../Logo/AppIcon.icns&quot; &quot;$(AppBundleStaging)/Contents/Resources/AppIcon.icns&quot; &amp;&amp; sed -e 's/__VERSION__/$(Version)/g' &quot;$(MSBuildProjectDirectory)/MacAppBundle/Info.plist&quot; &gt; &quot;$(AppBundleStaging)/Contents/Info.plist&quot; &amp;&amp; mv &quot;$(AppBundleStaging)&quot; &quot;$(AppBundlePath)&quot;" />
+	</Target>
 
 	<Target Name="DeletePdbAfterPublish" AfterTargets="Publish">
 		<ItemGroup>

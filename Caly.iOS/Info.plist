@@ -3,9 +3,21 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleDisplayName</key>
-	<string>AvaloniaTest</string>
+	<string>TraceView</string>
 	<key>CFBundleIdentifier</key>
-	<string>companyName.AvaloniaTest</string>
+	<string>com.CompanyName.TraceView</string>
+	<key>CFBundleIcons</key>
+	<dict>
+		<key>CFBundlePrimaryIcon</key>
+		<dict>
+			<key>CFBundleIconFiles</key>
+			<array>
+				<string>AppIcon1024</string>
+			</array>
+			<key>CFBundleIconName</key>
+			<string>AppIcon1024</string>
+		</dict>
+	</dict>
 	<key>CFBundleShortVersionString</key>
 	<string>1.0</string>
 	<key>CFBundleVersion</key>

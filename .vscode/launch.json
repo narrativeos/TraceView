@@ -17,11 +17,11 @@
             }
         },
         {
-            "name": "Launch Caly Desktop",
+            "name": "Launch TraceView Desktop",
             "type": "coreclr",
             "request": "launch",
             "preLaunchTask": "build-debug",
-            "program": "${workspaceFolder}/Caly.Desktop/bin/Debug/net10.0/Caly",
+            "program": "${workspaceFolder}/Caly.Desktop/bin/Debug/net10.0/TraceView.app/Contents/MacOS/TraceView",
             "args": [],
             "cwd": "${workspaceFolder}/Caly.Desktop/bin/Debug/net10.0",
             "console": "internalConsole",

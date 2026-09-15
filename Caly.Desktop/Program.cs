@@ -33,7 +33,7 @@ namespace Caly.Desktop
 {
     internal class Program
     {
-        private const string _appName = "Caly Pdf Reader";
+        private const string _appName = "TraceView";
 
         private static readonly CalyFileMutex mutex = new(true, _appName);
 
