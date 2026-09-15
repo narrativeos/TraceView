@@ -173,7 +173,11 @@ public static class PopoJsonService
             try
             {
                 var json = File.ReadAllText(popoJsonPath);
-                return JsonSerializer.Deserialize<StructureDocument>(json, StructureDocumentOptions);
+                var doc = JsonSerializer.Deserialize<StructureDocument>(json, StructureDocumentOptions);
+                // Cached popo.json files may predate tree-based TOC supplementation;
+                // re-derive missing headings from the persisted tree (idempotent).
+                SupplementTocFromTree(doc);
+                return doc;
             }
             catch
             {
@@ -994,6 +998,10 @@ public static class PopoJsonService
             }
         }
 
+        // The outputs/ stage files carry no API toc; derive TocEntries from the
+        // tree when available (no-op when there is no tree).
+        SupplementTocFromTree(doc);
+
         return loaded ? doc : null;
     }
 
@@ -1204,6 +1212,11 @@ public static class PopoJsonService
                             System.Diagnostics.Debug.WriteLine($"[Popo] _artifactsDir loaded: {doc.ArtifactsDir}");
                         }
 
+                        // Supplement TocEntries from the tree so downstream consumers
+                        // (SectionPathResolver, NLP TOC unit, SECTION_REF anchors) see
+                        // a complete TOC even when the API returned a partial one.
+                        SupplementTocFromTree(doc);
+
                         return doc;
                     }
                 }
@@ -1225,6 +1238,11 @@ public static class PopoJsonService
                             System.Diagnostics.Debug.WriteLine($"[Popo] Extracted {formulaEntries.Count} formulas from document (direct format)");
                         }
                     }
+
+                    // Cached popo.json files may predate tree-based TOC supplementation;
+                    // re-derive missing headings from the persisted tree (idempotent).
+                    SupplementTocFromTree(minerUDoc);
+
                     return minerUDoc;
                 }
             }
@@ -1844,24 +1862,209 @@ public static class PopoJsonService
 
     /// <summary>
     /// Builds a flat table of contents list from the Popo analysis result.
-    /// Only uses pre-parsed TocEntries from StructureDocument (popo_result.json result.toc.entries).
-    /// No local fallback - if the API did not return toc entries, returns an empty list.
+    /// Merges pre-parsed TocEntries from StructureDocument (popo_result.json
+    /// result.toc.entries) with heading nodes from the analysis tree:
+    /// <list type="bullet">
+    /// <item>Tree headings already covered by an API entry (matched by normalized
+    /// title) keep the API entry's level/page data.</item>
+    /// <item>Tree headings missing from the API toc are supplemented from the tree
+    /// node, so a partial API toc still yields a complete TOC.</item>
+    /// <item>API entries not matched to any tree heading (e.g. back_matter 条文说明)
+    /// are appended after the tree-derived entries.</item>
+    /// <item>When the API returned no toc entries at all, the TOC is built purely
+    /// from the tree (fallback).</item>
+    /// </list>
+    /// Node-level toc entries (in-table sections from newer Popo output) are
+    /// appended last, deduplicated by title.
     /// </summary>
-    /// <param name="root">The root node of the document tree (unused, kept for backward compatibility).</param>
+    /// <param name="root">The root node of the document tree.</param>
     /// <param name="doc">StructureDocument with pre-parsed TOC entries from the API.</param>
-    /// <returns>A list of TOC entries from the API, or an empty list if the API did not return any.</returns>
+    /// <returns>The merged list of TOC entries in document order.</returns>
     public static List<TocEntry> BuildTableOfContents(AnalysisTreeNode root, StructureDocument? doc = null)
     {
-        // Use pre-parsed TocEntries from the API (popo_result.json result.toc.entries)
-        // plus node-level toc entries (in-table sections from newer Popo output).
-        // No local fallback to tree traversal.
-        var entries = new List<TocEntry>();
-        if (doc?.TocEntries is { Count: > 0 })
-            entries.AddRange(doc.TocEntries);
+        var entries = MergeTreeWithTocEntries(root, doc?.TocEntries);
 
-        CollectNodeTocEntries(root, entries);
+        // Append node-level toc entries (in-table sections) not already covered.
+        var nodeTocEntries = new List<TocEntry>();
+        CollectNodeTocEntries(root, nodeTocEntries);
+        var knownTitles = entries
+            .Where(e => !string.IsNullOrEmpty(e.Title))
+            .Select(e => NormalizeTocTitle(e.Title))
+            .ToHashSet(StringComparer.Ordinal);
+        foreach (var nodeEntry in nodeTocEntries)
+        {
+            var key = NormalizeTocTitle(nodeEntry.Title);
+            if (key.Length == 0 || knownTitles.Contains(key))
+                continue;
+            knownTitles.Add(key);
+            entries.Add(nodeEntry);
+        }
 
         return entries;
+    }
+
+    /// <summary>
+    /// Supplements <see cref="StructureDocument.TocEntries"/> with heading nodes
+    /// from the analysis tree so that every consumer of TocEntries
+    /// (SectionPathResolver page fallback, NLP TOC batch unit, SECTION_REF
+    /// anchors, TOC panel) sees a complete TOC even when the API returned only
+    /// a partial result.toc.entries.
+    /// Idempotent: headings already present in TocEntries (matched by normalized
+    /// title) are kept as-is, so calling this multiple times does not duplicate
+    /// entries. No-op when the document has no tree.
+    /// </summary>
+    public static void SupplementTocFromTree(StructureDocument doc)
+    {
+        if (doc is null || doc.TreeRoot is null)
+            return;
+
+        doc.TocEntries = MergeTreeWithTocEntries(doc.TreeRoot, doc.TocEntries);
+    }
+
+    /// <summary>
+    /// Core merge: walks the tree in document order and emits one entry per
+    /// heading node, preferring the matching entry from
+    /// <paramref name="apiEntries"/> (by normalized title) when present.
+    /// Entries from <paramref name="apiEntries"/> not matched to any tree
+    /// heading (e.g. back_matter 条文说明) are appended at the end. When
+    /// <paramref name="apiEntries"/> is empty, the result is the pure
+    /// tree-derived TOC.
+    /// </summary>
+    private static List<TocEntry> MergeTreeWithTocEntries(
+        AnalysisTreeNode root,
+        IReadOnlyList<TocEntry>? apiEntries)
+    {
+        var entries = new List<TocEntry>();
+
+        if (apiEntries is { Count: > 0 })
+        {
+            var consumed = new bool[apiEntries.Count];
+            MergeTreeHeadingsWithApiToc(root, apiEntries, consumed, entries);
+
+            // Append API entries not matched to any tree heading
+            // (e.g. back_matter entries whose sections are not in the tree).
+            for (int i = 0; i < apiEntries.Count; i++)
+            {
+                if (!consumed[i])
+                    entries.Add(apiEntries[i]);
+            }
+        }
+        else
+        {
+            // No API toc: fall back to pure tree traversal.
+            BuildTocFromTree(root, entries);
+        }
+
+        return entries;
+    }
+
+    /// <summary>
+    /// Recursively walks the tree in document order and emits one TOC entry per
+    /// heading node. When <paramref name="apiEntries"/> is non-empty, a heading
+    /// whose normalized title matches an unconsumed API entry emits that API
+    /// entry (and marks it consumed); otherwise a TocEntry is derived from the
+    /// tree node.
+    /// </summary>
+    private static void MergeTreeHeadingsWithApiToc(
+        AnalysisTreeNode node,
+        IReadOnlyList<TocEntry> apiEntries,
+        bool[] consumed,
+        List<TocEntry> entries)
+    {
+        if (IsTocHeadingNode(node))
+        {
+            var key = NormalizeTocTitle(node.Title);
+            int match = -1;
+            if (key.Length > 0)
+            {
+                for (int i = 0; i < apiEntries.Count; i++)
+                {
+                    if (!consumed[i] && NormalizeTocTitle(apiEntries[i].Title) == key)
+                    {
+                        match = i;
+                        break;
+                    }
+                }
+            }
+
+            if (match >= 0)
+            {
+                consumed[match] = true;
+                entries.Add(apiEntries[match]);
+            }
+            else
+            {
+                entries.Add(new TocEntry
+                {
+                    Title = node.Title.Trim(),
+                    Level = node.Level,
+                    Page = node.Location[0].Page,
+                    Type = node.Type
+                });
+            }
+        }
+
+        foreach (var child in node.Children)
+        {
+            MergeTreeHeadingsWithApiToc(child, apiEntries, consumed, entries);
+        }
+    }
+
+    /// <summary>
+    /// Recursively walks the tree in document order and emits one TOC entry per
+    /// heading node (text/title nodes with a non-empty title, level &gt; 0 and
+    /// at least one location). Used when the API returned no toc entries.
+    /// </summary>
+    private static void BuildTocFromTree(AnalysisTreeNode node, List<TocEntry> entries)
+    {
+        if (IsTocHeadingNode(node))
+        {
+            entries.Add(new TocEntry
+            {
+                Title = node.Title.Trim(),
+                Level = node.Level,
+                Page = node.Location[0].Page,
+                Type = node.Type
+            });
+        }
+
+        foreach (var child in node.Children)
+        {
+            BuildTocFromTree(child, entries);
+        }
+    }
+
+    /// <summary>
+    /// Whether a tree node is a TOC heading candidate: a text/title node with
+    /// level &gt; 0, a non-empty title and at least one location. The API
+    /// placeholder "Default Title" is not a real heading (same filter as
+    /// SectionPathResolver / TreeNodeViewModel).
+    /// </summary>
+    private static bool IsTocHeadingNode(AnalysisTreeNode node)
+    {
+        if (node.Type is not ("text" or "title") || node.Level <= 0)
+            return false;
+        if (node.Location.Count == 0)
+            return false;
+
+        var title = node.Title?.Trim();
+        return !string.IsNullOrEmpty(title) && title != "Default Title";
+    }
+
+    /// <summary>
+    /// Normalizes a TOC title for cross-matching between API toc entries and
+    /// tree heading nodes: trims and strips all whitespace so that e.g.
+    /// "1 总 则" and "1总则" compare equal.
+    /// </summary>
+    private static string NormalizeTocTitle(string title)
+    {
+        var sb = new StringBuilder(title.Length);
+        foreach (var c in title)
+        {
+            if (!char.IsWhiteSpace(c))
+                sb.Append(c);
+        }
+        return sb.ToString();
     }
 
     /// <summary>

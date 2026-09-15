@@ -1552,6 +1552,358 @@ public class PopoJsonServiceTests
 
     #endregion
 
+    #region BuildTableOfContents Tests
+
+    private static AnalysisTreeNode HeadingNode(string title, int level, int page, params AnalysisTreeNode[] children)
+    {
+        var node = new AnalysisTreeNode
+        {
+            Type = "text",
+            Title = title,
+            Level = level,
+            Location = new List<LocationEntry> { new() { Page = page } }
+        };
+        foreach (var child in children)
+            node.Children.Add(child);
+        return node;
+    }
+
+    [Fact]
+    public void BuildTableOfContents_PartialApiToc_SupplementsMissingTreeHeadings()
+    {
+        // Regression: for a journal paper the API toc.entries only contained the
+        // paper title and the first section, so the TOC panel was missing 二～五.
+        var root = new AnalysisTreeNode { Type = "root", Level = -1 };
+        root.Children.Add(HeadingNode("英国方志的编撰与乡绅阶层的兴起", 1, 1,
+            HeadingNode("一、乡绅修志的动因", 2, 1),
+            HeadingNode("二、方志所见乡绅的自然观", 2, 3),
+            HeadingNode("三、方志中的土地勘查与地理认知", 2, 5),
+            HeadingNode("四、关于生命和疾病的认知", 2, 7),
+            HeadingNode("五、地方性知识：乡绅新的认知范式", 2, 9)));
+        root.Children.Add(HeadingNode("Contents and Summaries", 1, 11));
+
+        var doc = new StructureDocument
+        {
+            TreeRoot = root,
+            TocEntries = new List<TocEntry>
+            {
+                new() { Title = "英国方志的编撰与乡绅阶层的兴起", Level = 1, Page = 1, Type = "toc" },
+                new() { Title = "一、乡绅修志的动因", Level = 2, Page = 1, Type = "toc" }
+            }
+        };
+
+        var entries = PopoJsonService.BuildTableOfContents(root, doc);
+
+        // Complete TOC in tree order: 2 API entries + 4 supplemented sections + 1 sibling paper.
+        Assert.Equal(7, entries.Count);
+        Assert.Equal("英国方志的编撰与乡绅阶层的兴起", entries[0].Title);
+        Assert.Equal("一、乡绅修志的动因", entries[1].Title);
+        Assert.Equal("二、方志所见乡绅的自然观", entries[2].Title);
+        Assert.Equal(3, entries[2].Page);
+        Assert.Equal(2, entries[2].Level);
+        Assert.Equal("text", entries[2].Type);
+        Assert.Equal("五、地方性知识：乡绅新的认知范式", entries[5].Title);
+        Assert.Equal("Contents and Summaries", entries[6].Title);
+        Assert.Equal(11, entries[6].Page);
+    }
+
+    [Fact]
+    public void BuildTableOfContents_CompleteApiToc_DoesNotDuplicateTreeHeadings()
+    {
+        var root = new AnalysisTreeNode { Type = "root", Level = -1 };
+        root.Children.Add(HeadingNode("第一章 总则", 1, 2));
+        root.Children.Add(HeadingNode("第二章 术语", 1, 5));
+
+        var doc = new StructureDocument
+        {
+            TreeRoot = root,
+            TocEntries = new List<TocEntry>
+            {
+                new() { Title = "第一章 总则", Level = 1, Page = 2, Type = "toc" },
+                new() { Title = "第二章 术语", Level = 1, Page = 5, Type = "toc" }
+            }
+        };
+
+        var entries = PopoJsonService.BuildTableOfContents(root, doc);
+
+        Assert.Equal(2, entries.Count);
+        Assert.Equal("第一章 总则", entries[0].Title);
+        Assert.Equal("第二章 术语", entries[1].Title);
+    }
+
+    [Fact]
+    public void BuildTableOfContents_EmptyApiToc_FallsBackToTree()
+    {
+        var root = new AnalysisTreeNode { Type = "root", Level = -1 };
+        root.Children.Add(HeadingNode("第一章 总则", 1, 2,
+            HeadingNode("1.1 范围", 2, 2)));
+        // Body text node without a title must not appear in the TOC.
+        var body = new AnalysisTreeNode
+        {
+            Type = "text",
+            Title = "",
+            Level = 3,
+            Content = "正文内容。",
+            Location = new List<LocationEntry> { new() { Page = 2 } }
+        };
+        root.Children[0].Children.Add(body);
+
+        var doc = new StructureDocument { TreeRoot = root };
+
+        var entries = PopoJsonService.BuildTableOfContents(root, doc);
+
+        Assert.Equal(2, entries.Count);
+        Assert.Equal("第一章 总则", entries[0].Title);
+        Assert.Equal("1.1 范围", entries[1].Title);
+    }
+
+    [Fact]
+    public void BuildTableOfContents_UnmatchedApiEntries_AppendedAfterTreeEntries()
+    {
+        var root = new AnalysisTreeNode { Type = "root", Level = -1 };
+        root.Children.Add(HeadingNode("1 总则", 1, 12));
+
+        var doc = new StructureDocument
+        {
+            TreeRoot = root,
+            TocEntries = new List<TocEntry>
+            {
+                new() { Title = "1 总则", Level = 1, Page = 12, Type = "toc" },
+                // back_matter entry whose section is not present in the tree
+                new() { Title = "条文说明", Level = 1, Page = 108, Type = "toc", Source = "back_matter" }
+            }
+        };
+
+        var entries = PopoJsonService.BuildTableOfContents(root, doc);
+
+        Assert.Equal(2, entries.Count);
+        Assert.Equal("1 总则", entries[0].Title);
+        Assert.Equal("条文说明", entries[1].Title);
+        Assert.Equal("back_matter", entries[1].Source);
+    }
+
+    [Fact]
+    public void BuildTableOfContents_TitleMatching_IgnoresWhitespaceDifferences()
+    {
+        var root = new AnalysisTreeNode { Type = "root", Level = -1 };
+        root.Children.Add(HeadingNode("1 总 则", 1, 12));
+
+        var doc = new StructureDocument
+        {
+            TreeRoot = root,
+            TocEntries = new List<TocEntry>
+            {
+                new() { Title = "1总则", Level = 1, Page = 12, Type = "toc" }
+            }
+        };
+
+        var entries = PopoJsonService.BuildTableOfContents(root, doc);
+
+        // The API entry (whitespace-normalized match) is used, no duplicate.
+        Assert.Single(entries);
+        Assert.Equal("1总则", entries[0].Title);
+    }
+
+    [Fact]
+    public void BuildTableOfContents_NodeLevelToc_AppendedAndDeduplicated()
+    {
+        var root = new AnalysisTreeNode { Type = "root", Level = -1 };
+        var table = new AnalysisTreeNode
+        {
+            Type = "table_data",
+            Title = "试验报告",
+            Level = 2,
+            Location = new List<LocationEntry> { new() { Page = 3 } },
+            Toc = new List<TocEntry>
+            {
+                new() { Title = "1.设备参数", Level = 1, Page = 2, Type = "toc", Source = "table" },
+                new() { Title = "2.绝缘电阻", Level = 1, Page = 2, Type = "toc", Source = "table" }
+            }
+        };
+        root.Children.Add(table);
+
+        var doc = new StructureDocument
+        {
+            TreeRoot = root,
+            TocEntries = new List<TocEntry>
+            {
+                // Covers one of the in-table sections → must not be duplicated
+                new() { Title = "1.设备参数", Level = 1, Page = 2, Type = "toc" }
+            }
+        };
+
+        var entries = PopoJsonService.BuildTableOfContents(root, doc);
+
+        Assert.Equal(2, entries.Count);
+        Assert.Equal("1.设备参数", entries[0].Title);
+        Assert.Equal("2.绝缘电阻", entries[1].Title);
+        Assert.Equal("table", entries[1].Source);
+    }
+
+    [Fact]
+    public void SupplementTocFromTree_PartialApiToc_SupplementsDocTocEntries()
+    {
+        // Regression: SectionPathResolver / NLP TOC unit / SECTION_REF anchors
+        // consume doc.TocEntries directly, so the supplementation must happen
+        // on the document, not only in the TOC panel.
+        var root = new AnalysisTreeNode { Type = "root", Level = -1 };
+        root.Children.Add(HeadingNode("英国方志的编撰与乡绅阶层的兴起", 1, 1,
+            HeadingNode("一、乡绅修志的动因", 2, 1),
+            HeadingNode("二、方志所见乡绅的自然观", 2, 3)));
+
+        var doc = new StructureDocument
+        {
+            TreeRoot = root,
+            TocEntries = new List<TocEntry>
+            {
+                new() { Title = "英国方志的编撰与乡绅阶层的兴起", Level = 1, Page = 1, Type = "toc" },
+                new() { Title = "一、乡绅修志的动因", Level = 2, Page = 1, Type = "toc" }
+            }
+        };
+
+        PopoJsonService.SupplementTocFromTree(doc);
+
+        Assert.Equal(3, doc.TocEntries.Count);
+        Assert.Equal("二、方志所见乡绅的自然观", doc.TocEntries[2].Title);
+        Assert.Equal(3, doc.TocEntries[2].Page);
+        Assert.Equal(2, doc.TocEntries[2].Level);
+
+        // Idempotent: a second pass must not duplicate entries.
+        PopoJsonService.SupplementTocFromTree(doc);
+        Assert.Equal(3, doc.TocEntries.Count);
+    }
+
+    [Fact]
+    public void SupplementTocFromTree_NoTreeOrNullDoc_IsNoOp()
+    {
+        var noTree = new StructureDocument
+        {
+            TocEntries = new List<TocEntry> { new() { Title = "1 总则", Level = 1, Page = 12 } }
+        };
+        PopoJsonService.SupplementTocFromTree(noTree);
+        Assert.Single(noTree.TocEntries);
+
+        PopoJsonService.SupplementTocFromTree(null!);
+    }
+
+    [Fact]
+    public void BuildTableOfContents_SkipsDefaultTitlePlaceholder()
+    {
+        var root = new AnalysisTreeNode { Type = "root", Level = -1 };
+        root.Children.Add(HeadingNode("Default Title", 1, 1));
+        root.Children.Add(HeadingNode("第一章 总则", 1, 2));
+
+        var doc = new StructureDocument { TreeRoot = root };
+
+        var entries = PopoJsonService.BuildTableOfContents(root, doc);
+
+        Assert.Single(entries);
+        Assert.Equal("第一章 总则", entries[0].Title);
+    }
+
+    [Fact]
+    public void TryParsePopoResultJson_PartialToc_SupplementsDocTocEntriesFromTree()
+    {
+        // End-to-end regression for P020220511403536703180: the API toc.entries
+        // contained only the paper title and the first section; after parsing,
+        // doc.TocEntries must contain all tree headings.
+        var tempDir = Path.Combine(Path.GetTempPath(), "caly-popo-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+
+        var jsonPath = Path.Combine(tempDir, "popo_result.json");
+        File.WriteAllText(jsonPath, """
+        {
+          "task_id": "t1",
+          "status": "completed",
+          "result": {
+            "doc_id": "d1",
+            "status": "completed",
+            "message": "",
+            "tree": {
+              "type": "root",
+              "title": "经济社会史评论2022年第1期",
+              "content": "",
+              "level": -1,
+              "location": [],
+              "block_ids": [],
+              "children": [
+                {
+                  "type": "text",
+                  "title": "英国方志的编撰与乡绅阶层的兴起",
+                  "content": "正文",
+                  "level": 1,
+                  "location": [{ "bbox": [0.1, 0.2, 0.8, 0.3], "page": 1 }],
+                  "block_ids": [2],
+                  "children": [
+                    {
+                      "type": "text",
+                      "title": "一、乡绅修志的动因",
+                      "content": "正文",
+                      "level": 2,
+                      "location": [{ "bbox": [0.1, 0.4, 0.8, 0.5], "page": 1 }],
+                      "block_ids": [7],
+                      "children": []
+                    },
+                    {
+                      "type": "text",
+                      "title": "二、方志所见乡绅的自然观",
+                      "content": "正文",
+                      "level": 2,
+                      "location": [{ "bbox": [0.1, 0.4, 0.8, 0.5], "page": 3 }],
+                      "block_ids": [20],
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            },
+            "toc": {
+              "entries": [
+                {
+                  "title": "英国方志的编撰与乡绅阶层的兴起",
+                  "level": 1,
+                  "page": 1,
+                  "linked_body_title": "英国方志的编撰与乡绅阶层的兴起",
+                  "linked_body_page": 1
+                },
+                {
+                  "title": "一、乡绅修志的动因",
+                  "level": 2,
+                  "page": 1,
+                  "linked_body_title": "一、乡绅修志的动因",
+                  "linked_body_page": 1
+                }
+              ]
+            }
+          }
+        }
+        """);
+
+        try
+        {
+            var doc = PopoJsonService.TryParsePopoResultJson(jsonPath);
+            Assert.NotNull(doc);
+
+            // All three tree headings are present in doc.TocEntries, in tree order.
+            Assert.Equal(3, doc!.TocEntries.Count);
+            Assert.Equal("英国方志的编撰与乡绅阶层的兴起", doc.TocEntries[0].Title);
+            Assert.Equal("一、乡绅修志的动因", doc.TocEntries[1].Title);
+            Assert.Equal("二、方志所见乡绅的自然观", doc.TocEntries[2].Title);
+            Assert.Equal(3, doc.TocEntries[2].Page);
+
+            // The TOC panel path agrees with doc.TocEntries (no drift).
+            var panelEntries = PopoJsonService.BuildTableOfContents(doc.TreeRoot!, doc);
+            Assert.Equal(doc.TocEntries.Select(e => e.Title), panelEntries.Select(e => e.Title));
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+                Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    #endregion
+
     #region GenerateTableMarkdown Tests
 
     [Fact]

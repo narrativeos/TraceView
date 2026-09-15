@@ -497,6 +497,11 @@ public sealed class PopoService : IDisposable
             System.Diagnostics.Debug.WriteLine($"[Popo] result.toc: {tocStatus} for doc '{sourceDocId}' (no TOC entries available)");
         }
 
+        // Supplement TocEntries from the tree so downstream consumers
+        // (SectionPathResolver, NLP TOC unit, SECTION_REF anchors) see a
+        // complete TOC even when the API returned a partial one.
+        PopoJsonService.SupplementTocFromTree(minerUDoc);
+
         return minerUDoc;
     }
 

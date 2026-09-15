@@ -113,9 +113,11 @@ public partial class StructureDocument : ObservableObject
     }
 
     /// <summary>
-    /// Pre-parsed table of contents entries from popo_result.json (result.toc.entries).
-    /// When available, these are used directly instead of extracting TOC from the tree.
-    /// Each entry maps to a section in the document with title, level, and verified page.
+    /// Table of contents entries, seeded from popo_result.json (result.toc.entries)
+    /// and supplemented with heading nodes from the analysis tree
+    /// (PopoJsonService.SupplementTocFromTree) so the list is complete even when
+    /// the API returned only a partial toc. Each entry maps to a section in the
+    /// document with title, level, and verified page.
     /// </summary>
     [ObservableProperty]
     private List<TocEntry> _tocEntries = new();
