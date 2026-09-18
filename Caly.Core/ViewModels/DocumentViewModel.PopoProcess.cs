@@ -327,7 +327,8 @@ public sealed partial class DocumentViewModel : PopoService.IPopoProgressCallbac
                 }
 
                 // Resolve artifactsDir using same logic as TryLoadPopoData
-                // IMPORTANT: artifactsDir must point to hybrid_auto (not images subdirectory)
+                // IMPORTANT: artifactsDir must point to the artifacts root (hybrid_auto in 3.x,
+                // the doc dir itself in 4.0 — not the images subdirectory)
                 // so that PopulateTreeBlockIds can find middle.json and PopulateTreeImgPaths can search for images
                 string? artifactsDir = null;
                 var mineruDir = Path.Combine(ProjectPath, "mineru");
@@ -336,10 +337,10 @@ public sealed partial class DocumentViewModel : PopoService.IPopoProgressCallbac
                     foreach (var subDir in Directory.GetDirectories(mineruDir))
                     {
                         if (artifactsDir is not null) break;
-                        var hybridAutoDir = Path.Combine(subDir, "hybrid_auto");
-                        if (Directory.Exists(hybridAutoDir))
+                        // 3.x: {sub}/hybrid_auto/; 4.0: {sub}/ flat
+                        foreach (var candidate in new[] { Path.Combine(subDir, "hybrid_auto"), subDir })
                         {
-                            var imagesDir = Path.Combine(hybridAutoDir, "images");
+                            var imagesDir = Path.Combine(candidate, "images");
                             if (Directory.Exists(imagesDir))
                             {
                                 var imageFiles = System.IO.Directory.GetFiles(imagesDir, "*.*", System.IO.SearchOption.TopDirectoryOnly)
@@ -347,7 +348,7 @@ public sealed partial class DocumentViewModel : PopoService.IPopoProgressCallbac
                                     .ToList();
                                 if (imageFiles.Count > 0)
                                 {
-                                    artifactsDir = hybridAutoDir; // Return parent, not images subdirectory
+                                    artifactsDir = candidate; // Return parent, not images subdirectory
                                     break;
                                 }
                             }

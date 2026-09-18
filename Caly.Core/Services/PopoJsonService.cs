@@ -69,14 +69,13 @@ public static class PopoJsonService
 
     /// <summary>
     /// JSON serializer options for StructureDocument serialization/deserialization.
-    /// Uses reflection-based resolver because StructureDocument uses [ObservableProperty]
-    /// whose generated properties are not visible to the JSON source generator.
+    /// Uses source-generated resolver for AOT compatibility.
     /// </summary>
     internal static readonly JsonSerializerOptions StructureDocumentOptions = new()
     {
         WriteIndented = true,
         PropertyNameCaseInsensitive = true,
-        TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+        TypeInfoResolver = SourceGenerationContext.Default,
         Converters = { new RectJsonConverter(), new TableHeaderJsonConverter() },
         MaxDepth = 256
     };
@@ -886,8 +885,8 @@ public static class PopoJsonService
         var extractDir = Path.Combine(resultDir, "extract");
         if (Directory.Exists(extractDir))
         {
-            // 2a: Prefer standard MinerU *_middle.json files first (default MinerU output)
-            var middleJsonFiles = Directory.GetFiles(extractDir, "*_middle.json", SearchOption.AllDirectories);
+            // 2a: Prefer standard MinerU middle JSON files first (default MinerU output)
+            var middleJsonFiles = MinerUJsonService.FindMiddleJsonFiles(extractDir);
             foreach (var middleJson in middleJsonFiles)
             {
                 var result = MinerUJsonService.TryParseMinerUMiddleJson(middleJson);
@@ -897,7 +896,7 @@ public static class PopoJsonService
 
             // 2b: Try other JSON files as Popo-serialized StructureDocument format
             var otherJsonFiles = Directory.GetFiles(extractDir, "*.json", SearchOption.AllDirectories)
-                .Where(f => !Path.GetFileName(f).EndsWith("_middle.json", StringComparison.OrdinalIgnoreCase));
+                .Where(f => !middleJsonFiles.Contains(f));
             foreach (var jsonFile in otherJsonFiles)
             {
                 var result = TryParsePopoResultJson(jsonFile);
@@ -1410,33 +1409,34 @@ public static class PopoJsonService
             return;
 
         // Find middle.json - search in artifactsDir and parent directories
-        // artifactsDir may be the images subdirectory, but middle.json is in hybrid_auto (parent)
+        // artifactsDir may be the images subdirectory, but middle.json is in the
+        // artifacts root (hybrid_auto in 3.x, the doc dir itself in 4.0)
         var searchDir = artifactsDir;
-        var middleJsons = Directory.GetFiles(searchDir, "*_middle.json", SearchOption.AllDirectories);
+        var middleJsons = MinerUJsonService.FindMiddleJsonFiles(searchDir);
 
-        // If not found in artifactsDir, try parent directory (hybrid_auto)
-        if (middleJsons.Length == 0 && Directory.Exists(searchDir))
+        // If not found in artifactsDir, try parent directory (artifacts root)
+        if (middleJsons.Count == 0 && Directory.Exists(searchDir))
         {
             var parentDir = Directory.GetParent(searchDir)?.FullName;
             if (parentDir is not null)
             {
-                middleJsons = Directory.GetFiles(parentDir, "*_middle.json", SearchOption.AllDirectories);
+                middleJsons = MinerUJsonService.FindMiddleJsonFiles(parentDir);
             }
         }
 
         // If still not found, try grandparent directory
-        if (middleJsons.Length == 0)
+        if (middleJsons.Count == 0)
         {
             var parentDir = Directory.GetParent(artifactsDir)?.Parent?.FullName;
             if (parentDir is not null)
             {
-                middleJsons = Directory.GetFiles(parentDir, "*_middle.json", SearchOption.AllDirectories);
+                middleJsons = MinerUJsonService.FindMiddleJsonFiles(parentDir);
             }
         }
 
-        if (middleJsons.Length == 0)
+        if (middleJsons.Count == 0)
         {
-            System.Diagnostics.Debug.WriteLine($"[PopoJson] WARNING: No *_middle.json found near {artifactsDir}");
+            System.Diagnostics.Debug.WriteLine($"[PopoJson] WARNING: No middle JSON found near {artifactsDir}");
             return;
         }
 

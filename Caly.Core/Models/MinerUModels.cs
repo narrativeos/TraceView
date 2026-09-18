@@ -158,45 +158,78 @@ public enum PageType
 }
 
 /// <summary>
-/// Response from POST /tasks endpoint (MinerU v3.4.0+).
+/// Response from POST /v1/uploads and POST /v1/uploads/{id}/complete (MinerU 4.0 V1 API).
+/// When the sha256sum hits an already-stored blob, status is "completed" and the
+/// <see cref="File"/> object is embedded directly (byte upload and complete steps are skipped).
 /// </summary>
-public class MinerUTaskSubmitResponse
+public class MinerUUploadResponse
 {
-    [JsonPropertyName("task_id")]
-    public string TaskId { get; set; } = string.Empty;
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
 
+    [JsonPropertyName("bytes")]
+    public long Bytes { get; set; }
+
+    [JsonPropertyName("filename")]
+    public string? Filename { get; set; }
+
+    [JsonPropertyName("mime_type")]
+    public string? MimeType { get; set; }
+
+    [JsonPropertyName("sha256sum")]
+    public string? Sha256Sum { get; set; }
+
+    /// <summary>
+    /// Upload status: pending, completed, cancelled, expired.
+    /// </summary>
     [JsonPropertyName("status")]
-    public string? Status { get; set; }
+    public string Status { get; set; } = string.Empty;
 
-    [JsonPropertyName("message")]
-    public string? Message { get; set; }
+    /// <summary>
+    /// URL to PUT the raw bytes to (present while status is "pending").
+    /// May be relative (resolved against the API base URL) or an absolute presigned URL.
+    /// </summary>
+    [JsonPropertyName("upload_url")]
+    public string? UploadUrl { get; set; }
 
-    [JsonPropertyName("backend")]
-    public string? Backend { get; set; }
+    /// <summary>
+    /// HTTP method for the byte upload (always "PUT" for self-hosted services).
+    /// </summary>
+    [JsonPropertyName("upload_method")]
+    public string? UploadMethod { get; set; }
 
-    [JsonPropertyName("file_names")]
-    public List<string>? FileNames { get; set; }
+    /// <summary>
+    /// Extra headers to send verbatim with the byte upload request.
+    /// </summary>
+    [JsonPropertyName("upload_headers")]
+    public Dictionary<string, string>? UploadHeaders { get; set; }
 
-    [JsonPropertyName("created_at")]
-    public string? CreatedAt { get; set; }
+    /// <summary>
+    /// The created file object (present when status is "completed").
+    /// </summary>
+    [JsonPropertyName("file")]
+    public MinerUFileObject? File { get; set; }
+}
 
-    [JsonPropertyName("started_at")]
-    public string? StartedAt { get; set; }
+/// <summary>
+/// A file resource in the MinerU 4.0 V1 API (source file or parse output).
+/// </summary>
+public class MinerUFileObject
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
 
-    [JsonPropertyName("completed_at")]
-    public string? CompletedAt { get; set; }
+    [JsonPropertyName("bytes")]
+    public long Bytes { get; set; }
 
-    [JsonPropertyName("error")]
-    public string? Error { get; set; }
+    [JsonPropertyName("filename")]
+    public string? Filename { get; set; }
 
-    [JsonPropertyName("status_url")]
-    public string? StatusUrl { get; set; }
+    [JsonPropertyName("purpose")]
+    public string? Purpose { get; set; }
 
-    [JsonPropertyName("result_url")]
-    public string? ResultUrl { get; set; }
-
-    [JsonPropertyName("queued_ahead")]
-    public int? QueuedAhead { get; set; }
+    [JsonPropertyName("sha256sum")]
+    public string? Sha256Sum { get; set; }
 }
 
 /// <summary>
@@ -254,25 +287,24 @@ public class MinerUTaskProgress
 }
 
 /// <summary>
-/// Response from GET /tasks/{task_id} endpoint (MinerU v3.4.0+).
-/// May include a "progress" field with detailed progress information.
+/// Response from POST /v1/parse/jobs and GET /v1/parse/jobs/{job_id} (MinerU 4.0 V1 API).
 /// </summary>
-public class MinerUTaskStatusResponse
+public class MinerUJobResponse
 {
-    [JsonPropertyName("task_id")]
-    public string TaskId { get; set; } = string.Empty;
+    [JsonPropertyName("job_id")]
+    public string JobId { get; set; } = string.Empty;
 
     /// <summary>
-    /// Task status: pending, running/processing, completed, failed
+    /// Job status: queued, running, completed, partial, failed, canceled.
     /// </summary>
     [JsonPropertyName("status")]
     public string Status { get; set; } = string.Empty;
 
-    [JsonPropertyName("backend")]
-    public string? Backend { get; set; }
+    [JsonPropertyName("tier")]
+    public string? Tier { get; set; }
 
-    [JsonPropertyName("file_names")]
-    public List<string>? FileNames { get; set; }
+    [JsonPropertyName("output_formats")]
+    public List<string>? OutputFormats { get; set; }
 
     [JsonPropertyName("created_at")]
     public string? CreatedAt { get; set; }
@@ -280,49 +312,225 @@ public class MinerUTaskStatusResponse
     [JsonPropertyName("started_at")]
     public string? StartedAt { get; set; }
 
-    [JsonPropertyName("completed_at")]
-    public string? CompletedAt { get; set; }
+    [JsonPropertyName("finished_at")]
+    public string? FinishedAt { get; set; }
 
-    [JsonPropertyName("error")]
-    public string? Error { get; set; }
-
+    /// <summary>
+    /// File-level progress counters (the V1 API does not report page-level progress).
+    /// </summary>
     [JsonPropertyName("progress")]
-    public MinerUTaskProgress? Progress { get; set; }
+    public MinerUJobProgress? Progress { get; set; }
 
-    [JsonPropertyName("status_url")]
-    public string? StatusUrl { get; set; }
-
-    [JsonPropertyName("result_url")]
-    public string? ResultUrl { get; set; }
-
-    [JsonPropertyName("queued_ahead")]
-    public int? QueuedAhead { get; set; }
+    [JsonPropertyName("files")]
+    public List<MinerUJobFileResult> Files { get; set; } = new List<MinerUJobFileResult>();
 
     /// <summary>
-    /// Optional message (present in some responses).
+    /// Determines if the job is still in flight (queued or running).
     /// </summary>
-    [JsonPropertyName("message")]
-    public string? Message { get; set; }
+    public bool IsRunning => Status is "queued" or "running";
 
     /// <summary>
-    /// Determines if the task is still running (pending, running, or processing).
-    /// </summary>
-    public bool IsRunning => Status is "pending" or "running" or "processing";
-
-    /// <summary>
-    /// Determines if the task is completed successfully.
+    /// Determines if the job completed with all files successful.
     /// </summary>
     public bool IsCompleted => Status == "completed";
 
     /// <summary>
-    /// Determines if the task has failed.
+    /// Determines if the job finished with some files successful and some failed.
+    /// </summary>
+    public bool IsPartial => Status == "partial";
+
+    /// <summary>
+    /// Determines if the job failed.
     /// </summary>
     public bool IsFailed => Status == "failed";
 
     /// <summary>
-    /// Gets the error message if the task failed.
+    /// Determines if the job was canceled.
     /// </summary>
-    public string? GetErrorMessage() => Error ?? Message;
+    public bool IsCanceled => Status == "canceled";
+
+    /// <summary>
+    /// Determines if the job reached a terminal state
+    /// (completed, partial, failed or canceled).
+    /// </summary>
+    public bool IsTerminal => Status is "completed" or "partial" or "failed" or "canceled";
+
+    /// <summary>
+    /// Gets the first per-file error message, if any file failed.
+    /// </summary>
+    public string? GetErrorMessage() =>
+        Files.FirstOrDefault(f => f.Error is not null)?.Error?.Message;
+}
+
+/// <summary>
+/// File-level progress counters reported by the V1 parse job API.
+/// </summary>
+public class MinerUJobProgress
+{
+    [JsonPropertyName("completed")]
+    public int Completed { get; set; }
+
+    [JsonPropertyName("failed")]
+    public int Failed { get; set; }
+
+    [JsonPropertyName("total")]
+    public int Total { get; set; }
+}
+
+/// <summary>
+/// Per-file result within a V1 parse job.
+/// </summary>
+public class MinerUJobFileResult
+{
+    [JsonPropertyName("file_id")]
+    public string? FileId { get; set; }
+
+    [JsonPropertyName("name")]
+    public string? Name { get; set; }
+
+    [JsonPropertyName("page_range")]
+    public string? PageRange { get; set; }
+
+    /// <summary>
+    /// Per-file status: queued, running, completed, failed.
+    /// </summary>
+    [JsonPropertyName("status")]
+    public string Status { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Requested output artifacts. Content is downloaded via GET /v1/files/{file_id}/content.
+    /// </summary>
+    [JsonPropertyName("output_files")]
+    public MinerUOutputFiles? OutputFiles { get; set; }
+
+    [JsonPropertyName("error")]
+    public MinerUErrorDetail? Error { get; set; }
+}
+
+/// <summary>
+/// Output artifact references for a single file in a V1 parse job.
+/// </summary>
+public class MinerUOutputFiles
+{
+    [JsonPropertyName("markdown")]
+    public MinerUOutputFileRef? Markdown { get; set; }
+
+    [JsonPropertyName("middle_json")]
+    public MinerUOutputFileRef? MiddleJson { get; set; }
+
+    [JsonPropertyName("structured_content")]
+    public MinerUOutputFileRef? StructuredContent { get; set; }
+
+    [JsonPropertyName("layout_quality")]
+    public MinerUOutputFileRef? LayoutQuality { get; set; }
+
+    [JsonPropertyName("zip")]
+    public MinerUOutputFileRef? Zip { get; set; }
+}
+
+/// <summary>
+/// Reference to a downloadable output file (fetched via GET /v1/files/{file_id}/content).
+/// </summary>
+public class MinerUOutputFileRef
+{
+    [JsonPropertyName("file_id")]
+    public string FileId { get; set; } = string.Empty;
+
+    [JsonPropertyName("bytes")]
+    public long Bytes { get; set; }
+}
+
+/// <summary>
+/// Error detail attached to a failed V1 job or file.
+/// </summary>
+public class MinerUErrorDetail
+{
+    [JsonPropertyName("code")]
+    public string? Code { get; set; }
+
+    [JsonPropertyName("message")]
+    public string? Message { get; set; }
+}
+
+/// <summary>
+/// Request body for POST /v1/uploads (MinerU 4.0 V1 API).
+/// </summary>
+public class MinerUUploadCreateRequest
+{
+    [JsonPropertyName("filename")]
+    public string Filename { get; set; } = string.Empty;
+
+    [JsonPropertyName("bytes")]
+    public long Bytes { get; set; }
+
+    [JsonPropertyName("mime_type")]
+    public string? MimeType { get; set; }
+
+    [JsonPropertyName("purpose")]
+    public string? Purpose { get; set; }
+
+    [JsonPropertyName("sha256sum")]
+    public string? Sha256Sum { get; set; }
+}
+
+/// <summary>
+/// Request body for POST /v1/uploads/{id}/complete (MinerU 4.0 V1 API).
+/// </summary>
+public class MinerUUploadCompleteRequest
+{
+    [JsonPropertyName("sha256sum")]
+    public string? Sha256Sum { get; set; }
+}
+
+/// <summary>
+/// Request body for POST /v1/parse/jobs (MinerU 4.0 V1 API).
+/// </summary>
+public class MinerUParseJobRequest
+{
+    [JsonPropertyName("files")]
+    public List<MinerUParseJobFile> Files { get; set; } = new();
+
+    [JsonPropertyName("tier")]
+    public string? Tier { get; set; }
+
+    [JsonPropertyName("output_formats")]
+    public List<string>? OutputFormats { get; set; }
+}
+
+/// <summary>
+/// A single file entry in a MinerU 4.0 V1 parse job request.
+/// </summary>
+public class MinerUParseJobFile
+{
+    [JsonPropertyName("source")]
+    public MinerUParseJobFileSource? Source { get; set; }
+}
+
+/// <summary>
+/// The source reference for a file in a MinerU 4.0 V1 parse job request.
+/// </summary>
+public class MinerUParseJobFileSource
+{
+    [JsonPropertyName("type")]
+    public string? Type { get; set; }
+
+    [JsonPropertyName("file_id")]
+    public string? FileId { get; set; }
+}
+
+/// <summary>
+/// Persisted task ID record (saved to {docId}_task_id.json for resume support).
+/// </summary>
+public class MinerUTaskIdRecord
+{
+    [JsonPropertyName("taskId")]
+    public string? TaskId { get; set; }
+
+    [JsonPropertyName("pdfPath")]
+    public string? PdfPath { get; set; }
+
+    [JsonPropertyName("createdAt")]
+    public string? CreatedAt { get; set; }
 }
 
 /// <summary>

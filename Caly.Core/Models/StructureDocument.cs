@@ -32,68 +32,108 @@ public partial class StructureDocument : ObservableObject
     /// <summary>
     /// Document ID.
     /// </summary>
-    [ObservableProperty]
     private string _docId = string.Empty;
+    public string DocId
+    {
+        get => _docId;
+        set => SetProperty(ref _docId, value);
+    }
 
     /// <summary>
     /// Model name (mineru, monkeyocr, etc.).
     /// </summary>
-    [ObservableProperty]
     private string _modelName = string.Empty;
+    public string ModelName
+    {
+        get => _modelName;
+        set => SetProperty(ref _modelName, value);
+    }
 
     /// <summary>
     /// Path to the artifacts directory (images, etc.) relative to the project root.
     /// Stored in popo_result.json so image paths can be resolved without directory scanning.
     /// Example: "mineru/978-xxx/hybrid_auto"
     /// </summary>
-    [ObservableProperty]
     private string? _artifactsDir;
+    public string? ArtifactsDir
+    {
+        get => _artifactsDir;
+        set => SetProperty(ref _artifactsDir, value);
+    }
 
     /// <summary>
     /// Normalized blocks grouped by page number (para+discarded blocks).
     /// </summary>
-    [ObservableProperty]
     private Dictionary<int, List<MinerUBlock>> _pagesBlocks = new();
+    public Dictionary<int, List<MinerUBlock>> PagesBlocks
+    {
+        get => _pagesBlocks;
+        set => SetProperty(ref _pagesBlocks, value);
+    }
 
     /// <summary>
     /// Preproc blocks (raw detection blocks) grouped by page number.
     /// These are the blocks shown on the PDF overlay, and are connected to
     /// para/discarded blocks via the connection lines.
     /// </summary>
-    [ObservableProperty]
     private Dictionary<int, List<MinerUBlock>> _preprocBlocks = new();
+    public Dictionary<int, List<MinerUBlock>> PreprocBlocks
+    {
+        get => _preprocBlocks;
+        set => SetProperty(ref _preprocBlocks, value);
+    }
 
     /// <summary>
     /// Inference blocks (flat list with contd/level/image fields).
     /// </summary>
-    [ObservableProperty]
     private List<MinerUBlock> _inferenceBlocks = new();
+    public List<MinerUBlock> InferenceBlocks
+    {
+        get => _inferenceBlocks;
+        set => SetProperty(ref _inferenceBlocks, value);
+    }
 
     /// <summary>
     /// Final tree structure root node.
     /// </summary>
-    [ObservableProperty]
     private AnalysisTreeNode? _treeRoot;
+    public AnalysisTreeNode? TreeRoot
+    {
+        get => _treeRoot;
+        set => SetProperty(ref _treeRoot, value);
+    }
 
     /// <summary>
     /// Aggregation map: tree node -> source blocks mapping.
     /// </summary>
-    [ObservableProperty]
     private Dictionary<int, List<MinerUBlock>> _aggregationMap = new();
+    public Dictionary<int, List<MinerUBlock>> AggregationMap
+    {
+        get => _aggregationMap;
+        set => SetProperty(ref _aggregationMap, value);
+    }
 
     /// <summary>
     /// List of aggregation relationships for visualization.
     /// </summary>
-    [ObservableProperty]
     private List<AnalysisAggregation> _aggregations = new();
+    public List<AnalysisAggregation> Aggregations
+    {
+        get => _aggregations;
+        set => SetProperty(ref _aggregations, value);
+    }
 
     /// <summary>
     /// Page type classification from MinerU's page-level analysis.
     /// Maps page number (1-based) to the PageType enum value.
     /// Populated when parsing MinerU middle.json with "page_type" field.
     /// </summary>
-    [ObservableProperty]
     private Dictionary<int, PageType> _pageTypes = new();
+    public Dictionary<int, PageType> PageTypes
+    {
+        get => _pageTypes;
+        set => SetProperty(ref _pageTypes, value);
+    }
 
     /// <summary>
     /// Secondary page type classification from MinerU's page-level analysis (MinerU v2.0+).
@@ -101,8 +141,12 @@ public partial class StructureDocument : ObservableObject
     /// For example, a page may be primarily "toc" (table of contents) with a secondary "copyright" type.
     /// This field is optional — only present when a page contains multiple types of content.
     /// </summary>
-    [ObservableProperty]
     private Dictionary<int, PageType> _pageTypeSecondaries = new();
+    public Dictionary<int, PageType> PageTypeSecondaries
+    {
+        get => _pageTypeSecondaries;
+        set => SetProperty(ref _pageTypeSecondaries, value);
+    }
 
     /// <summary>
     /// Gets the secondary page type for a given page number, or null if not set.
@@ -119,16 +163,24 @@ public partial class StructureDocument : ObservableObject
     /// the API returned only a partial toc. Each entry maps to a section in the
     /// document with title, level, and verified page.
     /// </summary>
-    [ObservableProperty]
     private List<TocEntry> _tocEntries = new();
+    public List<TocEntry> TocEntries
+    {
+        get => _tocEntries;
+        set => SetProperty(ref _tocEntries, value);
+    }
 
     /// <summary>
     /// Pre-parsed bibliographic reference entries from popo_result.json (result.reference.entries).
     /// Each entry represents a cited work with extracted metadata (authors, title, year, etc.)
     /// and the page number where it appears in the document.
     /// </summary>
-    [ObservableProperty]
     private List<ReferenceEntry> _referenceEntries = new();
+    public List<ReferenceEntry> ReferenceEntries
+    {
+        get => _referenceEntries;
+        set => SetProperty(ref _referenceEntries, value);
+    }
 
     /// <summary>
     /// Pre-parsed formula/equation entries extracted from the document.
@@ -136,16 +188,24 @@ public partial class StructureDocument : ObservableObject
     /// and placeholder for NLP analysis. Extracted from MinerU blocks of type "equation"
     /// and text blocks containing display formulas.
     /// </summary>
-    [ObservableProperty]
     private List<FormulaEntry> _formulaEntries = new();
+    public List<FormulaEntry> FormulaEntries
+    {
+        get => _formulaEntries;
+        set => SetProperty(ref _formulaEntries, value);
+    }
 
     /// <summary>
     /// Book copyright metadata JSON string from popo_result.json (result.metadata).
     /// Contains publisher, ISBN, authors, edition, and other bibliographic information.
     /// Serialized from the metadata dict in the Popo API response.
     /// </summary>
-    [ObservableProperty]
     private string? _bookMetadataJson;
+    public string? BookMetadataJson
+    {
+        get => _bookMetadataJson;
+        set => SetProperty(ref _bookMetadataJson, value);
+    }
 
     /// <summary>
     /// Gets all blocks across all pages as a flat list.

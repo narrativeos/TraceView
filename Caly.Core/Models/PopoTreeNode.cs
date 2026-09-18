@@ -35,59 +35,95 @@ public partial class AnalysisTreeNode : ObservableObject
     /// <summary>
     /// Node type: root, text, image, table, etc.
     /// </summary>
-    [ObservableProperty]
     private string _type = string.Empty;
+    public string Type
+    {
+        get => _type;
+        set => SetProperty(ref _type, value);
+    }
 
     /// <summary>
     /// Node title (for text nodes, the section title).
     /// </summary>
-    [ObservableProperty]
     private string _title = string.Empty;
+    public string Title
+    {
+        get => _title;
+        set => SetProperty(ref _title, value);
+    }
 
     /// <summary>
     /// Metadata (e.g., image_footnote content).
     /// </summary>
-    [ObservableProperty]
     private string _metadata = string.Empty;
+    public string Metadata
+    {
+        get => _metadata;
+        set => SetProperty(ref _metadata, value);
+    }
 
     /// <summary>
     /// Aggregated content (multiple block contents joined by <|txt_split|>).
     /// </summary>
-    [ObservableProperty]
     private string _content = string.Empty;
+    public string Content
+    {
+        get => _content;
+        set => SetProperty(ref _content, value);
+    }
 
     /// <summary>
     /// Title level (1-6, root is 0).
     /// </summary>
-    [ObservableProperty]
     private int _level;
+    public int Level
+    {
+        get => _level;
+        set => SetProperty(ref _level, value);
+    }
 
     /// <summary>
     /// Location list: each original block's bbox + page.
     /// </summary>
-    [ObservableProperty]
     private List<LocationEntry> _location = new();
+    public List<LocationEntry> Location
+    {
+        get => _location;
+        set => SetProperty(ref _location, value);
+    }
 
     /// <summary>
     /// All original block IDs that compose this node.
     /// </summary>
-    [ObservableProperty]
     private List<int> _blockIds = new();
+    public List<int> BlockIds
+    {
+        get => _blockIds;
+        set => SetProperty(ref _blockIds, value);
+    }
 
     /// <summary>
     /// Source block IDs (UUID strings) from MinerU middle.json that compose this node.
     /// Used for tracing back to the original MinerU blocks for cross-referencing.
     /// Corresponds to the source_block_ids field in popo_result.json.
     /// </summary>
-    [ObservableProperty]
     private List<string> _sourceBlockIds = new();
+    public List<string> SourceBlockIds
+    {
+        get => _sourceBlockIds;
+        set => SetProperty(ref _sourceBlockIds, value);
+    }
 
     /// <summary>
     /// Image path returned by the Popo API (relative path like "images/xxx.jpg").
     /// Only populated for image-type nodes when loaded from popo_result.json.
     /// </summary>
-    [ObservableProperty]
     private string _imgPath = string.Empty;
+    public string ImgPath
+    {
+        get => _imgPath;
+        set => SetProperty(ref _imgPath, value);
+    }
 
     /// <summary>
     /// Unique node identifier (UUID) returned by the Popo API.
@@ -144,20 +180,32 @@ public partial class AnalysisTreeNode : ObservableObject
     /// <summary>
     /// Child nodes list (recursive).
     /// </summary>
-    [ObservableProperty]
     private ObservableCollection<AnalysisTreeNode> _children = new();
+    public ObservableCollection<AnalysisTreeNode> Children
+    {
+        get => _children;
+        set => SetProperty(ref _children, value);
+    }
 
     /// <summary>
     /// Whether the node is expanded (for UI collapse).
     /// </summary>
-    [ObservableProperty]
     private bool _isExpanded = true;
+    public bool IsExpanded
+    {
+        get => _isExpanded;
+        set => SetProperty(ref _isExpanded, value);
+    }
 
     /// <summary>
     /// Whether the node is selected (for highlighting).
     /// </summary>
-    [ObservableProperty]
     private bool _isSelected;
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set => SetProperty(ref _isSelected, value);
+    }
 
     /// <summary>
     /// Computed property: child count (excluded from JSON serialization).

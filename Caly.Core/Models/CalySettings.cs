@@ -32,7 +32,7 @@ public sealed class CalySettings
         PaneSize = 350,
         Debug = null,
         MinerUBaseUrl = "http://localhost:8401",
-        MinerUBackend = "hybrid-engine",
+        MinerUTier = "standard",
         MinerUEnabled = true,
         PopoBaseUrl = "http://localhost:8440"
     };
@@ -63,9 +63,14 @@ public sealed class CalySettings
     public string MinerUBaseUrl { get; set; } = "http://localhost:8401";
 
     /// <summary>
-    /// MinerU backend engine name (e.g., "hybrid-engine", "docling", "marker")
+    /// MinerU 4.0 V1 API tier: "standard" (default) or "pro" (requires an API key).
     /// </summary>
-    public string MinerUBackend { get; set; } = "hybrid-engine";
+    public string MinerUTier { get; set; } = "standard";
+
+    /// <summary>
+    /// API key for the MinerU "pro" tier (sent as a Bearer token).
+    /// </summary>
+    public string MinerUApiKey { get; set; } = string.Empty;
 
     /// <summary>
     /// Whether MinerU AI parsing is enabled

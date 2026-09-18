@@ -28,6 +28,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Threading;
 using Caly.Core.Models;
+using Caly.Core.Services.EntityProcessors.Temporal;
 using Caly.Core.Services.Interfaces;
 using Caly.Core.Utilities;
 using Caly.Core.ViewModels;
@@ -38,14 +39,38 @@ namespace Caly.Core.Services;
 
 [JsonSourceGenerationOptions(DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault)]
 [JsonSerializable(typeof(CalySettings), GenerationMode = JsonSourceGenerationMode.Metadata)]
-[JsonSerializable(typeof(MinerUTaskSubmitResponse), GenerationMode = JsonSourceGenerationMode.Metadata)]
-[JsonSerializable(typeof(MinerUTaskStatusResponse), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(MinerUUploadResponse), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(MinerUJobResponse), GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(MinerUTaskProgress), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(MinerUUploadCreateRequest), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(MinerUUploadCompleteRequest), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(MinerUParseJobRequest), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(MinerUTaskIdRecord), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(TemporalNormalizer.EraEntry), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(List<TemporalNormalizer.EraEntry>), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(ProjectMetadata), GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(ProjectMetadata), GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(PopoTaskSubmitResponse), GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(PopoTaskStatusResponse), GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(PopoTaskResultResponse), GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(PopoProcessResultJson), GenerationMode = JsonSourceGenerationMode.Metadata)]
+// StructureDocument and nested types (source-generator compatible)
+[JsonSerializable(typeof(StructureDocument), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(MinerUBlock), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(AnalysisTreeNode), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(AnalysisAggregation), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(TocEntry), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(ReferenceEntry), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(FormulaEntry), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(LocationEntry), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(TableHeader), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(TableDataRow), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(TableKeyValuePair), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(OrderedListEntry), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(TableCellValue), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(OrderedListItem), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(PageType), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(AggregationType), GenerationMode = JsonSourceGenerationMode.Metadata)]
 // Semantic analysis models
 [JsonSerializable(typeof(SemanticResultFile), GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(SemanticBlockResult), GenerationMode = JsonSourceGenerationMode.Metadata)]

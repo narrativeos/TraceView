@@ -452,16 +452,17 @@ public sealed partial class DocumentViewModel
                 }
             }
 
-            // 2: Check MinerUService cache %LocalAppData%/Caly/mineru/{docId}/hybrid_auto/
+            // 2: Check MinerUService cache %LocalAppData%/Caly/mineru/{docId}/
             // This is where MinerUService extracts the ZIP files.
+            // 3.x extracts to {docId}/hybrid_auto/; 4.0 extracts flat to {docId}/.
             if (artifactsDir is null && LocalPath is not null)
             {
                 var docId = Path.GetFileNameWithoutExtension(LocalPath);
                 var minerUCacheBase = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-                var minerUCacheDir = Path.Combine(minerUCacheBase, "Caly", "mineru", docId, "hybrid_auto");
-                if (Directory.Exists(minerUCacheDir))
+                var minerUDocDir = Path.Combine(minerUCacheBase, "Caly", "mineru", docId);
+                foreach (var candidate in new[] { Path.Combine(minerUDocDir, "hybrid_auto"), minerUDocDir })
                 {
-                    var imagesDir = Path.Combine(minerUCacheDir, "images");
+                    var imagesDir = Path.Combine(candidate, "images");
                     if (Directory.Exists(imagesDir))
                     {
                         var imageFiles = System.IO.Directory.GetFiles(imagesDir, "*.*", System.IO.SearchOption.TopDirectoryOnly)
@@ -469,8 +470,9 @@ public sealed partial class DocumentViewModel
                             .ToList();
                         if (imageFiles.Count > 0)
                         {
-                            artifactsDir = minerUCacheDir;
+                            artifactsDir = candidate;
                             System.Diagnostics.Debug.WriteLine($"[Popo] Found images in MinerUService cache: {artifactsDir}");
+                            break;
                         }
                     }
                 }
@@ -550,20 +552,20 @@ public sealed partial class DocumentViewModel
             if (!Directory.Exists(mineruCacheDir))
                 return null;
 
-            // Scan all subdirectories for hybrid_auto (ZIP internal name may differ from docId)
+            // Scan all subdirectories for artifacts (ZIP internal name may differ from docId).
+            // 3.x: {sub}/hybrid_auto/; 4.0: {sub}/ flat.
             foreach (var subDir in Directory.GetDirectories(mineruCacheDir))
             {
-                var hybridAutoDir = Path.Combine(subDir, "hybrid_auto");
-                if (Directory.Exists(hybridAutoDir))
+                foreach (var candidate in new[] { Path.Combine(subDir, "hybrid_auto"), subDir })
                 {
-                    var imagesDir = Path.Combine(hybridAutoDir, "images");
+                    var imagesDir = Path.Combine(candidate, "images");
                     if (Directory.Exists(imagesDir))
                     {
                         var imageFiles = System.IO.Directory.GetFiles(imagesDir, "*.*", System.IO.SearchOption.TopDirectoryOnly)
                             .Where(f => System.IO.Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
                             .ToList();
                         if (imageFiles.Count > 0)
-                            return hybridAutoDir;
+                            return candidate;
                     }
                 }
             }

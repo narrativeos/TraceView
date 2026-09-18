@@ -342,7 +342,7 @@ public class TemporalNormalizer
             if (stream == null)
                 return;
 
-            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            var options = new JsonSerializerOptions { TypeInfoResolver = SourceGenerationContext.Default };
             var eras = JsonSerializer.Deserialize<List<EraEntry>>(stream, options);
 
             if (eras != null)
@@ -393,18 +393,39 @@ public class TemporalNormalizer
 
     // ── Internal model for JSON deserialization ─────────────────────
 
-    private class EraEntry
+    internal sealed class EraEntry
     {
+        [System.Text.Json.Serialization.JsonPropertyName("id")]
         public string Id { get; set; } = string.Empty;
+
+        [System.Text.Json.Serialization.JsonPropertyName("name_zh")]
         public string NameZh { get; set; } = string.Empty;
+
+        [System.Text.Json.Serialization.JsonPropertyName("name_alt")]
         public List<string> NameAlt { get; set; } = new();
+
+        [System.Text.Json.Serialization.JsonPropertyName("dynasty_id")]
         public string DynastyId { get; set; } = string.Empty;
+
+        [System.Text.Json.Serialization.JsonPropertyName("emperor_zh")]
         public string EmperorZh { get; set; } = string.Empty;
+
+        [System.Text.Json.Serialization.JsonPropertyName("start_year")]
         public int StartYear { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("end_year")]
         public int EndYear { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("start_month")]
         public int StartMonth { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("end_month")]
         public int EndMonth { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("years")]
         public int Years { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("notes")]
         public string Notes { get; set; } = string.Empty;
     }
 }

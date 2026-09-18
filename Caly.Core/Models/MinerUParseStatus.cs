@@ -29,7 +29,7 @@ public enum MinerUParseStatus
     /// <summary>Not started.</summary>
     Idle,
 
-    /// <summary>Uploading PDF to MinerU service via POST /tasks (10%).</summary>
+    /// <summary>Uploading PDF and submitting a parse job via the V1 API (10%).</summary>
     Submitting,
 
     /// <summary>Task is queued in MinerU, waiting for GPU resources (15%).</summary>

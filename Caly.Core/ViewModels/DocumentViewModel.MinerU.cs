@@ -98,9 +98,8 @@ public sealed partial class DocumentViewModel
             if (!Directory.Exists(minerUDir))
                 return false;
 
-            // Check for *_middle.json files
-            var middleJsonFiles = Directory.GetFiles(minerUDir, "*_middle.json", SearchOption.AllDirectories);
-            return middleJsonFiles.Length > 0;
+            // Check for middle JSON files (3.x: *_middle.json, 4.0: middle_json.json)
+            return MinerUJsonService.FindMiddleJsonFiles(minerUDir).Count > 0;
         }
     }
 
@@ -380,9 +379,9 @@ public sealed partial class DocumentViewModel
         var minerUDir = ProjectPath is not null
             ? Path.Combine(ProjectPath, "mineru")
             : null;
-        // Cache key includes both URL and cache directory for proper isolation
-        var cacheKey = $"{settings.MinerUBaseUrl}|{minerUDir}";
-        return _minerUServiceCache.GetValue(cacheKey, _ => new MinerUService(settings.MinerUBaseUrl, minerUDir));
+        // Cache key includes URL, tier, API key and cache directory for proper isolation
+        var cacheKey = $"{settings.MinerUBaseUrl}|{settings.MinerUTier}|{settings.MinerUApiKey}|{minerUDir}";
+        return _minerUServiceCache.GetValue(cacheKey, _ => new MinerUService(settings.MinerUBaseUrl, minerUDir, settings.MinerUApiKey));
     }
 
     #endregion
@@ -580,7 +579,7 @@ public sealed partial class DocumentViewModel
             // Submit the task and immediately persist the task ID
             var taskId = await service.SubmitTaskAsync(
                 LocalPath,
-                settings.MinerUBackend,
+                settings.MinerUTier,
                 _minerUCts.Token);
 
             // Save task ID so it can be recovered if the app closes
@@ -769,9 +768,9 @@ public sealed partial class DocumentViewModel
         if (!Directory.Exists(minerUDir))
             return;
 
-        // Look for *_middle.json files
-        var middleJsonFiles = Directory.GetFiles(minerUDir, "*_middle.json", SearchOption.AllDirectories);
-        if (middleJsonFiles.Length == 0)
+        // Look for middle JSON files (3.x: *_middle.json, 4.0: middle_json.json)
+        var middleJsonFiles = MinerUJsonService.FindMiddleJsonFiles(minerUDir);
+        if (middleJsonFiles.Count == 0)
             return;
 
         var middleJsonPath = middleJsonFiles[0];
@@ -932,8 +931,9 @@ public sealed partial class DocumentViewModel
     /// <summary>
     /// Locates the MinerU middle.json file path for direct formula extraction.
     /// Searches in priority order:
-    /// 1. Artifacts directory (_minerUArtifactsDirectory) for *_middle.json
-    /// 2. ProjectPath/mineru/ directory for *_middle.json
+    /// 1. Artifacts directory (_minerUArtifactsDirectory) for middle JSON
+    /// 2. ProjectPath/mineru/ directory for middle JSON
+    /// (3.x: *_middle.json, 4.0: middle_json.json)
     /// </summary>
     /// <returns>Full path to the middle.json file, or null if not found.</returns>
     internal string? GetMiddleJsonPath()
@@ -941,8 +941,8 @@ public sealed partial class DocumentViewModel
         // Try artifacts directory first
         if (!string.IsNullOrEmpty(_minerUArtifactsDirectory) && Directory.Exists(_minerUArtifactsDirectory))
         {
-            var middleJsonFiles = Directory.GetFiles(_minerUArtifactsDirectory, "*_middle.json");
-            if (middleJsonFiles.Length > 0)
+            var middleJsonFiles = MinerUJsonService.FindMiddleJsonFiles(_minerUArtifactsDirectory, SearchOption.TopDirectoryOnly);
+            if (middleJsonFiles.Count > 0)
                 return middleJsonFiles[0];
         }
 
@@ -952,8 +952,8 @@ public sealed partial class DocumentViewModel
             var mineruDir = Path.Combine(ProjectPath, "mineru");
             if (Directory.Exists(mineruDir))
             {
-                var middleJsonFiles = Directory.GetFiles(mineruDir, "*_middle.json", SearchOption.AllDirectories);
-                if (middleJsonFiles.Length > 0)
+                var middleJsonFiles = MinerUJsonService.FindMiddleJsonFiles(mineruDir);
+                if (middleJsonFiles.Count > 0)
                     return middleJsonFiles[0];
             }
         }

@@ -38,6 +38,26 @@ namespace Caly.Core.Services;
 public static class MinerUJsonService
 {
     /// <summary>
+    /// Finds MinerU middle JSON files in a directory.
+    /// 3.x zips contain {docId}_middle.json; MinerU 4.0 zips contain middle_json.json.
+    /// </summary>
+    public static IReadOnlyList<string> FindMiddleJsonFiles(string directory, SearchOption searchOption = SearchOption.AllDirectories)
+    {
+        if (!Directory.Exists(directory))
+            return Array.Empty<string>();
+
+        return Directory.GetFiles(directory, "*.json", searchOption)
+            .Where(path =>
+            {
+                var name = Path.GetFileName(path);
+                return name.EndsWith("_middle.json", StringComparison.OrdinalIgnoreCase)
+                    || name.Equals("middle.json", StringComparison.OrdinalIgnoreCase)
+                    || name.Equals("middle_json.json", StringComparison.OrdinalIgnoreCase);
+            })
+            .ToList();
+    }
+
+    /// <summary>
     /// Loads a MinerU parse result produced in the project's mineru/ directory.
     /// This is a separate stage from Popo post-processing and may return a
     /// MinerUDocument built from MinerU middle.json output.
@@ -51,8 +71,8 @@ public static class MinerUJsonService
         if (!Directory.Exists(minerUDir))
             return null;
 
-        var minerUMiddleJsonFiles = Directory.GetFiles(minerUDir, "*_middle.json", SearchOption.AllDirectories);
-        if (minerUMiddleJsonFiles.Length > 0)
+        var minerUMiddleJsonFiles = FindMiddleJsonFiles(minerUDir);
+        if (minerUMiddleJsonFiles.Count > 0)
         {
             return TryParseMinerUMiddleJson(minerUMiddleJsonFiles[0]);
         }
@@ -149,6 +169,11 @@ public static class MinerUJsonService
                 ModelName = GetStringProperty(root, "model_name") ?? "mineru"
             };
 
+            // MinerU 4.0 middle JSON (schema "docvortex.middle", schema_version 2.0)
+            // uses a "pages" array with page_idx and normalized (0-1) bboxes.
+            var isV4Schema = string.Equals(
+                GetStringProperty(root, "schema"), "docvortex.middle", StringComparison.Ordinal);
+
             // Parse page_size for coordinate normalization
             var pageSizeMap = new Dictionary<int, (double width, double height)>();
             if (root.TryGetProperty("page_size", out var pageSizeElem) && pageSizeElem.ValueKind == JsonValueKind.Object)
@@ -191,7 +216,10 @@ public static class MinerUJsonService
                 {
                     foreach (var pageEntry in pagesElem.EnumerateArray())
                     {
-                        if (!pageEntry.TryGetProperty("page", out var pageElem))
+                        // 3.x uses "page"; MinerU 4.0 uses "page_idx" (0-based)
+                        JsonElement pageElem;
+                        if (!pageEntry.TryGetProperty("page", out pageElem)
+                            && !pageEntry.TryGetProperty("page_idx", out pageElem))
                             continue;
 
                         var pageNum = GetIntValue(pageElem);
@@ -206,7 +234,7 @@ public static class MinerUJsonService
                         {
                             foreach (var blockElem in blocksElem.EnumerateArray())
                             {
-                                var block = MapMinerUBlockToMinerUBlock(blockElem, pageWidth, pageHeight);
+                                var block = MapMinerUBlockToMinerUBlock(blockElem, pageWidth, pageHeight, isV4Schema);
                                 blocks.Add(block);
                             }
                         }
@@ -557,9 +585,11 @@ public static class MinerUJsonService
             return null;
 
         // Prefer standard MinerU middle JSON file names, but fall back to any parseable JSON.
+        // 3.x zips contain {docId}_middle.json; MinerU 4.0 zips contain middle_json.json.
         var preferredFiles = jsonFiles
             .Where(path => Path.GetFileName(path).EndsWith("_middle.json", StringComparison.OrdinalIgnoreCase)
-                           || Path.GetFileName(path).Equals("middle.json", StringComparison.OrdinalIgnoreCase))
+                           || Path.GetFileName(path).Equals("middle.json", StringComparison.OrdinalIgnoreCase)
+                           || Path.GetFileName(path).Equals("middle_json.json", StringComparison.OrdinalIgnoreCase))
             .ToList();
 
         foreach (var jsonFile in preferredFiles.Concat(jsonFiles.Except(preferredFiles)))
@@ -579,7 +609,7 @@ public static class MinerUJsonService
     /// <summary>
     /// Maps a MinerU block JsonElement to a MinerUBlock.
     /// </summary>
-    static MinerUBlock MapMinerUBlockToMinerUBlock(JsonElement elem, double pageWidth, double pageHeight)
+    static MinerUBlock MapMinerUBlockToMinerUBlock(JsonElement elem, double pageWidth, double pageHeight, bool normalizedBbox = false)
     {
         var block = new MinerUBlock();
 
@@ -629,7 +659,7 @@ public static class MinerUJsonService
         // Parse bbox
         if (elem.TryGetProperty("bbox", out var bboxElem) || elem.TryGetProperty("box", out bboxElem))
         {
-            var (bbox, isNormalized) = ParseMinerUBbox(bboxElem, pageWidth, pageHeight);
+            var (bbox, isNormalized) = ParseMinerUBbox(bboxElem, pageWidth, pageHeight, normalizedBbox);
             block.Bbox = bbox;
             block.IsBboxNormalized = isNormalized;
         }
@@ -801,6 +831,29 @@ public static class MinerUJsonService
     {
         if (elem.TryGetProperty("content", out var contentElem) && contentElem.ValueKind == JsonValueKind.String)
             return contentElem.GetString() ?? string.Empty;
+
+        // MinerU 4.0: content is an array of inline spans ({type, content})
+        if (elem.TryGetProperty("content", out var spansArray) && spansArray.ValueKind == JsonValueKind.Array)
+        {
+            var parts = new List<string>();
+            foreach (var spanElem in spansArray.EnumerateArray())
+            {
+                var content = GetStringProperty(spanElem, "content");
+                if (!string.IsNullOrEmpty(content))
+                {
+                    parts.Add(content);
+                }
+                else if (spanElem.TryGetProperty("html", out var htmlElem) && htmlElem.ValueKind == JsonValueKind.String)
+                {
+                    var html = htmlElem.GetString() ?? string.Empty;
+                    if (!string.IsNullOrEmpty(html))
+                    {
+                        parts.AddRange(ParseHtmlTableRows(html));
+                    }
+                }
+            }
+            return string.Join(string.Empty, parts);
+        }
 
         // Extract table content from table_body HTML and table_caption
         var minerUType = GetStringProperty(elem, "type") ?? string.Empty;
@@ -996,8 +1049,10 @@ public static class MinerUJsonService
     /// <summary>
     /// Parses a bbox array [x1, y1, x2, y2] from MinerU, with optional normalization.
     /// Returns the parsed Rect and whether the coordinates were normalized to 0-1.
+    /// MinerU 4.0 bboxes are already normalized (pass normalizedBbox: true to skip
+    /// the pixel-to-0-1 conversion).
     /// </summary>
-    static (Rect bbox, bool isNormalized) ParseMinerUBbox(JsonElement elem, double pageWidth = 0, double pageHeight = 0)
+    static (Rect bbox, bool isNormalized) ParseMinerUBbox(JsonElement elem, double pageWidth = 0, double pageHeight = 0, bool normalizedBbox = false)
     {
         if (elem.ValueKind != JsonValueKind.Array || elem.GetArrayLength() < 4)
             return (new Rect(0, 0, 0, 0), false);
@@ -1007,11 +1062,11 @@ public static class MinerUJsonService
         var x2 = GetDoubleValue(elem[2]);
         var y2 = GetDoubleValue(elem[3]);
 
-        bool normalized = false;
+        bool normalized = normalizedBbox;
 
         // If page dimensions provided and coordinates look like absolute pixels (> 1000),
         // normalize to 0-1 range
-        if (pageWidth > 0 && pageHeight > 0 && (x2 > 1000 || y2 > 1000))
+        if (!normalizedBbox && pageWidth > 0 && pageHeight > 0 && (x2 > 1000 || y2 > 1000))
         {
             x1 /= pageWidth;
             y1 /= pageHeight;

@@ -42,21 +42,39 @@
                                                  Text="{Binding Settings.MinerUBaseUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
                                     </Grid>
 
-                                    <!-- Backend Engine -->
+                                    <!-- Parse Tier -->
                                     <Grid ColumnDefinitions="Auto,12,*" RowDefinitions="Auto">
                                         <TextBlock Grid.Column="0"
                                                    Grid.Row="0"
                                                    VerticalAlignment="Center"
-                                                   Text="Backend"/>
+                                                   Text="Tier"/>
                                         <ComboBox Grid.Column="2"
                                                   Grid.Row="0"
                                                   Margin="0,2"
-                                                  SelectedValue="{Binding Settings.MinerUBackend, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
-                                            <ComboBoxItem Content="hybrid-engine"/>
-                                            <ComboBoxItem Content="docling"/>
-                                            <ComboBoxItem Content="marker"/>
+                                                  SelectedValue="{Binding Settings.MinerUTier, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                            <ComboBoxItem Content="flash"/>
+                                            <ComboBoxItem Content="basic"/>
+                                            <ComboBoxItem Content="standard"/>
+                                            <ComboBoxItem Content="advanced"/>
                                         </ComboBox>
                                     </Grid>
+
+                                    <!-- API Key -->
+                                    <Grid ColumnDefinitions="Auto,12,*" RowDefinitions="Auto">
+                                        <TextBlock Grid.Column="0"
+                                                   Grid.Row="0"
+                                                   VerticalAlignment="Center"
+                                                   Text="API Key"/>
+                                        <TextBox Grid.Column="2"
+                                                 Grid.Row="0"
+                                                 Margin="0,2"
+                                                 Text="{Binding Settings.MinerUApiKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                    </Grid>
+
+                                    <TextBlock Margin="0,2,0,0"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource SystemControlPageTextChromeDisabledBrush}"
+                                               Text="API key is only needed when the MinerU service is started with --api-key."/>
 
                                     <!-- Enable Toggle -->
                                     <CheckBox Content="Enable MinerU AI Parsing"

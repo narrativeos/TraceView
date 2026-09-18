@@ -22,11 +22,14 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Mime;
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
 using Caly.Core.Models;
@@ -35,13 +38,16 @@ using Caly.Core.Utilities;
 namespace Caly.Core.Services;
 
 /// <summary>
-/// HTTP client for the MinerU external parsing service.
-/// Supports both sync (/file_parse) and async (/tasks) modes.
+/// HTTP client for the MinerU 4.0 external parsing service (V1 API).
+/// Uses the async "upload → parse job → poll → download" flow:
+/// POST /v1/uploads → PUT {upload_url} → POST /v1/uploads/{id}/complete →
+/// POST /v1/parse/jobs → GET /v1/parse/jobs/{id} (poll) → GET /v1/files/{file_id}/content.
 /// </summary>
 public sealed class MinerUService : IDisposable
 {
     private readonly HttpClient _httpClient;
     private readonly string _baseUrl;
+    private readonly string? _apiKey;
     private readonly string _cacheDirectory;
 
     /// <summary>
@@ -50,23 +56,25 @@ public sealed class MinerUService : IDisposable
     public const string DefaultBaseUrl = "http://localhost:8401";
 
     /// <summary>
-    /// Default parse backend.
+    /// Default parse tier (MinerU 4.0: flash / basic / standard / advanced).
     /// </summary>
-    public const string DefaultBackend = "hybrid-engine";
+    public const string DefaultTier = "standard";
 
     /// <summary>
-    /// Polling interval for async task status checks.
+    /// Polling interval for parse job status checks.
     /// </summary>
     public static readonly TimeSpan DefaultPollInterval = TimeSpan.FromSeconds(2);
 
     /// <summary>
     /// Creates a new MinerUService instance.
     /// </summary>
-    /// <param name="baseUrl">MinerU API base URL (default: http://localhost:8401).</param>
+    /// <param name="baseUrl">MinerU API base URL, i.e. the root address before /v1 (default: http://localhost:8401).</param>
     /// <param name="cacheDirectory">Local directory for caching parse results. If null, uses project's mineru/ dir or default cache.</param>
-    public MinerUService(string? baseUrl = null, string? cacheDirectory = null)
+    /// <param name="apiKey">Optional API key. Required when the service is started with --api-key.</param>
+    public MinerUService(string? baseUrl = null, string? cacheDirectory = null, string? apiKey = null)
     {
-        _baseUrl = baseUrl ?? DefaultBaseUrl;
+        _baseUrl = (baseUrl ?? DefaultBaseUrl).TrimEnd('/');
+        _apiKey = string.IsNullOrWhiteSpace(apiKey) ? null : apiKey.Trim();
         _cacheDirectory = cacheDirectory ?? GetDefaultCacheDirectory();
 
         _httpClient = new HttpClient
@@ -79,6 +87,36 @@ public sealed class MinerUService : IDisposable
         Directory.CreateDirectory(_cacheDirectory);
     }
 
+    /// <summary>
+    /// Adds the Bearer auth header to a request when an API key is configured.
+    /// For cross-origin targets (e.g. presigned object-storage upload URLs) the
+    /// MinerU API key is deliberately NOT attached, to avoid leaking credentials.
+    /// </summary>
+    private void AddAuthHeader(HttpRequestMessage request, Uri? targetUri = null)
+    {
+        if (_apiKey is null)
+            return;
+
+        if (targetUri is not null && !IsSameOrigin(targetUri))
+            return;
+
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
+    }
+
+    /// <summary>
+    /// Determines whether a URL is same-origin (scheme + host + effective port)
+    /// as the MinerU API base URL.
+    /// </summary>
+    private bool IsSameOrigin(Uri uri)
+    {
+        if (!Uri.TryCreate(_baseUrl, UriKind.Absolute, out var baseUri))
+            return false;
+
+        return string.Equals(uri.Scheme, baseUri.Scheme, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(uri.Host, baseUri.Host, StringComparison.OrdinalIgnoreCase)
+            && uri.Port == baseUri.Port;
+    }
+
     private static string GetDefaultCacheDirectory()
     {
         var baseCache = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
@@ -88,13 +126,15 @@ public sealed class MinerUService : IDisposable
     #region Health Check
 
     /// <summary>
-    /// Checks if the MinerU service is reachable.
+    /// Checks if the MinerU service is reachable via GET /v1/health.
     /// </summary>
     public async Task<bool> HealthCheckAsync(CancellationToken ct = default)
     {
         try
         {
-            using var response = await _httpClient.GetAsync($"{_baseUrl}/health", ct);
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"{_baseUrl}/v1/health");
+            AddAuthHeader(request);
+            using var response = await _httpClient.SendAsync(request, ct);
             return response.IsSuccessStatusCode;
         }
         catch
@@ -105,118 +145,210 @@ public sealed class MinerUService : IDisposable
 
     #endregion
 
-    #region Sync Parse (/file_parse)
+    #region V1 Upload
 
     /// <summary>
-    /// Synchronously parses a PDF file using MinerU.
-    /// Uploads the file, waits for completion, and returns the result in the same response.
+    /// Uploads a file to the MinerU V1 API and returns the resulting file_id.
+    /// Flow: POST /v1/uploads → PUT {upload_url} (raw bytes) → POST /v1/uploads/{id}/complete.
+    /// When the sha256sum hits an already-stored blob, the server responds with
+    /// status "completed" and an embedded file object, skipping the byte upload.
     /// </summary>
-    public async Task<MinerUParseResult> ParseSyncAsync(
-        string pdfPath,
-        string backend = DefaultBackend,
-        Action<MinerUParseStatus, int>? onProgress = null,
-        CancellationToken ct = default)
+    public async Task<string> UploadFileAsync(string filePath, CancellationToken ct = default)
     {
-        onProgress?.Invoke(MinerUParseStatus.Submitting, 10);
+        var pdfBytes = File.ReadAllBytes(filePath);
+        var sha256 = ComputeSha256Hex(pdfBytes);
 
-        var zipBytes = await UploadAndParseSyncAsync(pdfPath, backend, ct);
-        var zipPath = CacheResultZip(pdfPath, zipBytes);
-
-        onProgress?.Invoke(MinerUParseStatus.Caching, 80);
-
-        return await BuildParseResultAsync(zipPath, pdfPath, onProgress, ct);
-    }
-
-    private async Task<byte[]> UploadAndParseSyncAsync(string pdfPath, string backend, CancellationToken ct)
-    {
-        var pdfBytes = File.ReadAllBytes(pdfPath);
-
-        using var content = BuildMultipartContent(
-            Path.GetFileName(pdfPath), pdfBytes,
-            new Dictionary<string, string>
-            {
-                ["backend"] = backend,
-                ["parse_method"] = "auto",
-                ["return_md"] = "true",
-                ["return_middle_json"] = "true",
-                ["return_layout_quality"] = "true",
-                ["response_format_zip"] = "true"
-            });
-
-        using var response = await _httpClient.PostAsync($"{_baseUrl}/file_parse", content, ct);
-        response.EnsureSuccessStatusCode();
-
-        // The sync endpoint returns the zip directly in the response body
-        var zipBytes = await response.Content.ReadAsByteArrayAsync(ct);
-
-        // Also check for JSON metadata in headers or response
-        return zipBytes;
-    }
-
-    /// <summary>
-    /// Builds a multipart/form-data request body with a file and form fields.
-    /// Manually constructs the body to ensure non-ASCII filenames are sent as raw UTF-8
-    /// in the Content-Disposition header, avoiding .NET's RFC 2047 encoding which
-    /// python-multipart (Starlette) cannot decode.
-    /// </summary>
-    private static HttpContent BuildMultipartContent(
-        string fileName, byte[] fileBytes, Dictionary<string, string> fields)
-    {
-        var boundary = "----CalyBoundary" + Guid.NewGuid().ToString("N");
-        using var bodyStream = new MemoryStream();
-        var utf8 = System.Text.Encoding.UTF8;
-
-        // File part
-        var fileHeader = $"--{boundary}\r\n" +
-                         $"Content-Disposition: form-data; name=\"files\"; filename=\"{fileName}\"\r\n" +
-                         $"Content-Type: application/octet-stream\r\n\r\n";
-        bodyStream.Write(utf8.GetBytes(fileHeader));
-        bodyStream.Write(fileBytes, 0, fileBytes.Length);
-        bodyStream.Write(utf8.GetBytes("\r\n"));
-
-        // Form fields
-        foreach (var (key, value) in fields)
+        // Step 1: Create the upload
+        var createBody = new MinerUUploadCreateRequest
         {
-            var fieldBlock = $"--{boundary}\r\n" +
-                             $"Content-Disposition: form-data; name=\"{key}\"\r\n\r\n" +
-                             $"{value}\r\n";
-            bodyStream.Write(utf8.GetBytes(fieldBlock));
+            Filename = Path.GetFileName(filePath),
+            Bytes = pdfBytes.Length,
+            MimeType = GetMimeType(filePath),
+            Purpose = "parse",
+            Sha256Sum = sha256
+        };
+        using var createRequest = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/v1/uploads")
+        {
+            Content = CreateJsonContent(createBody, SourceGenerationContext.Default.MinerUUploadCreateRequest)
+        };
+        AddAuthHeader(createRequest);
+        using var createResponse = await _httpClient.SendAsync(createRequest, ct);
+        var createJson = await ReadJsonOrThrowAsync(createResponse, "POST /v1/uploads", ct);
+        var upload = DeserializeOrThrow<MinerUUploadResponse>(createJson, "POST /v1/uploads", SourceGenerationContext.Default.MinerUUploadResponse);
+
+        if (string.IsNullOrEmpty(upload.Id))
+            throw new MinerUServiceException("MinerU upload response is missing the upload id.");
+
+        // Instant completion (sha256 hit): the file object is embedded directly
+        if (upload.Status == "completed" && upload.File is not null)
+            return upload.File.Id;
+
+        if (upload.Status != "pending" || string.IsNullOrEmpty(upload.UploadUrl))
+            throw new MinerUServiceException(
+                $"Unexpected MinerU upload status '{upload.Status}' without an upload_url.");
+
+        // Step 2: Upload the raw bytes (same-origin URLs carry the API auth, presigned URLs do not)
+        var uploadUri = new Uri(upload.UploadUrl, UriKind.RelativeOrAbsolute);
+        if (!uploadUri.IsAbsoluteUri)
+            uploadUri = new Uri(new Uri(_baseUrl, UriKind.Absolute), uploadUri);
+
+        using var putRequest = new HttpRequestMessage(HttpMethod.Put, uploadUri)
+        {
+            Content = new ByteArrayContent(pdfBytes)
+        };
+        putRequest.Content.Headers.ContentType =
+            new MediaTypeHeaderValue("application/octet-stream");
+        if (upload.UploadHeaders is not null)
+        {
+            foreach (var (key, value) in upload.UploadHeaders)
+            {
+                putRequest.Headers.TryAddWithoutValidation(key, value);
+            }
+        }
+        AddAuthHeader(putRequest, uploadUri);
+
+        using var putResponse = await _httpClient.SendAsync(putRequest, ct);
+        if (!putResponse.IsSuccessStatusCode)
+        {
+            var body = await putResponse.Content.ReadAsStringAsync(ct);
+            throw new MinerUServiceException(
+                $"MinerU byte upload failed ({(int)putResponse.StatusCode}): {Truncate(body, 500)}");
         }
 
-        // Closing boundary
-        bodyStream.Write(utf8.GetBytes($"--{boundary}--\r\n"));
+        // Step 3: Complete the upload and get the file_id
+        using var completeRequest = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/v1/uploads/{upload.Id}/complete")
+        {
+            Content = CreateJsonContent(new MinerUUploadCompleteRequest { Sha256Sum = sha256 }, SourceGenerationContext.Default.MinerUUploadCompleteRequest)
+        };
+        AddAuthHeader(completeRequest);
+        using var completeResponse = await _httpClient.SendAsync(completeRequest, ct);
+        var completeJson = await ReadJsonOrThrowAsync(completeResponse, "POST /v1/uploads/{id}/complete", ct);
+        var completed = DeserializeOrThrow<MinerUUploadResponse>(completeJson, "POST /v1/uploads/{id}/complete", SourceGenerationContext.Default.MinerUUploadResponse);
 
-        var content = new ByteArrayContent(bodyStream.ToArray());
-        content.Headers.TryAddWithoutValidation(
-            "Content-Type", $"multipart/form-data; boundary={boundary}");
-        return content;
+        if (completed.File is null || string.IsNullOrEmpty(completed.File.Id))
+            throw new MinerUServiceException(
+                $"MinerU upload completion did not return a file id. Raw: {Truncate(completeJson, 500)}");
+
+        return completed.File.Id;
+    }
+
+    /// <summary>
+    /// Computes the lowercase hex SHA-256 of a byte array.
+    /// </summary>
+    private static string ComputeSha256Hex(byte[] data)
+    {
+        var hash = System.Security.Cryptography.SHA256.HashData(data);
+        return Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// Gets a best-effort MIME type for the upload request.
+    /// </summary>
+    private static string GetMimeType(string filePath)
+    {
+        return Path.GetExtension(filePath).ToLowerInvariant() switch
+        {
+            ".pdf" => "application/pdf",
+            ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ".pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            ".png" => "image/png",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".webp" => "image/webp",
+            ".html" or ".htm" => "text/html",
+            ".epub" => "application/epub+zip",
+            ".csv" => "text/csv",
+            ".txt" => "text/plain",
+            _ => "application/octet-stream"
+        };
+    }
+
+    /// <summary>
+    /// Creates an application/json request content from an object.
+    /// </summary>
+    private static StringContent CreateJsonContent<T>(T payload, JsonTypeInfo<T> typeInfo)
+    {
+        var json = JsonSerializer.Serialize(payload, typeInfo);
+        return new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+    }
+
+    /// <summary>
+    /// Reads the response body and throws a MinerUServiceException with a preview
+    /// when the request did not succeed.
+    /// </summary>
+    private static async Task<string> ReadJsonOrThrowAsync(HttpResponseMessage response, string operation, CancellationToken ct)
+    {
+        var json = await response.Content.ReadAsStringAsync(ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new MinerUServiceException(
+                $"{operation} failed ({(int)response.StatusCode}): {Truncate(json, 500)}");
+        }
+        return json;
+    }
+
+    /// <summary>
+    /// Deserializes a MinerU V1 API response, attaching the raw JSON to errors
+    /// to make protocol mismatches diagnosable.
+    /// </summary>
+    private static T DeserializeOrThrow<T>(string json, string operation, JsonTypeInfo<T> typeInfo)
+    {
+        if (string.IsNullOrEmpty(json) || !json.TrimStart().StartsWith("{"))
+        {
+            var preview = json?.Length > 200 ? json.Substring(0, 200) + "..." : json;
+            throw new MinerUServiceException($"Invalid JSON response from MinerU {operation}. Response: {preview}");
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize(json, typeInfo)
+                ?? throw new MinerUServiceException($"JsonSerializer returned null for {operation} response. Raw: {Truncate(json, 500)}");
+        }
+        catch (JsonException ex)
+        {
+            var errorMsg = $"Failed to deserialize MinerU {operation} response. Error: {ex.Message}. Raw JSON: {Truncate(json, 2000)}";
+            System.Diagnostics.Debug.WriteLine($"[MinerU] {errorMsg}");
+            System.Console.Error.WriteLine($"[MinerU] {errorMsg}");
+            throw new MinerUServiceException(errorMsg, ex);
+        }
+    }
+
+    /// <summary>
+    /// Truncates a string for error messages.
+    /// </summary>
+    private static string Truncate(string? value, int maxLength)
+    {
+        if (string.IsNullOrEmpty(value))
+            return string.Empty;
+        return value.Length > maxLength ? value.Substring(0, maxLength) + "..." : value;
     }
 
     #endregion
 
-    #region Async Parse (/tasks)
+    #region Async Parse (V1 jobs)
 
     /// <summary>
-    /// Asynchronously parses a PDF file using MinerU.
-    /// Submits the task, polls for completion, downloads the result, and builds the MinerUDocument.
+    /// Asynchronously parses a PDF file using the MinerU 4.0 V1 API.
+    /// Uploads the file, submits a parse job, polls for completion,
+    /// downloads the result zip, and builds the MinerUDocument.
     /// </summary>
     public async Task<MinerUParseResult> ParseAsync(
         string pdfPath,
-        string backend = DefaultBackend,
+        string tier = DefaultTier,
         Action<MinerUParseStatus, int>? onProgress = null,
         CancellationToken ct = default)
     {
-        // Step 1: Submit task
+        // Step 1: Submit the parse job (includes the file upload)
         onProgress?.Invoke(MinerUParseStatus.Submitting, 10);
-        var taskId = await SubmitTaskAsync(pdfPath, backend, ct);
+        var jobId = await SubmitTaskAsync(pdfPath, tier, ct);
 
         // Step 2: Poll until complete
         onProgress?.Invoke(MinerUParseStatus.Queued, 15);
-        await PollUntilCompleteAsync(taskId, onProgress, ct);
+        await PollUntilCompleteAsync(jobId, onProgress, ct);
 
         // Step 3: Download result
         onProgress?.Invoke(MinerUParseStatus.Downloading, 70);
-        var zipPath = await DownloadResultAsync(taskId, pdfPath, ct);
+        var zipPath = await DownloadResultAsync(jobId, pdfPath, ct);
 
         // Step 4: Cache
         onProgress?.Invoke(MinerUParseStatus.Caching, 80);
@@ -226,103 +358,68 @@ public sealed class MinerUService : IDisposable
     }
 
     /// <summary>
-    /// Submits a PDF file for async parsing via POST /tasks.
-    /// Returns the task ID for status polling.
+    /// Uploads a PDF and submits it for async parsing via POST /v1/parse/jobs.
+    /// Returns the job ID for status polling.
     /// </summary>
-    public async Task<string> SubmitTaskAsync(string pdfPath, string backend = DefaultBackend, CancellationToken ct = default)
+    public async Task<string> SubmitTaskAsync(string pdfPath, string tier = DefaultTier, CancellationToken ct = default)
     {
-        var pdfBytes = File.ReadAllBytes(pdfPath);
+        // Upload the file first to obtain a file_id
+        var fileId = await UploadFileAsync(pdfPath, ct);
 
-        using var content = BuildMultipartContent(
-            Path.GetFileName(pdfPath), pdfBytes,
-            new Dictionary<string, string>
+        // Create the parse job
+        var jobBody = new MinerUParseJobRequest
+        {
+            Files = new List<MinerUParseJobFile>
             {
-                ["backend"] = backend,
-                ["parse_method"] = "auto",
-                ["return_md"] = "true",
-                ["return_middle_json"] = "true",
-                ["return_layout_quality"] = "true",
-                ["response_format_zip"] = "true"
-            });
+                new MinerUParseJobFile
+                {
+                    Source = new MinerUParseJobFileSource { Type = "file_id", FileId = fileId }
+                }
+            },
+            Tier = tier,
+            OutputFormats = new[] { "markdown", "middle_json", "zip" }.ToList()
+        };
 
-        using var response = await _httpClient.PostAsync($"{_baseUrl}/tasks", content, ct);
-        response.EnsureSuccessStatusCode();
-
-        var json = await response.Content.ReadAsStringAsync(ct);
-
-        if (string.IsNullOrEmpty(json) || !json.TrimStart().StartsWith("{"))
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/v1/parse/jobs")
         {
-            var preview = json?.Length > 200 ? json.Substring(0, 200) + "..." : json;
-            throw new MinerUServiceException(
-                $"Invalid JSON response from MinerU /tasks. Response: {preview}");
-        }
+            Content = CreateJsonContent(jobBody, SourceGenerationContext.Default.MinerUParseJobRequest)
+        };
+        AddAuthHeader(request);
+        using var response = await _httpClient.SendAsync(request, ct);
+        var json = await ReadJsonOrThrowAsync(response, "POST /v1/parse/jobs", ct);
 
-        MinerUTaskSubmitResponse result;
-        try
-        {
-            result = JsonSerializer.Deserialize(json, SourceGenerationContext.Default.MinerUTaskSubmitResponse)
-                ?? throw new MinerUServiceException($"JsonSerializer returned null for /tasks response. Raw: {json?.Substring(0, Math.Min(500, json.Length))}");
-        }
-        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
-        {
-            var rawJson = json?.Substring(0, Math.Min(2000, json?.Length ?? 0));
-            var errorMsg = $"Failed to deserialize MinerU /tasks response. Error: {ex.GetType().Name}: {ex.Message}. Raw JSON: {rawJson}";
-            System.Diagnostics.Debug.WriteLine($"[MinerU] {errorMsg}");
-            System.Console.Error.WriteLine($"[MinerU] {errorMsg}");
-            throw new MinerUServiceException(errorMsg, ex);
-        }
+        var result = DeserializeOrThrow<MinerUJobResponse>(json, "POST /v1/parse/jobs", SourceGenerationContext.Default.MinerUJobResponse);
 
-        if (string.IsNullOrEmpty(result.TaskId))
+        if (string.IsNullOrEmpty(result.JobId))
         {
             throw new MinerUServiceException(
-                $"Failed to get task ID from MinerU response. Raw: {json?.Substring(0, Math.Min(500, json.Length))}");
+                $"Failed to get job ID from MinerU response. Raw: {Truncate(json, 500)}");
         }
 
-        return result.TaskId;
+        return result.JobId;
     }
 
     /// <summary>
-    /// Gets the current status of an async parse task via GET /tasks/{task_id}.
+    /// Gets the current status of a parse job via GET /v1/parse/jobs/{job_id}.
     /// </summary>
-    public async Task<MinerUTaskStatusResponse> GetTaskStatusAsync(string taskId, CancellationToken ct = default)
+    public async Task<MinerUJobResponse> GetTaskStatusAsync(string jobId, CancellationToken ct = default)
     {
-        using var response = await _httpClient.GetAsync($"{_baseUrl}/tasks/{taskId}", ct);
-        response.EnsureSuccessStatusCode();
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"{_baseUrl}/v1/parse/jobs/{jobId}");
+        AddAuthHeader(request);
+        using var response = await _httpClient.SendAsync(request, ct);
+        var json = await ReadJsonOrThrowAsync(response, "GET /v1/parse/jobs/{id}", ct);
 
-        var json = await response.Content.ReadAsStringAsync(ct);
-
-        if (string.IsNullOrEmpty(json) || !json.TrimStart().StartsWith("{"))
-        {
-            var preview = json?.Length > 200 ? json.Substring(0, 200) + "..." : json;
-            throw new MinerUServiceException(
-                $"Invalid JSON response from MinerU /tasks/{{id}}. Response: {preview}");
-        }
-
-        MinerUTaskStatusResponse result;
-        try
-        {
-            result = JsonSerializer.Deserialize(json, SourceGenerationContext.Default.MinerUTaskStatusResponse)
-                ?? throw new MinerUServiceException($"JsonSerializer returned null for /tasks/{{id}} response. Raw: {json?.Substring(0, Math.Min(500, json.Length))}");
-        }
-        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
-        {
-            var rawJson = json?.Substring(0, Math.Min(2000, json?.Length ?? 0));
-            var errorMsg = $"Failed to deserialize MinerU /tasks/{{id}} response. Error: {ex.GetType().Name}: {ex.Message}. Raw JSON: {rawJson}";
-            System.Diagnostics.Debug.WriteLine($"[MinerU] {errorMsg}");
-            System.Console.Error.WriteLine($"[MinerU] {errorMsg}");
-            throw new MinerUServiceException(errorMsg, ex);
-        }
-
-        return result;
+        return DeserializeOrThrow<MinerUJobResponse>(json, "GET /v1/parse/jobs/{id}", SourceGenerationContext.Default.MinerUJobResponse);
     }
 
     /// <summary>
-    /// Polls the task status until it completes or fails.
+    /// Polls the parse job status until it reaches a terminal state
+    /// (completed, partial, failed or canceled).
     /// Calls onProgress at each status change.
-    /// If the API returns a "progress" field, uses it for accurate progress reporting.
+    /// The V1 API only reports file-level counters, so progress is coarse.
     /// </summary>
     public async Task PollUntilCompleteAsync(
-        string taskId,
+        string jobId,
         Action<MinerUParseStatus, int>? onProgress = null,
         CancellationToken ct = default)
     {
@@ -330,17 +427,16 @@ public sealed class MinerUService : IDisposable
 
         while (!ct.IsCancellationRequested)
         {
-            var status = await GetTaskStatusAsync(taskId, ct);
+            var status = await GetTaskStatusAsync(jobId, ct);
 
             if (status.IsRunning)
             {
-                // Map MinerU status to our progress
-                var minerUStatus = status.Status == "pending"
+                // Map MinerU job status to our progress
+                var minerUStatus = status.Status == "queued"
                     ? MinerUParseStatus.Queued
                     : MinerUParseStatus.Processing;
 
-                // Use real progress from API if available, otherwise infer from status
-                var progress = status.Progress?.Percent ?? (minerUStatus == MinerUParseStatus.Queued ? 20 : 50);
+                var progress = minerUStatus == MinerUParseStatus.Queued ? 20 : 50;
 
                 // Only update if progress changed
                 if (progress != lastProgress)
@@ -349,25 +445,26 @@ public sealed class MinerUService : IDisposable
                     onProgress?.Invoke(minerUStatus, progress);
                 }
             }
-            else if (status.IsCompleted)
+            else if (status.IsCompleted || status.IsPartial)
             {
+                // partial: at least one file succeeded; the download step below
+                // fails with a clear error when the requested file has no output.
                 onProgress?.Invoke(MinerUParseStatus.Downloading, 70);
                 return;
             }
-            else if (status.IsFailed)
+            else if (status.IsFailed || status.IsCanceled)
             {
                 onProgress?.Invoke(MinerUParseStatus.Failed, -1);
                 var errorMessage = status.GetErrorMessage() ?? "Unknown error";
-                throw new MinerUServiceException($"MinerU task failed: {errorMessage}");
+                throw new MinerUServiceException($"MinerU parse job {status.Status}: {errorMessage}");
             }
             else
             {
                 // Unknown status, treat as running
-                var progress = status.Progress?.Percent ?? 35;
-                if (progress != lastProgress)
+                if (35 != lastProgress)
                 {
-                    lastProgress = progress;
-                    onProgress?.Invoke(MinerUParseStatus.Processing, progress);
+                    lastProgress = 35;
+                    onProgress?.Invoke(MinerUParseStatus.Processing, 35);
                 }
             }
 
@@ -376,83 +473,66 @@ public sealed class MinerUService : IDisposable
     }
 
     /// <summary>
-    /// Polls the task status until it completes or fails, with detailed progress info.
-    /// Calls onProgress with the MinerUTaskProgress when available from the API.
-    /// Always updates UI every poll when API returns progress data to ensure
-    /// stage/page changes are reflected even if percent hasn't changed.
+    /// Polls the parse job status until it reaches a terminal state, with detailed progress info.
+    /// The MinerU 4.0 V1 API does not report page-level progress, so the
+    /// MinerUTaskProgress detail is always null and the UI falls back to the
+    /// coarse status text.
     /// </summary>
     public async Task PollUntilCompleteAsync(
-        string taskId,
+        string jobId,
         Action<MinerUParseStatus, int, MinerUTaskProgress?>? onProgress = null,
         CancellationToken ct = default)
     {
         int lastProgress = 15;
-        int? lastPercent = null;
-        int lastCurrentPage = 0;
-        string? lastStage = null;
         int pollCount = 0;
 
         while (!ct.IsCancellationRequested)
         {
-            var status = await GetTaskStatusAsync(taskId, ct);
+            var status = await GetTaskStatusAsync(jobId, ct);
             pollCount++;
 
             // Debug logging: log every API response to see real return values
-            var progressInfo = status.Progress;
-            var progressStr = progressInfo != null
-                ? $"percent={progressInfo.Percent}, page={progressInfo.CurrentPage}/{progressInfo.TotalPages}, stage={progressInfo.Stage}"
+            var jobProgress = status.Progress;
+            var progressStr = jobProgress != null
+                ? $"files={jobProgress.Completed}/{jobProgress.Total} completed, {jobProgress.Failed} failed"
                 : "null";
-            var logMsg = $"[MinerU Poll #{pollCount}] Status={status.Status}, Progress={progressStr}, QueuedAhead={status.QueuedAhead}";
+            var logMsg = $"[MinerU Poll #{pollCount}] Status={status.Status}, Progress={progressStr}";
             System.Diagnostics.Debug.WriteLine(logMsg);
             System.Console.WriteLine(logMsg);
 
             if (status.IsRunning)
             {
-                // Map MinerU status to our progress
-                var minerUStatus = status.Status == "pending"
+                // Map MinerU job status to our progress
+                var minerUStatus = status.Status == "queued"
                     ? MinerUParseStatus.Queued
                     : MinerUParseStatus.Processing;
 
-                // Use real progress from API if available, otherwise infer from status
-                var progress = status.Progress?.Percent ?? (minerUStatus == MinerUParseStatus.Queued ? 20 : 50);
+                var progress = minerUStatus == MinerUParseStatus.Queued ? 20 : 50;
 
-                // Check if any progress detail has changed
-                bool percentChanged = status.Progress != null && status.Progress.Percent != lastPercent;
-                bool pageChanged = status.Progress != null && status.Progress.CurrentPage != lastCurrentPage;
-                bool stageChanged = status.Progress != null && status.Progress.Stage != lastStage;
-                bool hasNewProgress = status.Progress != null && lastPercent == null;
-
-                if (progress != lastProgress || hasNewProgress || percentChanged || pageChanged || stageChanged)
+                if (progress != lastProgress)
                 {
                     lastProgress = progress;
-                    if (status.Progress != null)
-                    {
-                        lastPercent = status.Progress.Percent;
-                        lastCurrentPage = status.Progress.CurrentPage;
-                        lastStage = status.Progress.Stage;
-                    }
-                    onProgress?.Invoke(minerUStatus, progress, status.Progress);
+                    onProgress?.Invoke(minerUStatus, progress, null);
                 }
             }
-            else if (status.IsCompleted)
+            else if (status.IsCompleted || status.IsPartial)
             {
                 onProgress?.Invoke(MinerUParseStatus.Downloading, 70, null);
                 return;
             }
-            else if (status.IsFailed)
+            else if (status.IsFailed || status.IsCanceled)
             {
                 onProgress?.Invoke(MinerUParseStatus.Failed, -1, null);
                 var errorMessage = status.GetErrorMessage() ?? "Unknown error";
-                throw new MinerUServiceException($"MinerU task failed: {errorMessage}");
+                throw new MinerUServiceException($"MinerU parse job {status.Status}: {errorMessage}");
             }
             else
             {
                 // Unknown status, treat as running
-                var progress = status.Progress?.Percent ?? 35;
-                if (progress != lastProgress)
+                if (35 != lastProgress)
                 {
-                    lastProgress = progress;
-                    onProgress?.Invoke(MinerUParseStatus.Processing, progress, status.Progress);
+                    lastProgress = 35;
+                    onProgress?.Invoke(MinerUParseStatus.Processing, 35, null);
                 }
             }
 
@@ -461,12 +541,34 @@ public sealed class MinerUService : IDisposable
     }
 
     /// <summary>
-    /// Downloads the parse result zip via GET /tasks/{task_id}/result.
+    /// Downloads the parse result zip via GET /v1/files/{file_id}/content.
+    /// The zip file_id is resolved from the job's files[].output_files.zip.
     /// </summary>
-    public async Task<string> DownloadResultAsync(string taskId, string sourcePdfPath, CancellationToken ct = default)
+    public async Task<string> DownloadResultAsync(string jobId, string sourcePdfPath, CancellationToken ct = default)
     {
-        using var response = await _httpClient.GetAsync($"{_baseUrl}/tasks/{taskId}/result", ct);
-        response.EnsureSuccessStatusCode();
+        var job = await GetTaskStatusAsync(jobId, ct);
+
+        var zipRef = job.Files
+            .Select(f => f.OutputFiles?.Zip)
+            .FirstOrDefault(z => z is not null && !string.IsNullOrEmpty(z.FileId));
+
+        if (zipRef is null)
+        {
+            var error = job.GetErrorMessage();
+            throw new MinerUServiceException(
+                $"MinerU job '{jobId}' has no downloadable zip output (status: {job.Status})." +
+                (error is null ? string.Empty : $" Error: {error}"));
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"{_baseUrl}/v1/files/{zipRef.FileId}/content");
+        AddAuthHeader(request);
+        using var response = await _httpClient.SendAsync(request, ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(ct);
+            throw new MinerUServiceException(
+                $"Failed to download MinerU result file (status: {(int)response.StatusCode}): {Truncate(body, 500)}");
+        }
 
         var zipBytes = await response.Content.ReadAsByteArrayAsync(ct);
         return CacheResultZip(sourcePdfPath, zipBytes);
@@ -485,13 +587,11 @@ public sealed class MinerUService : IDisposable
 
     /// <summary>
     /// Gets the extracted artifacts directory path for a given PDF.
-    /// Returns the cache directory directly. The ZIP contains {docId}/hybrid_auto/...,
-    /// so extracting to {cache}/ results in {cache}/{docId}/hybrid_auto/... naturally.
-    /// No post-extraction moving is needed.
+    /// Artifacts are normalized to {cache}/{docId}/ by ExtractZipToDocDir.
     /// </summary>
     private string GetExtractedDirPath(string pdfPath)
     {
-        return _cacheDirectory;
+        return Path.Combine(_cacheDirectory, Path.GetFileNameWithoutExtension(pdfPath));
     }
 
     #region Task ID Persistence
@@ -527,15 +627,16 @@ public sealed class MinerUService : IDisposable
             {
                 Directory.CreateDirectory(dir);
             }
-            var data = new
+            var data = new MinerUTaskIdRecord
             {
-                taskId = taskId,
-                pdfPath = pdfPath,
-                createdAt = DateTimeOffset.UtcNow.ToString("O")
+                TaskId = taskId,
+                PdfPath = pdfPath,
+                CreatedAt = DateTimeOffset.UtcNow.ToString("O")
             };
             var json = JsonSerializer.Serialize(data, new JsonSerializerOptions
             {
-                WriteIndented = true
+                WriteIndented = true,
+                TypeInfoResolver = SourceGenerationContext.Default
             });
             File.WriteAllText(path, json);
         }
@@ -605,17 +706,17 @@ public sealed class MinerUService : IDisposable
 
         string resultZip;
 
-        if (status.IsCompleted)
+        if (status.IsCompleted || status.IsPartial)
         {
-            // Task already completed, just download
+            // Job already finished (all or some files succeeded), just download
             onProgress?.Invoke(MinerUParseStatus.Downloading, 70);
             resultZip = await DownloadResultAsync(taskId, pdfPath, ct);
         }
-        else if (status.IsFailed)
+        else if (status.IsFailed || status.IsCanceled)
         {
             onProgress?.Invoke(MinerUParseStatus.Failed, -1);
             var errorMessage = status.GetErrorMessage() ?? "Unknown error";
-            throw new MinerUServiceException($"MinerU task failed: {errorMessage}");
+            throw new MinerUServiceException($"MinerU parse job {status.Status}: {errorMessage}");
         }
         else
         {
@@ -661,7 +762,7 @@ public sealed class MinerUService : IDisposable
             return null;
 
         var docId = Path.GetFileNameWithoutExtension(pdfPath);
-        // The ZIP contains {docId}/hybrid_auto/..., so the artifacts are in {cache}/{docId}/
+        // Artifacts are normalized to {cache}/{docId}/ (see ExtractZipToDocDir)
         var artifactsDir = Path.Combine(_cacheDirectory, docId);
 
         // If artifacts dir doesn't exist, extract from zip
@@ -669,8 +770,7 @@ public sealed class MinerUService : IDisposable
         {
             try
             {
-                Directory.CreateDirectory(_cacheDirectory);
-                ZipFile.ExtractToDirectory(zipPath, _cacheDirectory, overwriteFiles: true);
+                artifactsDir = ExtractZipToDocDir(zipPath, docId);
             }
             catch
             {
@@ -740,9 +840,64 @@ public sealed class MinerUService : IDisposable
     }
 
     /// <summary>
-    /// Extracts the zip to the cache directory and builds a MinerUParseResult.
-    /// The ZIP contains {docId}/hybrid_auto/..., so extracting to {cache}/ naturally
-    /// produces {cache}/{docId}/hybrid_auto/... with no post-extraction moving needed.
+    /// Extracts a result zip to {cache}/{docId}/, normalizing both the flat
+    /// MinerU 4.0 layout and the legacy 3.x single-top-level-folder layout.
+    /// Returns the artifacts directory path.
+    /// </summary>
+    private string ExtractZipToDocDir(string zipPath, string docId)
+    {
+        Directory.CreateDirectory(_cacheDirectory);
+
+        var tempDir = Path.Combine(_cacheDirectory, $".extract_tmp_{Guid.NewGuid():N}");
+        try
+        {
+            ZipFile.ExtractToDirectory(zipPath, tempDir, overwriteFiles: true);
+        }
+        catch (Exception ex)
+        {
+            try { Directory.Delete(tempDir, recursive: true); } catch { /* best effort */ }
+            throw new MinerUServiceException($"Failed to extract parse result: {ex.Message}", ex);
+        }
+
+        // Legacy 3.x zips contain a single top-level folder (e.g. {docId}/hybrid_auto/...);
+        // use that folder as the content root. Flat 4.0 zips use the extraction root.
+        var entries = Directory.GetFileSystemEntries(tempDir);
+        var contentRoot = tempDir;
+        if (entries.Length == 1 && Directory.Exists(entries[0]))
+        {
+            contentRoot = entries[0];
+        }
+
+        var targetDir = Path.Combine(_cacheDirectory, docId);
+        if (Directory.Exists(targetDir))
+        {
+            Directory.Delete(targetDir, recursive: true);
+        }
+
+        try
+        {
+            Directory.Move(contentRoot, targetDir);
+        }
+        catch (Exception ex)
+        {
+            try { Directory.Delete(tempDir, recursive: true); } catch { /* best effort */ }
+            throw new MinerUServiceException($"Failed to move extracted parse result: {ex.Message}", ex);
+        }
+
+        // When the content root was a subfolder (legacy layout), remove the empty temp dir
+        if (!ReferenceEquals(contentRoot, tempDir))
+        {
+            try { Directory.Delete(tempDir, recursive: true); } catch { /* best effort */ }
+        }
+
+        return targetDir;
+    }
+
+    /// <summary>
+    /// Extracts the result zip to {cache}/{docId}/ and builds a MinerUParseResult.
+    /// MinerU 4.0 zips are flat (markdown.md, middle_json.json, images at the root);
+    /// legacy 3.x zips contain a single top-level {docId}/ folder. Both layouts are
+    /// normalized to {cache}/{docId}/... so downstream code sees one consistent path.
     /// </summary>
     private async Task<MinerUParseResult> BuildParseResultAsync(
         string zipPath,
@@ -753,20 +908,7 @@ public sealed class MinerUService : IDisposable
         onProgress?.Invoke(MinerUParseStatus.ParsingResult, 85);
 
         var docId = Path.GetFileNameWithoutExtension(sourcePdfPath);
-        // Extract to cache dir: ZIP's {docId}/ becomes {cache}/{docId}/
-        Directory.CreateDirectory(_cacheDirectory);
-
-        try
-        {
-            ZipFile.ExtractToDirectory(zipPath, _cacheDirectory, overwriteFiles: true);
-        }
-        catch (Exception ex)
-        {
-            throw new MinerUServiceException($"Failed to extract parse result: {ex.Message}", ex);
-        }
-
-        // The artifacts are in {cache}/{docId}/ (created by the ZIP extraction)
-        var artifactsDir = Path.Combine(_cacheDirectory, docId);
+        var artifactsDir = await Task.Run(() => ExtractZipToDocDir(zipPath, docId), ct);
 
         // Parse the extracted directory
         var minerUDoc = await Task.Run(() =>
