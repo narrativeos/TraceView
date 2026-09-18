@@ -189,6 +189,69 @@ public static class MinerUJsonService
                 }
             }
 
+            // MinerU 4.0: Parse extensions for block IDs, page dimensions, and page types.
+            // middle_json.json blocks do NOT carry block_id directly (strict schema forbids extra fields);
+            // the mapping lives in extensions.mineru_block_ids as {str(page_idx): {str(block_index): uuid}}.
+            Dictionary<(int page, int index), string>? v4BlockIdMap = null;
+            if (isV4Schema && root.TryGetProperty("extensions", out var extElem) && extElem.ValueKind == JsonValueKind.Object)
+            {
+                // 1. mineru_block_ids: {str(page_idx): {str(block_index): block_id}}
+                if (extElem.TryGetProperty("mineru_block_ids", out var blockIdsElem) && blockIdsElem.ValueKind == JsonValueKind.Object)
+                {
+                    v4BlockIdMap = new Dictionary<(int, int), string>();
+                    foreach (var pageEntry in blockIdsElem.EnumerateObject())
+                    {
+                        if (!int.TryParse(pageEntry.Name, out var pIdx) || pageEntry.Value.ValueKind != JsonValueKind.Object)
+                            continue;
+                        foreach (var blockEntry in pageEntry.Value.EnumerateObject())
+                        {
+                            if (!int.TryParse(blockEntry.Name, out var bIdx))
+                                continue;
+                            var uuid = blockEntry.Value.ValueKind == JsonValueKind.String ? blockEntry.Value.GetString() : null;
+                            if (!string.IsNullOrEmpty(uuid))
+                                v4BlockIdMap[(pIdx, bIdx)] = uuid;
+                        }
+                    }
+                }
+
+                // 2. docvortex_layout.pages: [{page_idx, width_pt, height_pt}, ...]
+                if (extElem.TryGetProperty("docvortex_layout", out var layoutElem) &&
+                    layoutElem.ValueKind == JsonValueKind.Object &&
+                    layoutElem.TryGetProperty("pages", out var layoutPages) &&
+                    layoutPages.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var lp in layoutPages.EnumerateArray())
+                    {
+                        if (lp.ValueKind != JsonValueKind.Object) continue;
+                        var pIdx = lp.TryGetProperty("page_idx", out var pi) ? GetIntValue(pi) : -1;
+                        var w = lp.TryGetProperty("width_pt", out var wi) ? GetDoubleValue(wi) : 0.0;
+                        var h = lp.TryGetProperty("height_pt", out var hi) ? GetDoubleValue(hi) : 0.0;
+                        if (pIdx >= 0 && w > 0 && h > 0)
+                            pageSizeMap[pIdx] = (w, h);
+                    }
+                }
+
+                // 3. mineru_page_types: {str(page_idx): {"page_type": ..., "page_type_secondary": ...}}
+                if (extElem.TryGetProperty("mineru_page_types", out var pageTypesElem) && pageTypesElem.ValueKind == JsonValueKind.Object)
+                {
+                    foreach (var ptEntry in pageTypesElem.EnumerateObject())
+                    {
+                        if (!int.TryParse(ptEntry.Name, out var pIdx) || ptEntry.Value.ValueKind != JsonValueKind.Object)
+                            continue;
+
+                        var ptStr = ptEntry.Value.TryGetProperty("page_type", out var ptVal) && ptVal.ValueKind == JsonValueKind.String
+                            ? ptVal.GetString() : null;
+                        if (!string.IsNullOrEmpty(ptStr))
+                            minerUDoc.PageTypes[pIdx + 1] = ParsePageType(ptStr);
+
+                        var ptSecStr = ptEntry.Value.TryGetProperty("page_type_secondary", out var ptSecVal) && ptSecVal.ValueKind == JsonValueKind.String
+                            ? ptSecVal.GetString() : null;
+                        if (!string.IsNullOrEmpty(ptSecStr))
+                            minerUDoc.PageTypeSecondaries[pIdx + 1] = ParsePageType(ptSecStr);
+                    }
+                }
+            }
+
             // 1. Parse pages -> PagesBlocks
             if (root.TryGetProperty("pages", out var pagesElem))
             {
@@ -235,6 +298,16 @@ public static class MinerUJsonService
                             foreach (var blockElem in blocksElem.EnumerateArray())
                             {
                                 var block = MapMinerUBlockToMinerUBlock(blockElem, pageWidth, pageHeight, isV4Schema);
+
+                                // MinerU 4.0: block_id is not on the block itself (strict schema);
+                                // look it up from extensions.mineru_block_ids using (page_idx, block.index).
+                                if (isV4Schema && string.IsNullOrEmpty(block.BlockId) && v4BlockIdMap != null)
+                                {
+                                    var blockIndex = blockElem.TryGetProperty("index", out var idxElem) ? GetIntValue(idxElem) : -1;
+                                    if (blockIndex >= 0 && v4BlockIdMap.TryGetValue((pageNum, blockIndex), out var uuid))
+                                        block.BlockId = uuid;
+                                }
+
                                 blocks.Add(block);
                             }
                         }
