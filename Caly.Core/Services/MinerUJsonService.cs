@@ -431,6 +431,11 @@ public static class MinerUJsonService
                             block.BlockId = uuid;
                     }
 
+                    // MinerU 4.0: no preproc/para distinction, so link each block to itself
+                    // to enable connection lines between PDF overlay and MinerU column.
+                    if (isV4Schema && !string.IsNullOrEmpty(block.BlockId))
+                        block.RelatedBlockIds.Add(block.BlockId);
+
                     blocks.Add(block);
                 }
             }
