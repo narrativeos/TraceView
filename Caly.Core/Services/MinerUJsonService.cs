@@ -299,6 +299,12 @@ public static class MinerUJsonService
                             {
                                 var block = MapMinerUBlockToMinerUBlock(blockElem, pageWidth, pageHeight, isV4Schema);
 
+                                // MinerU 4.0 blocks don't have a "page" field; set it from the page context.
+                                // Without this, block.Page stays 0 and the 0→1 normalization
+                                // (which checks block.Page == kvp.Key) fails for pages > 0.
+                                if (isV4Schema)
+                                    block.Page = pageNum;
+
                                 // MinerU 4.0: block_id is not on the block itself (strict schema);
                                 // look it up from extensions.mineru_block_ids using (page_idx, block.index).
                                 if (isV4Schema && string.IsNullOrEmpty(block.BlockId) && v4BlockIdMap != null)
