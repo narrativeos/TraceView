@@ -150,7 +150,7 @@ public static class MinerUJsonService
 
     /// <summary>
     /// Parses MinerU middle.json output into a MinerUDocument.
-    /// Supports both the "pages" flat block list and optional "tree" hierarchical structure.
+    /// Supports both MinerU 4.0 (schema "docvortex.middle") and 3.x (pdf_info) formats.
     /// </summary>
     public static StructureDocument? TryParseMinerUMiddleJson(string jsonPath)
     {
@@ -174,447 +174,38 @@ public static class MinerUJsonService
             var isV4Schema = string.Equals(
                 GetStringProperty(root, "schema"), "docvortex.middle", StringComparison.Ordinal);
 
-            // Parse page_size for coordinate normalization
-            var pageSizeMap = new Dictionary<int, (double width, double height)>();
-            if (root.TryGetProperty("page_size", out var pageSizeElem) && pageSizeElem.ValueKind == JsonValueKind.Object)
-            {
-                foreach (var entry in pageSizeElem.EnumerateObject())
-                {
-                    if (int.TryParse(entry.Name, out var pageNum) && entry.Value.ValueKind == JsonValueKind.Array && entry.Value.GetArrayLength() >= 2)
-                    {
-                        pageSizeMap[pageNum] = (
-                            GetDoubleValue(entry.Value[0]),
-                            GetDoubleValue(entry.Value[1]));
-                    }
-                }
-            }
+            // Parse page_size for coordinate normalization (3.x top-level "page_size" object)
+            var pageSizeMap = ParsePageSize(root);
 
             // MinerU 4.0: Parse extensions for block IDs, page dimensions, and page types.
-            // middle_json.json blocks do NOT carry block_id directly (strict schema forbids extra fields);
-            // the mapping lives in extensions.mineru_block_ids as {str(page_idx): {str(block_index): uuid}}.
             Dictionary<(int page, int index), string>? v4BlockIdMap = null;
-            if (isV4Schema && root.TryGetProperty("extensions", out var extElem) && extElem.ValueKind == JsonValueKind.Object)
-            {
-                // 1. mineru_block_ids: {str(page_idx): {str(block_index): block_id}}
-                if (extElem.TryGetProperty("mineru_block_ids", out var blockIdsElem) && blockIdsElem.ValueKind == JsonValueKind.Object)
-                {
-                    v4BlockIdMap = new Dictionary<(int, int), string>();
-                    foreach (var pageEntry in blockIdsElem.EnumerateObject())
-                    {
-                        if (!int.TryParse(pageEntry.Name, out var pIdx) || pageEntry.Value.ValueKind != JsonValueKind.Object)
-                            continue;
-                        foreach (var blockEntry in pageEntry.Value.EnumerateObject())
-                        {
-                            if (!int.TryParse(blockEntry.Name, out var bIdx))
-                                continue;
-                            var uuid = blockEntry.Value.ValueKind == JsonValueKind.String ? blockEntry.Value.GetString() : null;
-                            if (!string.IsNullOrEmpty(uuid))
-                                v4BlockIdMap[(pIdx, bIdx)] = uuid;
-                        }
-                    }
-                }
-
-                // 2. docvortex_layout.pages: [{page_idx, width_pt, height_pt}, ...]
-                if (extElem.TryGetProperty("docvortex_layout", out var layoutElem) &&
-                    layoutElem.ValueKind == JsonValueKind.Object &&
-                    layoutElem.TryGetProperty("pages", out var layoutPages) &&
-                    layoutPages.ValueKind == JsonValueKind.Array)
-                {
-                    foreach (var lp in layoutPages.EnumerateArray())
-                    {
-                        if (lp.ValueKind != JsonValueKind.Object) continue;
-                        var pIdx = lp.TryGetProperty("page_idx", out var pi) ? GetIntValue(pi) : -1;
-                        var w = lp.TryGetProperty("width_pt", out var wi) ? GetDoubleValue(wi) : 0.0;
-                        var h = lp.TryGetProperty("height_pt", out var hi) ? GetDoubleValue(hi) : 0.0;
-                        if (pIdx >= 0 && w > 0 && h > 0)
-                            pageSizeMap[pIdx] = (w, h);
-                    }
-                }
-
-                // 3. mineru_page_types: {str(page_idx): {"page_type": ..., "page_type_secondary": ...}}
-                if (extElem.TryGetProperty("mineru_page_types", out var pageTypesElem) && pageTypesElem.ValueKind == JsonValueKind.Object)
-                {
-                    foreach (var ptEntry in pageTypesElem.EnumerateObject())
-                    {
-                        if (!int.TryParse(ptEntry.Name, out var pIdx) || ptEntry.Value.ValueKind != JsonValueKind.Object)
-                            continue;
-
-                        var ptStr = ptEntry.Value.TryGetProperty("page_type", out var ptVal) && ptVal.ValueKind == JsonValueKind.String
-                            ? ptVal.GetString() : null;
-                        if (!string.IsNullOrEmpty(ptStr))
-                            minerUDoc.PageTypes[pIdx + 1] = ParsePageType(ptStr);
-
-                        var ptSecStr = ptEntry.Value.TryGetProperty("page_type_secondary", out var ptSecVal) && ptSecVal.ValueKind == JsonValueKind.String
-                            ? ptSecVal.GetString() : null;
-                        if (!string.IsNullOrEmpty(ptSecStr))
-                            minerUDoc.PageTypeSecondaries[pIdx + 1] = ParsePageType(ptSecStr);
-                    }
-                }
-            }
+            if (isV4Schema)
+                v4BlockIdMap = ParseV4Extensions(root, minerUDoc, pageSizeMap);
 
             // 1. Parse pages -> PagesBlocks
             if (root.TryGetProperty("pages", out var pagesElem))
             {
                 if (pagesElem.ValueKind == JsonValueKind.Object)
-                {
-                    foreach (var pageEntry in pagesElem.EnumerateObject())
-                    {
-                        if (!int.TryParse(pageEntry.Name, out var pageNum))
-                            continue;
-
-                        var blocks = new List<MinerUBlock>();
-                        var pageWidth = pageSizeMap.TryGetValue(pageNum, out var size) ? size.width : 0.0;
-                        var pageHeight = pageSizeMap.TryGetValue(pageNum, out size) ? size.height : 0.0;
-
-                        foreach (var blockElem in pageEntry.Value.EnumerateArray())
-                        {
-                            var block = MapMinerUBlockToMinerUBlock(blockElem, pageWidth, pageHeight);
-                            blocks.Add(block);
-                        }
-
-                        minerUDoc.PagesBlocks[pageNum] = blocks;
-                    }
-                }
+                    ParsePagesObject(pagesElem, minerUDoc, pageSizeMap);
                 else if (pagesElem.ValueKind == JsonValueKind.Array)
-                {
-                    foreach (var pageEntry in pagesElem.EnumerateArray())
-                    {
-                        // 3.x uses "page"; MinerU 4.0 uses "page_idx" (0-based)
-                        JsonElement pageElem;
-                        if (!pageEntry.TryGetProperty("page", out pageElem)
-                            && !pageEntry.TryGetProperty("page_idx", out pageElem))
-                            continue;
-
-                        var pageNum = GetIntValue(pageElem);
-                        if (pageNum < 0)
-                            continue;
-
-                        var blocks = new List<MinerUBlock>();
-                        var pageWidth = pageSizeMap.TryGetValue(pageNum, out var size) ? size.width : 0.0;
-                        var pageHeight = pageSizeMap.TryGetValue(pageNum, out size) ? size.height : 0.0;
-
-                        if (pageEntry.TryGetProperty("blocks", out var blocksElem) && blocksElem.ValueKind == JsonValueKind.Array)
-                        {
-                            foreach (var blockElem in blocksElem.EnumerateArray())
-                            {
-                                var block = MapMinerUBlockToMinerUBlock(blockElem, pageWidth, pageHeight, isV4Schema);
-
-                                // MinerU 4.0 blocks don't have a "page" field; set it from the page context.
-                                // Without this, block.Page stays 0 and the 0→1 normalization
-                                // (which checks block.Page == kvp.Key) fails for pages > 0.
-                                if (isV4Schema)
-                                    block.Page = pageNum;
-
-                                // MinerU 4.0: block_id is not on the block itself (strict schema);
-                                // look it up from extensions.mineru_block_ids using (page_idx, block.index).
-                                if (isV4Schema && string.IsNullOrEmpty(block.BlockId) && v4BlockIdMap != null)
-                                {
-                                    var blockIndex = blockElem.TryGetProperty("index", out var idxElem) ? GetIntValue(idxElem) : -1;
-                                    if (blockIndex >= 0 && v4BlockIdMap.TryGetValue((pageNum, blockIndex), out var uuid))
-                                        block.BlockId = uuid;
-                                }
-
-                                blocks.Add(block);
-                            }
-                        }
-
-                        if (blocks.Count > 0)
-                        {
-                            minerUDoc.PagesBlocks[pageNum] = blocks;
-                            // MinerU 4.0 has no preproc/para/discarded distinction;
-                            // the PDF overlay (BlockOverlayControl) binds to PreprocBlocks,
-                            // so populate it with all blocks for v4.
-                            if (isV4Schema)
-                                minerUDoc.PreprocBlocks[pageNum] = blocks;
-                        }
-                    }
-                }
+                    ParsePagesArray(pagesElem, minerUDoc, pageSizeMap, isV4Schema, v4BlockIdMap);
             }
 
-            // 2. Parse pdf_info -> PagesBlocks (actual MinerU output format seen in the wild)
+            // 2. Parse pdf_info (MinerU 3.x format with preproc/para/discarded blocks)
             if (root.TryGetProperty("pdf_info", out var pdfInfoElem) && pdfInfoElem.ValueKind == JsonValueKind.Array)
-            {
-                // Global ID counter to ensure unique IDs across ALL pages and sections.
-                // Without this, blocks from different pages would have duplicate IDs (e.g., page1.id=1 and page2.id=1),
-                // causing connection lines to point to the wrong blocks.
-                int globalNextBlockId = 1;
+                ParsePdfInfo(pdfInfoElem, minerUDoc);
 
-                foreach (var pageInfoElem in pdfInfoElem.EnumerateArray())
-                {
-                    var pageNum = pageInfoElem.TryGetProperty("page_idx", out var pageIdxElem)
-                        ? GetIntValue(pageIdxElem)
-                        : 0;
-
-                    if (pageNum < 0)
-                        continue;
-
-                    var pageWidth = pageInfoElem.TryGetProperty("page_size", out var pageSizeElemForPage) && pageSizeElemForPage.ValueKind == JsonValueKind.Array && pageSizeElemForPage.GetArrayLength() >= 2
-                        ? GetDoubleValue(pageSizeElemForPage[0])
-                        : 0.0;
-                    var pageHeight = pageInfoElem.TryGetProperty("page_size", out var pageSizeElemForPage2) && pageSizeElemForPage2.ValueKind == JsonValueKind.Array && pageSizeElemForPage2.GetArrayLength() >= 2
-                        ? GetDoubleValue(pageSizeElemForPage2[1])
-                        : 0.0;
-
-                    // Parse page_type if present (MinerU v2.3+)
-                    // page_idx is 0-based in the JSON; normalize to 1-based to match PageViewModel.PageNumber
-                    var pageTypeStr = GetStringProperty(pageInfoElem, "page_type");
-                    if (!string.IsNullOrEmpty(pageTypeStr))
-                    {
-                        var pageType = ParsePageType(pageTypeStr);
-                        minerUDoc.PageTypes[pageNum + 1] = pageType;
-                    }
-
-                    // Parse optional page_type_secondary if present (MinerU v2.0+)
-                    var pageTypeSecondaryStr = GetStringProperty(pageInfoElem, "page_type_secondary");
-                    if (!string.IsNullOrEmpty(pageTypeSecondaryStr))
-                    {
-                        var pageTypeSecondary = ParsePageType(pageTypeSecondaryStr);
-                        minerUDoc.PageTypeSecondaries[pageNum + 1] = pageTypeSecondary;
-                    }
-
-                    var blocks = new List<MinerUBlock>();
-                    // Parse para_blocks (semantic paragraphs) and discarded_blocks for the MinerU Blocks column.
-                    // This allows users to see which blocks were adopted/merged (para_blocks) vs rejected (discarded_blocks),
-                    // providing a clear contrast with the PDF overlay layer which uses preproc_blocks (raw detection).
-                    var paraBlocks = new List<MinerUBlock>();
-                    var discardedBlocks = new List<MinerUBlock>();
-                    
-                    // Build a lookup map from preproc_blocks by block_id BEFORE processing para_blocks.
-                    // This allows table para_blocks (which have empty table_body sub-blocks) to get their
-                    // content from the corresponding preproc_blocks (which have table_body HTML).
-                    var preprocBlockMap = new Dictionary<string, JsonElement>();
-                    if (pageInfoElem.TryGetProperty("preproc_blocks", out var preprocMapElem) && preprocMapElem.ValueKind == JsonValueKind.Array)
-                    {
-                        foreach (var preprocBlock in preprocMapElem.EnumerateArray())
-                        {
-                            var preprocId = GetStringProperty(preprocBlock, "block_id");
-                            if (!string.IsNullOrEmpty(preprocId))
-                                preprocBlockMap[preprocId] = preprocBlock;
-                        }
-                    }
-                    
-                    // Use the global ID counter (declared outside the page loop) to ensure unique IDs
-                    // across all pages. Without this, page 1 and page 2 would both have blocks with id=1,2,3...
-                    if (pageInfoElem.TryGetProperty("para_blocks", out var paraElem) && paraElem.ValueKind == JsonValueKind.Array)
-                    {
-                        foreach (var blockElem in paraElem.EnumerateArray())
-                        {
-                            var paraList = MapMinerUPageSectionToBlocks(blockElem, pageNum, pageWidth, pageHeight, preprocBlockMap);
-                            foreach (var b in paraList)
-                            {
-                                b.Id = globalNextBlockId++;
-                                b.BlockSource = MinerUConstants.SourcePara;
-                                paraBlocks.Add(b);
-                            }
-                        }
-                    }
-                    
-                    if (pageInfoElem.TryGetProperty("discarded_blocks", out var discardedElem) && discardedElem.ValueKind == JsonValueKind.Array)
-                    {
-                        foreach (var blockElem in discardedElem.EnumerateArray())
-                        {
-                            var discList = MapMinerUPageSectionToBlocks(blockElem, pageNum, pageWidth, pageHeight);
-                            foreach (var b in discList)
-                            {
-                                b.Id = globalNextBlockId++;
-                                b.BlockSource = MinerUConstants.SourceDiscarded;
-                                discardedBlocks.Add(b);
-                            }
-                        }
-                    }
-                    
-                    // Build a lookup map from block_id to block for fast matching
-                    var paraBlockById = new Dictionary<string, MinerUBlock>();
-                    foreach (var b in paraBlocks)
-                    {
-                        if (!string.IsNullOrEmpty(b.BlockId))
-                            paraBlockById[b.BlockId] = b;
-                    }
-                    var discardedBlockById = new Dictionary<string, MinerUBlock>();
-                    foreach (var b in discardedBlocks)
-                    {
-                        if (!string.IsNullOrEmpty(b.BlockId))
-                            discardedBlockById[b.BlockId] = b;
-                    }
-
-                    // Build reverse mapping: for each preproc_block, find which para/discarded block it belongs to
-                    // Use block_id (UUID) as the primary alignment key between PDF overlay and MinerU Blocks column.
-                    // The new MinerU middle.json structure includes block_id in each block and block_ids array in para_blocks
-                    // referencing the source preproc_block IDs. This provides exact matching without bbox overlap heuristics.
-                    var pagePreprocBlocks = new List<MinerUBlock>();
-                    if (pageInfoElem.TryGetProperty("preproc_blocks", out var preprocElem) && preprocElem.ValueKind == JsonValueKind.Array)
-                    {
-                        foreach (var blockElem in preprocElem.EnumerateArray())
-                        {
-                            var preprocList = MapMinerUPageSectionToBlocks(blockElem, pageNum, pageWidth, pageHeight);
-                            foreach (var preprocBlock in preprocList)
-                            {
-                                preprocBlock.Id = globalNextBlockId++;
-
-                                // Try to match using block_id first (exact match via block_ids array in para_blocks)
-                                MinerUBlock? matched = null;
-
-                                // Strategy 1: Check if any para_block's SourceBlockIds contains this preprocBlock's BlockId
-                                if (!string.IsNullOrEmpty(preprocBlock.BlockId))
-                                {
-                                    foreach (var paraBlock in paraBlocks)
-                                    {
-                                        if (paraBlock.SourceBlockIds.Contains(preprocBlock.BlockId))
-                                        {
-                                            matched = paraBlock;
-                                            break;
-                                        }
-                                    }
-
-                                    // If not found in para_blocks, check discarded_blocks
-                                    if (matched == null)
-                                    {
-                                        foreach (var discBlock in discardedBlocks)
-                                        {
-                                            // First try: match via SourceBlockIds (for discarded_blocks with sub-blocks)
-                                            if (discBlock.SourceBlockIds.Contains(preprocBlock.BlockId))
-                                            {
-                                                matched = discBlock;
-                                                break;
-                                            }
-                                        }
-                                        
-                                        // Second try: if no match via SourceBlockIds, match discarded_blocks directly by BlockId
-                                        // This handles the case where a discarded_block is a single block (no sub-blocks)
-                                        // and its own BlockId is the same as the preproc_block's BlockId
-                                        if (matched == null)
-                                        {
-                                            foreach (var discBlock in discardedBlocks)
-                                            {
-                                                if (discBlock.SourceBlockIds.Count == 0 && discBlock.BlockId == preprocBlock.BlockId)
-                                                {
-                                                    matched = discBlock;
-                                                    break;
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-
-                                // Strategy 2: If block_id matching failed, fall back to bbox overlap
-                                bool isFallbackMatch = false;
-                                if (matched == null)
-                                {
-                                    matched = FindMatchingBlock(preprocBlock, paraBlocks, discardedBlocks);
-                                    // Bbox overlap is a fallback match
-                                    isFallbackMatch = true;
-                                }
-                                else
-                                {
-                                    // Check if the match was from a fallback inheritance (multiple block_ids inherited)
-                                    // If matched block has multiple SourceBlockIds, it was a fallback inheritance
-                                    if (matched.SourceBlockIds.Count > 1)
-                                    {
-                                        isFallbackMatch = true;
-                                    }
-                                }
-
-                                if (matched != null)
-                                {
-                                    preprocBlock.DestinationType = matched.BlockSource;
-                                    preprocBlock.IsFallbackMatch = isFallbackMatch;
-                                    matched.IsFallbackMatch = isFallbackMatch;
-                                    // Use BlockId (UUID string) for bidirectional relationship
-                                    preprocBlock.RelatedBlockIds.Add(matched.BlockId);
-                                    matched.RelatedBlockIds.Add(preprocBlock.BlockId);
-                                }
-                                pagePreprocBlocks.Add(preprocBlock);
-                            }
-                        }
-                    }
-                    
-                    // Store preproc_blocks for this page
-                    if (pagePreprocBlocks.Count > 0)
-                    {
-                        if (!minerUDoc.PreprocBlocks.ContainsKey(pageNum))
-                            minerUDoc.PreprocBlocks[pageNum] = new List<MinerUBlock>();
-                        minerUDoc.PreprocBlocks[pageNum].AddRange(pagePreprocBlocks);
-                    }
-                    
-                    blocks.AddRange(paraBlocks);
-                    blocks.AddRange(discardedBlocks);
-
-                    if (blocks.Count > 0)
-                    {
-                        if (!minerUDoc.PagesBlocks.ContainsKey(pageNum))
-                            minerUDoc.PagesBlocks[pageNum] = new List<MinerUBlock>();
-
-                        minerUDoc.PagesBlocks[pageNum].AddRange(blocks);
-                    }
-                }
-            }
-
-            // 2. Parse tree -> TreeRoot
+            // 3. Parse tree -> TreeRoot
             if (root.TryGetProperty("tree", out var treeElem) && treeElem.ValueKind != JsonValueKind.Null)
             {
                 minerUDoc.TreeRoot = MapMinerUTreeNode(treeElem, pageSizeMap);
                 minerUDoc.BuildAggregationMap();
             }
 
-            // 3. Normalize 0-based page indices to 1-based for both PagesBlocks and PreprocBlocks.
-            // MinerU may use 0-based page numbers (page_idx 0 = first page),
-            // while PageViewModel.PageNumber is 1-based.
-            if (minerUDoc.PagesBlocks.Count > 0 && minerUDoc.PagesBlocks.ContainsKey(0))
-            {
-                var normalizedPages = new Dictionary<int, List<MinerUBlock>>();
-                foreach (var kvp in minerUDoc.PagesBlocks)
-                {
-                    int newKey = kvp.Key + 1;
-                    foreach (var block in kvp.Value)
-                    {
-                        if (block.Page == kvp.Key)
-                            block.Page = newKey;
-                    }
-                    normalizedPages[newKey] = kvp.Value;
-                }
-                minerUDoc.PagesBlocks = normalizedPages;
+            // 4. Normalize 0-based page indices to 1-based
+            NormalizePageIndices(minerUDoc);
 
-                // Also normalize PreprocBlocks
-                if (minerUDoc.PreprocBlocks.Count > 0)
-                {
-                    var normalizedPreproc = new Dictionary<int, List<MinerUBlock>>();
-                    foreach (var kvp in minerUDoc.PreprocBlocks)
-                    {
-                        int newKey = kvp.Key + 1;
-                        foreach (var block in kvp.Value)
-                        {
-                            if (block.Page == kvp.Key)
-                                block.Page = newKey;
-                        }
-                        normalizedPreproc[newKey] = kvp.Value;
-                    }
-                    minerUDoc.PreprocBlocks = normalizedPreproc;
-                }
-
-                // Also normalize PageTypes (page_type enum values)
-                // Note: page_type and page_type_secondary are already stored with 1-based keys above,
-                // so we just need to copy them as-is if we're normalizing other structures.
-                if (minerUDoc.PageTypes.Count > 0)
-                {
-                    var normalizedPageTypes = new Dictionary<int, PageType>();
-                    foreach (var kvp in minerUDoc.PageTypes)
-                    {
-                        normalizedPageTypes[kvp.Key] = kvp.Value;
-                    }
-                    minerUDoc.PageTypes = normalizedPageTypes;
-                }
-                if (minerUDoc.PageTypeSecondaries.Count > 0)
-                {
-                    var normalizedPageTypeSecondaries = new Dictionary<int, PageType>();
-                    foreach (var kvp in minerUDoc.PageTypeSecondaries)
-                    {
-                        normalizedPageTypeSecondaries[kvp.Key] = kvp.Value;
-                    }
-                    minerUDoc.PageTypeSecondaries = normalizedPageTypeSecondaries;
-                }
-            }
-
-            // 4. Build InferenceBlocks from PagesBlocks
+            // 5. Build InferenceBlocks from PagesBlocks
             minerUDoc.InferenceBlocks = minerUDoc.GetAllBlocks();
 
             return minerUDoc.InferenceBlocks.Count > 0 || minerUDoc.TreeRoot is not null
@@ -626,6 +217,394 @@ public static class MinerUJsonService
             return null;
         }
     }
+
+    /// <summary>
+    /// Parses the top-level "page_size" object (3.x format): { "0": [w, h], "1": [w, h], ... }
+    /// </summary>
+    static Dictionary<int, (double width, double height)> ParsePageSize(JsonElement root)
+    {
+        var pageSizeMap = new Dictionary<int, (double width, double height)>();
+        if (root.TryGetProperty("page_size", out var pageSizeElem) && pageSizeElem.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var entry in pageSizeElem.EnumerateObject())
+            {
+                if (int.TryParse(entry.Name, out var pageNum) && entry.Value.ValueKind == JsonValueKind.Array && entry.Value.GetArrayLength() >= 2)
+                {
+                    pageSizeMap[pageNum] = (
+                        GetDoubleValue(entry.Value[0]),
+                        GetDoubleValue(entry.Value[1]));
+                }
+            }
+        }
+        return pageSizeMap;
+    }
+    /// <summary>
+    /// Parses MinerU 4.0 "extensions" object for:
+    /// - mineru_block_ids: {str(page_idx): {str(block_index): uuid}}
+    /// - docvortex_layout.pages: [{page_idx, width_pt, height_pt}, ...]
+    /// - mineru_page_types: {str(page_idx): {"page_type": ..., "page_type_secondary": ...}}
+    /// Returns the block ID map for use during block parsing.
+    /// </summary>
+    static Dictionary<(int page, int index), string>? ParseV4Extensions(
+        JsonElement root, StructureDocument minerUDoc, Dictionary<int, (double width, double height)> pageSizeMap)
+    {
+        if (!root.TryGetProperty("extensions", out var extElem) || extElem.ValueKind != JsonValueKind.Object)
+            return null;
+
+        Dictionary<(int, int), string>? v4BlockIdMap = null;
+
+        // 1. mineru_block_ids: {str(page_idx): {str(block_index): block_id}}
+        if (extElem.TryGetProperty("mineru_block_ids", out var blockIdsElem) && blockIdsElem.ValueKind == JsonValueKind.Object)
+        {
+            v4BlockIdMap = new Dictionary<(int, int), string>();
+            foreach (var pageEntry in blockIdsElem.EnumerateObject())
+            {
+                if (!int.TryParse(pageEntry.Name, out var pIdx) || pageEntry.Value.ValueKind != JsonValueKind.Object)
+                    continue;
+                foreach (var blockEntry in pageEntry.Value.EnumerateObject())
+                {
+                    if (!int.TryParse(blockEntry.Name, out var bIdx))
+                        continue;
+                    var uuid = blockEntry.Value.ValueKind == JsonValueKind.String ? blockEntry.Value.GetString() : null;
+                    if (!string.IsNullOrEmpty(uuid))
+                        v4BlockIdMap[(pIdx, bIdx)] = uuid;
+                }
+            }
+        }
+
+        // 2. docvortex_layout.pages: [{page_idx, width_pt, height_pt}, ...]
+        if (extElem.TryGetProperty("docvortex_layout", out var layoutElem) &&
+            layoutElem.ValueKind == JsonValueKind.Object &&
+            layoutElem.TryGetProperty("pages", out var layoutPages) &&
+            layoutPages.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var lp in layoutPages.EnumerateArray())
+            {
+                if (lp.ValueKind != JsonValueKind.Object) continue;
+                var pIdx = lp.TryGetProperty("page_idx", out var pi) ? GetIntValue(pi) : -1;
+                var w = lp.TryGetProperty("width_pt", out var wi) ? GetDoubleValue(wi) : 0.0;
+                var h = lp.TryGetProperty("height_pt", out var hi) ? GetDoubleValue(hi) : 0.0;
+                if (pIdx >= 0 && w > 0 && h > 0)
+                    pageSizeMap[pIdx] = (w, h);
+            }
+        }
+
+        // 3. mineru_page_types: {str(page_idx): {"page_type": ..., "page_type_secondary": ...}}
+        if (extElem.TryGetProperty("mineru_page_types", out var pageTypesElem) && pageTypesElem.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var ptEntry in pageTypesElem.EnumerateObject())
+            {
+                if (!int.TryParse(ptEntry.Name, out var pIdx) || ptEntry.Value.ValueKind != JsonValueKind.Object)
+                    continue;
+
+                var ptStr = ptEntry.Value.TryGetProperty("page_type", out var ptVal) && ptVal.ValueKind == JsonValueKind.String
+                    ? ptVal.GetString() : null;
+                if (!string.IsNullOrEmpty(ptStr))
+                    minerUDoc.PageTypes[pIdx + 1] = ParsePageType(ptStr);
+
+                var ptSecStr = ptEntry.Value.TryGetProperty("page_type_secondary", out var ptSecVal) && ptSecVal.ValueKind == JsonValueKind.String
+                    ? ptSecVal.GetString() : null;
+                if (!string.IsNullOrEmpty(ptSecStr))
+                    minerUDoc.PageTypeSecondaries[pIdx + 1] = ParsePageType(ptSecStr);
+            }
+        }
+
+        return v4BlockIdMap;
+    }
+
+    /// <summary>
+    /// Parses the old "pages" object format: { "0": [block, block, ...], "1": [...] }
+    /// </summary>
+    static void ParsePagesObject(JsonElement pagesElem, StructureDocument minerUDoc, Dictionary<int, (double width, double height)> pageSizeMap)
+    {
+        foreach (var pageEntry in pagesElem.EnumerateObject())
+        {
+            if (!int.TryParse(pageEntry.Name, out var pageNum))
+                continue;
+
+            var blocks = new List<MinerUBlock>();
+            var pageWidth = pageSizeMap.TryGetValue(pageNum, out var size) ? size.width : 0.0;
+            var pageHeight = pageSizeMap.TryGetValue(pageNum, out size) ? size.height : 0.0;
+
+            foreach (var blockElem in pageEntry.Value.EnumerateArray())
+            {
+                var block = MapMinerUBlockToMinerUBlock(blockElem, pageWidth, pageHeight);
+                blocks.Add(block);
+            }
+
+            minerUDoc.PagesBlocks[pageNum] = blocks;
+        }
+    }
+    /// <summary>
+    /// Parses the "pages" array format used by MinerU 4.0:
+    /// [{page_idx: 0, blocks: [{type, index, bbox, content}, ...]}, ...]
+    /// </summary>
+    static void ParsePagesArray(
+        JsonElement pagesElem, StructureDocument minerUDoc,
+        Dictionary<int, (double width, double height)> pageSizeMap,
+        bool isV4Schema, Dictionary<(int page, int index), string>? v4BlockIdMap)
+    {
+        foreach (var pageEntry in pagesElem.EnumerateArray())
+        {
+            // 3.x uses "page"; MinerU 4.0 uses "page_idx" (0-based)
+            JsonElement pageElem;
+            if (!pageEntry.TryGetProperty("page", out pageElem)
+                && !pageEntry.TryGetProperty("page_idx", out pageElem))
+                continue;
+
+            var pageNum = GetIntValue(pageElem);
+            if (pageNum < 0)
+                continue;
+
+            var blocks = new List<MinerUBlock>();
+            var pageWidth = pageSizeMap.TryGetValue(pageNum, out var size) ? size.width : 0.0;
+            var pageHeight = pageSizeMap.TryGetValue(pageNum, out size) ? size.height : 0.0;
+
+            if (pageEntry.TryGetProperty("blocks", out var blocksElem) && blocksElem.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var blockElem in blocksElem.EnumerateArray())
+                {
+                    var block = MapMinerUBlockToMinerUBlock(blockElem, pageWidth, pageHeight, isV4Schema);
+
+                    // MinerU 4.0 blocks don't have a "page" field; set it from the page context.
+                    // Without this, block.Page stays 0 and the 0->1 normalization
+                    // (which checks block.Page == kvp.Key) fails for pages > 0.
+                    if (isV4Schema)
+                        block.Page = pageNum;
+
+                    // MinerU 4.0: block_id is not on the block itself (strict schema);
+                    // look it up from extensions.mineru_block_ids using (page_idx, block.index).
+                    if (isV4Schema && string.IsNullOrEmpty(block.BlockId) && v4BlockIdMap != null)
+                    {
+                        var blockIndex = blockElem.TryGetProperty("index", out var idxElem) ? GetIntValue(idxElem) : -1;
+                        if (blockIndex >= 0 && v4BlockIdMap.TryGetValue((pageNum, blockIndex), out var uuid))
+                            block.BlockId = uuid;
+                    }
+
+                    blocks.Add(block);
+                }
+            }
+
+            if (blocks.Count > 0)
+            {
+                minerUDoc.PagesBlocks[pageNum] = blocks;
+                // MinerU 4.0 has no preproc/para/discarded distinction;
+                // the PDF overlay (BlockOverlayControl) binds to PreprocBlocks,
+                // so populate it with all blocks for v4.
+                if (isV4Schema)
+                    minerUDoc.PreprocBlocks[pageNum] = blocks;
+            }
+        }
+    }
+    /// <summary>
+    /// Parses the MinerU 3.x "pdf_info" array which contains per-page
+    /// preproc_blocks, para_blocks, and discarded_blocks with block_id matching.
+    /// </summary>
+    static void ParsePdfInfo(JsonElement pdfInfoElem, StructureDocument minerUDoc)
+    {
+        // Global ID counter to ensure unique block IDs across all pages
+        int globalNextBlockId = 1;
+
+        foreach (var pageInfoElem in pdfInfoElem.EnumerateArray())
+        {
+            // 3.x uses "page" (0-based); some versions use "page_idx"
+            JsonElement pageElem;
+            if (!pageInfoElem.TryGetProperty("page", out pageElem)
+                && !pageInfoElem.TryGetProperty("page_idx", out pageElem))
+                continue;
+
+            var pageNum = GetIntValue(pageElem);
+            if (pageNum < 0)
+                continue;
+
+            var pageWidth = pageInfoElem.TryGetProperty("page_size", out var psElem) && psElem.ValueKind == JsonValueKind.Array && psElem.GetArrayLength() >= 2
+                ? GetDoubleValue(psElem[0]) : 0.0;
+            var pageHeight = pageInfoElem.TryGetProperty("page_size", out var psElem2) && psElem2.ValueKind == JsonValueKind.Array && psElem2.GetArrayLength() >= 2
+                ? GetDoubleValue(psElem2[1]) : 0.0;
+
+            // Parse page_type if present (MinerU v2.3+)
+            var pageTypeStr = GetStringProperty(pageInfoElem, "page_type");
+            if (!string.IsNullOrEmpty(pageTypeStr))
+                minerUDoc.PageTypes[pageNum + 1] = ParsePageType(pageTypeStr);
+
+            // Parse optional page_type_secondary if present (MinerU v2.0+)
+            var pageTypeSecondaryStr = GetStringProperty(pageInfoElem, "page_type_secondary");
+            if (!string.IsNullOrEmpty(pageTypeSecondaryStr))
+                minerUDoc.PageTypeSecondaries[pageNum + 1] = ParsePageType(pageTypeSecondaryStr);
+
+            var blocks = new List<MinerUBlock>();
+            var paraBlocks = new List<MinerUBlock>();
+            var discardedBlocks = new List<MinerUBlock>();
+
+            // Build a lookup map from preproc_blocks by block_id BEFORE processing para_blocks.
+            var preprocBlockMap = new Dictionary<string, JsonElement>();
+            if (pageInfoElem.TryGetProperty("preproc_blocks", out var preprocMapElem) && preprocMapElem.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var preprocBlock in preprocMapElem.EnumerateArray())
+                {
+                    var preprocId = GetStringProperty(preprocBlock, "block_id");
+                    if (!string.IsNullOrEmpty(preprocId))
+                        preprocBlockMap[preprocId] = preprocBlock;
+                }
+            }
+
+            // Parse para_blocks
+            if (pageInfoElem.TryGetProperty("para_blocks", out var paraElem) && paraElem.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var blockElem in paraElem.EnumerateArray())
+                {
+                    var paraList = MapMinerUPageSectionToBlocks(blockElem, pageNum, pageWidth, pageHeight, preprocBlockMap);
+                    foreach (var b in paraList)
+                    {
+                        b.Id = globalNextBlockId++;
+                        b.BlockSource = MinerUConstants.SourcePara;
+                        paraBlocks.Add(b);
+                    }
+                }
+            }
+
+            // Parse discarded_blocks
+            if (pageInfoElem.TryGetProperty("discarded_blocks", out var discardedElem) && discardedElem.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var blockElem in discardedElem.EnumerateArray())
+                {
+                    var discList = MapMinerUPageSectionToBlocks(blockElem, pageNum, pageWidth, pageHeight);
+                    foreach (var b in discList)
+                    {
+                        b.Id = globalNextBlockId++;
+                        b.BlockSource = MinerUConstants.SourceDiscarded;
+                        discardedBlocks.Add(b);
+                    }
+                }
+            }
+            // Build reverse mapping: for each preproc_block, find which para/discarded block it belongs to
+            var pagePreprocBlocks = new List<MinerUBlock>();
+            if (pageInfoElem.TryGetProperty("preproc_blocks", out var preprocElem) && preprocElem.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var blockElem in preprocElem.EnumerateArray())
+                {
+                    var preprocList = MapMinerUPageSectionToBlocks(blockElem, pageNum, pageWidth, pageHeight);
+                    foreach (var preprocBlock in preprocList)
+                    {
+                        preprocBlock.Id = globalNextBlockId++;
+
+                        // Try to match using block_id first (exact match via block_ids array in para_blocks)
+                        MinerUBlock? matched = null;
+
+                        // Strategy 1: Check if any para_block's SourceBlockIds contains this preprocBlock's BlockId
+                        if (!string.IsNullOrEmpty(preprocBlock.BlockId))
+                        {
+                            foreach (var paraBlock in paraBlocks)
+                            {
+                                if (paraBlock.SourceBlockIds.Contains(preprocBlock.BlockId))
+                                {
+                                    matched = paraBlock;
+                                    break;
+                                }
+                            }
+
+                            if (matched == null)
+                            {
+                                foreach (var discBlock in discardedBlocks)
+                                {
+                                    if (discBlock.SourceBlockIds.Contains(preprocBlock.BlockId))
+                                    {
+                                        matched = discBlock;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+
+                        // Strategy 2: If block_id matching failed, fall back to bbox overlap
+                        bool isFallbackMatch = false;
+                        if (matched == null)
+                        {
+                            matched = FindMatchingBlock(preprocBlock, paraBlocks, discardedBlocks);
+                            isFallbackMatch = true;
+                        }
+                        else if (matched.SourceBlockIds.Count > 1)
+                        {
+                            isFallbackMatch = true;
+                        }
+
+                        if (matched != null)
+                        {
+                            preprocBlock.DestinationType = matched.BlockSource;
+                            preprocBlock.IsFallbackMatch = isFallbackMatch;
+                            matched.IsFallbackMatch = isFallbackMatch;
+                            preprocBlock.RelatedBlockIds.Add(matched.BlockId);
+                            matched.RelatedBlockIds.Add(preprocBlock.BlockId);
+                        }
+                        pagePreprocBlocks.Add(preprocBlock);
+                    }
+                }
+            }
+
+            // Store preproc_blocks for this page
+            if (pagePreprocBlocks.Count > 0)
+            {
+                if (!minerUDoc.PreprocBlocks.ContainsKey(pageNum))
+                    minerUDoc.PreprocBlocks[pageNum] = new List<MinerUBlock>();
+                minerUDoc.PreprocBlocks[pageNum].AddRange(pagePreprocBlocks);
+            }
+
+            blocks.AddRange(paraBlocks);
+            blocks.AddRange(discardedBlocks);
+
+            if (blocks.Count > 0)
+            {
+                if (!minerUDoc.PagesBlocks.ContainsKey(pageNum))
+                    minerUDoc.PagesBlocks[pageNum] = new List<MinerUBlock>();
+                minerUDoc.PagesBlocks[pageNum].AddRange(blocks);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Normalizes 0-based page indices to 1-based for PagesBlocks and PreprocBlocks.
+    /// MinerU may use 0-based page numbers (page_idx 0 = first page),
+    /// while PageViewModel.PageNumber is 1-based.
+    /// </summary>
+    static void NormalizePageIndices(StructureDocument minerUDoc)
+    {
+        if (minerUDoc.PagesBlocks.Count == 0 || !minerUDoc.PagesBlocks.ContainsKey(0))
+            return;
+
+        var normalizedPages = new Dictionary<int, List<MinerUBlock>>();
+        foreach (var kvp in minerUDoc.PagesBlocks)
+        {
+            int newKey = kvp.Key + 1;
+            foreach (var block in kvp.Value)
+            {
+                if (block.Page == kvp.Key)
+                    block.Page = newKey;
+            }
+            normalizedPages[newKey] = kvp.Value;
+        }
+        minerUDoc.PagesBlocks = normalizedPages;
+
+        // Also normalize PreprocBlocks
+        if (minerUDoc.PreprocBlocks.Count > 0)
+        {
+            var normalizedPreproc = new Dictionary<int, List<MinerUBlock>>();
+            foreach (var kvp in minerUDoc.PreprocBlocks)
+            {
+                int newKey = kvp.Key + 1;
+                foreach (var block in kvp.Value)
+                {
+                    if (block.Page == kvp.Key)
+                        block.Page = newKey;
+                }
+                normalizedPreproc[newKey] = kvp.Value;
+            }
+            minerUDoc.PreprocBlocks = normalizedPreproc;
+        }
+
+        // PageTypes and PageTypeSecondaries are already stored with 1-based keys
+        // (we add +1 at parse time), so no normalization needed here.
+    }
+
 
     /// <summary>
     /// Parses a MinerU result zip file and extracts MinerUDocument.
