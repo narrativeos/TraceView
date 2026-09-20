@@ -111,8 +111,11 @@ public sealed class PopoService : IDisposable
     /// </summary>
     /// <param name="zipPath">Path to the MinerU ZIP file.</param>
     /// <param name="model">Model name (e.g., "mineru", "monkeyocr"). Required by Popo API.</param>
+    /// <param name="docId">Optional document ID. Sent explicitly because MinerU 4.0 ZIPs
+    /// are flat (middle_json.json + images/ at the top level), so the Popo server
+    /// cannot infer the doc id from a single top-level directory anymore.</param>
     /// <param name="ct">Cancellation token.</param>
-    public async Task<string> SubmitTaskAsync(string zipPath, string model, CancellationToken ct = default)
+    public async Task<string> SubmitTaskAsync(string zipPath, string model, string? docId = null, CancellationToken ct = default)
     {
         if (!File.Exists(zipPath))
             throw new PopoServiceException($"ZIP file not found: {zipPath}");
@@ -137,6 +140,15 @@ public sealed class PopoService : IDisposable
                          $"Content-Disposition: form-data; name=\"model\"\r\n\r\n" +
                          $"{model}\r\n";
         bodyStream.Write(utf8.GetBytes(fieldBlock));
+
+        if (!string.IsNullOrEmpty(docId))
+        {
+            var docIdBlock = $"--{boundary}\r\n" +
+                             $"Content-Disposition: form-data; name=\"doc_id\"\r\n\r\n" +
+                             $"{docId}\r\n";
+            bodyStream.Write(utf8.GetBytes(docIdBlock));
+        }
+
         bodyStream.Write(utf8.GetBytes($"--{boundary}--\r\n"));
 
         using var content = new ByteArrayContent(bodyStream.ToArray());
@@ -525,9 +537,9 @@ public sealed class PopoService : IDisposable
         CancellationToken ct = default,
         string? projectPath = null)
     {
-        // Step 1: Submit task
+        // Step 1: Submit task (doc_id sent explicitly for MinerU 4.0 flat ZIPs)
         onProgress?.Invoke(PopoProcessStatus.Submitting, 10);
-        var taskId = await SubmitTaskAsync(zipPath, model, ct);
+        var taskId = await SubmitTaskAsync(zipPath, model, sourceDocId, ct);
 
         // Step 2: Poll until complete (progress from API parsed automatically, with timeout protection)
         onProgress?.Invoke(PopoProcessStatus.Queued, 15);
@@ -627,11 +639,36 @@ public sealed class PopoService : IDisposable
     #region MinerU Images Directory
 
     /// <summary>
+    /// Resolves the MinerU artifacts directory (the directory that contains images/)
+    /// for a candidate doc directory. Supports both the legacy 3.x layout
+    /// ({docDir}/hybrid_auto/images/) and the flat MinerU 4.0 layout
+    /// ({docDir}/images/). Returns null when no image files are found.
+    /// </summary>
+    private static string? ResolveArtifactsDirWithImages(string docDir)
+    {
+        // Legacy 3.x first (hybrid_auto/), then flat MinerU 4.0 (images/ at doc root).
+        foreach (var candidate in new[] { Path.Combine(docDir, "hybrid_auto"), docDir })
+        {
+            var imagesDir = Path.Combine(candidate, "images");
+            if (!Directory.Exists(imagesDir))
+                continue;
+            var imageFiles = Directory.GetFiles(imagesDir, "*.*", SearchOption.TopDirectoryOnly)
+                .Where(f => Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
+                .ToList();
+            if (imageFiles.Count > 0)
+                return candidate;
+        }
+        return null;
+    }
+
+    /// <summary>
     /// Finds the MinerU extracted images directory for a given document ID.
     /// Search order (optimized for speed):
-    ///   1. {projectPath}/mineru/{subDir}/hybrid_auto/ (project extraction)
-    ///   2. %LocalAppData%/Caly/mineru/{docId}/hybrid_auto/ (MinerUService cache)
-    ///   3. ~/.TraceView/{docId}/mineru/{subDir}/hybrid_auto/ (legacy cache)
+    ///   1. {projectPath}/mineru/{subDir}/ (project extraction)
+    ///   2. %LocalAppData%/Caly/mineru/{docId}/ (MinerUService cache)
+    ///   3. ~/.TraceView/{docId}/mineru/{subDir}/ (legacy cache)
+    /// Each candidate supports both the legacy 3.x layout ({dir}/hybrid_auto/images/)
+    /// and the flat MinerU 4.0 layout ({dir}/images/).
     /// No AllDirectories fallback to avoid scanning thousands of files.
     /// </summary>
     /// <param name="docId">Document ID.</param>
@@ -654,52 +691,31 @@ public sealed class PopoService : IDisposable
                     var subDirs = Directory.GetDirectories(mineruDir);
                     System.Diagnostics.Debug.WriteLine($"[Popo] Found {subDirs.Length} subdirectories in {mineruDir}");
 
-                    // Scan all subdirectories for hybrid_auto (ZIP internal name may differ from docId)
+                    // Scan all subdirectories (ZIP internal name may differ from docId)
                     foreach (var subDir in subDirs)
                     {
                         System.Diagnostics.Debug.WriteLine($"[Popo] Checking subDir: {subDir}");
-                        var hybridAutoDir = Path.Combine(subDir, "hybrid_auto");
-                        if (Directory.Exists(hybridAutoDir))
+                        var artifactsDir = ResolveArtifactsDirWithImages(subDir);
+                        if (artifactsDir is not null)
                         {
-                            System.Diagnostics.Debug.WriteLine($"[Popo] Found hybrid_auto: {hybridAutoDir}");
-                            var imagesDir = Path.Combine(hybridAutoDir, "images");
-                            if (Directory.Exists(imagesDir))
-                            {
-                                var imageFiles = Directory.GetFiles(imagesDir, "*.*", SearchOption.TopDirectoryOnly)
-                                    .Where(f => Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
-                                    .ToList();
-                                System.Diagnostics.Debug.WriteLine($"[Popo] Found {imageFiles.Count} image files in {imagesDir}");
-                                if (imageFiles.Count > 0)
-                                {
-                                    System.Diagnostics.Debug.WriteLine($"[Popo] SUCCESS: Returning {hybridAutoDir}");
-                                    return hybridAutoDir;
-                                }
-                            }
+                            System.Diagnostics.Debug.WriteLine($"[Popo] SUCCESS: Returning {artifactsDir}");
+                            return artifactsDir;
                         }
                     }
                 }
             }
 
-            // 2: Check MinerUService cache directory %LocalAppData%/Caly/mineru/{docId}/hybrid_auto/
+            // 2: Check MinerUService cache directory %LocalAppData%/Caly/mineru/{docId}/
             // This is where MinerUService extracts the ZIP files.
             {
                 var minerUCacheBase = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-                var minerUCacheDir = Path.Combine(minerUCacheBase, "Caly", "mineru", docId, "hybrid_auto");
+                var minerUCacheDir = Path.Combine(minerUCacheBase, "Caly", "mineru", docId);
                 System.Diagnostics.Debug.WriteLine($"[Popo] Searching MinerUService cache: {minerUCacheDir}, exists={Directory.Exists(minerUCacheDir)}");
-                if (Directory.Exists(minerUCacheDir))
+                var cacheArtifactsDir = ResolveArtifactsDirWithImages(minerUCacheDir);
+                if (cacheArtifactsDir is not null)
                 {
-                    var imagesDir = Path.Combine(minerUCacheDir, "images");
-                    if (Directory.Exists(imagesDir))
-                    {
-                        var imageFiles = Directory.GetFiles(imagesDir, "*.*", SearchOption.TopDirectoryOnly)
-                            .Where(f => Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
-                            .ToList();
-                        if (imageFiles.Count > 0)
-                        {
-                            System.Diagnostics.Debug.WriteLine($"[Popo] SUCCESS (MinerUService cache): Returning {minerUCacheDir}");
-                            return minerUCacheDir;
-                        }
-                    }
+                    System.Diagnostics.Debug.WriteLine($"[Popo] SUCCESS (MinerUService cache): Returning {cacheArtifactsDir}");
+                    return cacheArtifactsDir;
                 }
             }
 
@@ -712,21 +728,11 @@ public sealed class PopoService : IDisposable
             {
                 foreach (var subDir in Directory.GetDirectories(mineruCacheDir))
                 {
-                    var hybridAutoDir = Path.Combine(subDir, "hybrid_auto");
-                    if (Directory.Exists(hybridAutoDir))
+                    var legacyArtifactsDir = ResolveArtifactsDirWithImages(subDir);
+                    if (legacyArtifactsDir is not null)
                     {
-                        var imagesDir = Path.Combine(hybridAutoDir, "images");
-                        if (Directory.Exists(imagesDir))
-                        {
-                            var imageFilesInHybrid = Directory.GetFiles(imagesDir, "*.*", SearchOption.TopDirectoryOnly)
-                                .Where(f => Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
-                                .ToList();
-                            if (imageFilesInHybrid.Count > 0)
-                            {
-                                System.Diagnostics.Debug.WriteLine($"[Popo] SUCCESS (legacy cache): Returning {hybridAutoDir}");
-                                return hybridAutoDir;
-                            }
-                        }
+                        System.Diagnostics.Debug.WriteLine($"[Popo] SUCCESS (legacy cache): Returning {legacyArtifactsDir}");
+                        return legacyArtifactsDir;
                     }
                 }
             }

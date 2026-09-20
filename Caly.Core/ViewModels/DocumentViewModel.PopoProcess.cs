@@ -243,6 +243,10 @@ public sealed partial class DocumentViewModel : PopoService.IPopoProgressCallbac
         // synchronous early-return (e.g., missing ZIP, health check failure).
         await Task.Yield();
 
+        // Temp ZIP created to inject the source PDF (MinerU 4.0 ZIPs no longer
+        // embed it); cleaned up in the finally block below.
+        string? tempZipPath = null;
+
         try
         {
             // Find the MinerU ZIP in the project
@@ -270,8 +274,21 @@ public sealed partial class DocumentViewModel : PopoService.IPopoProgressCallbac
 
 
             var settings = _settingsService.GetSettings();
+
+            // MinerU 4.0 ZIPs no longer embed the source PDF; inject it so Popo
+            // can render page images for its VLM phases (text continuation,
+            // title hierarchy, image-text association).
+            var uploadZipPath = zipPath;
+            if (LocalPath is not null
+                && Path.GetExtension(LocalPath).Equals(".pdf", StringComparison.OrdinalIgnoreCase)
+                && File.Exists(LocalPath))
+            {
+                tempZipPath = MinerUJsonService.EnsureZipContainsPdf(zipPath, LocalPath, docId);
+                uploadZipPath = tempZipPath;
+            }
+
             var result = await service.ProcessAsync(
-                zipPath,
+                uploadZipPath,
                 docId,
                 settings.PopoModel,
                 OnPopoProgress,
@@ -442,6 +459,11 @@ public sealed partial class DocumentViewModel : PopoService.IPopoProgressCallbac
             // The column will remain open until the user manually toggles it off
             _popoCts?.Dispose();
             _popoCts = null;
+            // Remove the temp ZIP created for PDF injection (best effort)
+            if (tempZipPath is not null)
+            {
+                try { File.Delete(tempZipPath); } catch { /* best effort */ }
+            }
         }
     }
 

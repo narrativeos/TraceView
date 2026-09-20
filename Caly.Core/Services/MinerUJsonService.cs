@@ -146,6 +146,56 @@ public static class MinerUJsonService
         return zipFiles.Length > 0 ? zipFiles[0] : null;
     }
 
+    /// <summary>
+    /// Returns zipPath if it already contains a PDF entry; otherwise creates a
+    /// temporary copy of the ZIP with the source PDF added as {docId}_origin.pdf
+    /// and returns its path.
+    /// MinerU 4.0 result ZIPs no longer embed the source PDF, but Popo needs it
+    /// to render page images for its VLM phases (text continuation, title
+    /// hierarchy, image-text association). Popo prefers PDFs whose name contains
+    /// "_origin" when locating the source PDF.
+    /// The caller is responsible for deleting the returned temp file when it
+    /// differs from zipPath.
+    /// </summary>
+    /// <param name="zipPath">Path to the MinerU result ZIP.</param>
+    /// <param name="pdfPath">Path to the source PDF file.</param>
+    /// <param name="docId">Document ID used for the injected PDF entry name.</param>
+    /// <returns>Path to the ZIP to upload (original or temp copy with PDF).</returns>
+    public static string EnsureZipContainsPdf(string zipPath, string pdfPath, string docId)
+    {
+        if (!File.Exists(zipPath) || !File.Exists(pdfPath))
+            return zipPath;
+
+        using (var checkZip = ZipFile.OpenRead(zipPath))
+        {
+            if (checkZip.Entries.Any(e => e.Name.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)))
+                return zipPath;
+        }
+
+        var tempZipPath = Path.Combine(Path.GetTempPath(), $"mineru_popo_{Guid.NewGuid():N}.zip");
+        using (var source = ZipFile.OpenRead(zipPath))
+        using (var targetArchive = new ZipArchive(new FileStream(tempZipPath, FileMode.Create), ZipArchiveMode.Create))
+        {
+            foreach (var entry in source.Entries)
+            {
+                var newEntry = targetArchive.CreateEntry(entry.FullName, CompressionLevel.Optimal);
+                using var sourceStream = entry.Open();
+                using var targetStream = newEntry.Open();
+                sourceStream.CopyTo(targetStream);
+            }
+
+            var pdfEntry = targetArchive.CreateEntry($"{docId}_origin.pdf", CompressionLevel.NoCompression);
+            using (var pdfStream = pdfEntry.Open())
+            using (var fileStream = File.OpenRead(pdfPath))
+            {
+                fileStream.CopyTo(pdfStream);
+            }
+        }
+
+        System.Diagnostics.Debug.WriteLine($"[MinerU] Injected source PDF into temp ZIP for Popo: {tempZipPath}");
+        return tempZipPath;
+    }
+
     #region MinerU Output Parsing
 
     /// <summary>
