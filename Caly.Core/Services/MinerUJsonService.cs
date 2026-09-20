@@ -433,8 +433,15 @@ public static class MinerUJsonService
 
                     // MinerU 4.0: no preproc/para distinction, so link each block to itself
                     // to enable connection lines between PDF overlay and MinerU column.
-                    if (isV4Schema && !string.IsNullOrEmpty(block.BlockId))
-                        block.RelatedBlockIds.Add(block.BlockId);
+                    // DestinationType must be set for ConnectionLinesControl to draw lines
+                    // (it skips blocks with empty DestinationType).
+                    if (isV4Schema)
+                    {
+                        block.DestinationType = MinerUConstants.SourcePara;
+                        block.BlockSource = MinerUConstants.SourcePara;
+                        if (!string.IsNullOrEmpty(block.BlockId))
+                            block.RelatedBlockIds.Add(block.BlockId);
+                    }
 
                     blocks.Add(block);
                 }
