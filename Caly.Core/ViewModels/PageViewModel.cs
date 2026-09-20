@@ -94,13 +94,19 @@ public sealed partial class PageViewModel : ViewModelBase, IDisposable
     /// <summary>
     /// Page type classification from MinerU's page-level analysis (cover, toc, body, etc.).
     /// </summary>
-    [ObservableProperty] private PageType _minerUPageType = PageType.unknown;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(PageTypeBadgeText))]
+    [NotifyPropertyChangedFor(nameof(HasPageType))]
+    private PageType _minerUPageType = PageType.unknown;
 
     /// <summary>
     /// Secondary page type classification from MinerU's page-level analysis (MinerU v2.0+).
     /// Used for mixed-type pages (e.g., toc + copyright).
     /// </summary>
-    [ObservableProperty] private PageType _minerUPageTypeSecondary = PageType.unknown;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(PageTypeBadgeText))]
+    [NotifyPropertyChangedFor(nameof(HasPageTypeSecondary))]
+    private PageType _minerUPageTypeSecondary = PageType.unknown;
 
     /// <summary>
     /// Display name for the page type (Chinese).

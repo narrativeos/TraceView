@@ -313,7 +313,14 @@ public static class MinerUJsonService
                         }
 
                         if (blocks.Count > 0)
+                        {
                             minerUDoc.PagesBlocks[pageNum] = blocks;
+                            // MinerU 4.0 has no preproc/para/discarded distinction;
+                            // the PDF overlay (BlockOverlayControl) binds to PreprocBlocks,
+                            // so populate it with all blocks for v4.
+                            if (isV4Schema)
+                                minerUDoc.PreprocBlocks[pageNum] = blocks;
+                        }
                     }
                 }
             }
@@ -922,6 +929,15 @@ public static class MinerUJsonService
                     if (!string.IsNullOrEmpty(html))
                     {
                         parts.AddRange(ParseHtmlTableRows(html));
+                    }
+                }
+                else
+                {
+                    // For image spans (type="image_body"), extract image_path
+                    var imagePath = GetStringProperty(spanElem, "image_path");
+                    if (!string.IsNullOrEmpty(imagePath))
+                    {
+                        parts.Add(imagePath);
                     }
                 }
             }
