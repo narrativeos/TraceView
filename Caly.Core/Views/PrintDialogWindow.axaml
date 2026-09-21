@@ -36,7 +36,7 @@
             <Button Grid.Column="1"
                     Margin="6,0,0,0"
                     VerticalAlignment="Stretch"
-                    ToolTip.Tip="Refresh printer list"
+                    ToolTip.Tip="刷新打印机列表"
                     IsEnabled="{Binding !IsPrinting}"
                     Command="{Binding LoadPrintersCommand}">
                 <PathIcon Width="14" Height="14" Data="{StaticResource arrow_sync_regular}"/>

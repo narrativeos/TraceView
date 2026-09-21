@@ -34,7 +34,7 @@
                                  VerticalAlignment="Bottom"
                                  HorizontalAlignment="Stretch"
                                  Background="Transparent">
-						<ToolTip.Tip>Indexing...</ToolTip.Tip>
+						<ToolTip.Tip>正在建立索引...</ToolTip.Tip>
                     </ProgressBar>
 
 					<TextBlock DockPanel.Dock="Top"

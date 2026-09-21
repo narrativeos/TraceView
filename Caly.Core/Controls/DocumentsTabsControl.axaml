@@ -70,7 +70,7 @@
                                       Height="17"
                                       Classes.opened="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).IsDocumentPaneOpen}"
 									  Classes.closed="{Binding !$parent[UserControl].((vm:MainViewModel)DataContext).IsDocumentPaneOpen}">
-								<ToolTip.Tip>Toggle Sidebar Menu</ToolTip.Tip>
+								<ToolTip.Tip>切换侧边栏</ToolTip.Tip>
 							</PathIcon>
 						</ToggleButton>
 
@@ -82,8 +82,8 @@
                                 Command="{Binding GoToPreviousPageCommand}">
                             <PathIcon Width="14"
                                       Height="14"
-                                      Data="{StaticResource chevron_up_regular}">
-                                <ToolTip.Tip>Previous Page</ToolTip.Tip>
+                                      Data="{StaticResource chevron_left_regular}">
+                                <ToolTip.Tip>上一页</ToolTip.Tip>
                             </PathIcon>
                         </Button>
 
@@ -94,8 +94,8 @@
                                 Command="{Binding GoToNextPageCommand}">
                             <PathIcon Width="14"
                                       Height="14"
-                                      Data="{StaticResource chevron_down_regular}">
-                                <ToolTip.Tip>Next Page</ToolTip.Tip>
+                                      Data="{StaticResource chevron_right_regular}">
+                                <ToolTip.Tip>下一页</ToolTip.Tip>
                             </PathIcon>
                         </Button>
 
@@ -142,7 +142,7 @@
 							<PathIcon Width="17"
                                       Height="17"
                                       Data="{StaticResource arrow_rotate_counterclockwise_regular}">
-								<ToolTip.Tip>Rotate Pages Counterclockwise</ToolTip.Tip>
+								<ToolTip.Tip>逆时针旋转页面</ToolTip.Tip>
 							</PathIcon>
 						</Button>
 
@@ -154,7 +154,7 @@
 							<PathIcon Width="17"
                                       Height="17"
                                       Data="{StaticResource arrow_rotate_clockwise_regular}">
-								<ToolTip.Tip>Rotate Pages Clockwise</ToolTip.Tip>
+								<ToolTip.Tip>顺时针旋转页面</ToolTip.Tip>
 							</PathIcon>
 						</Button>
 
@@ -169,7 +169,7 @@
 							<PathIcon Width="17"
 									  Height="17"
 									  Data="{StaticResource zoom_out_regular}">
-								<ToolTip.Tip>Zoom Out</ToolTip.Tip>
+								<ToolTip.Tip>缩小</ToolTip.Tip>
 							</PathIcon>
 						</Button>
 
@@ -181,7 +181,7 @@
 							<PathIcon Width="17"
 									  Height="17"
 									  Data="{StaticResource zoom_in_regular}">
-								<ToolTip.Tip>Zoom In</ToolTip.Tip>
+								<ToolTip.Tip>放大</ToolTip.Tip>
 							</PathIcon>
 						</Button>
 
@@ -194,7 +194,7 @@
 							<PathIcon Width="17"
 									  Height="17"
 									  Data="{StaticResource fit_to_width_regular}">
-								<ToolTip.Tip>Fit to Page Width</ToolTip.Tip>
+								<ToolTip.Tip>适应页面宽度</ToolTip.Tip>
 							</PathIcon>
 						</Button>
 
@@ -216,7 +216,7 @@
 							<PathIcon Width="17"
 									  Height="17"
 									  Data="{StaticResource mineru_blocks_regular}">
-								<ToolTip.Tip>Toggle MinerU Blocks</ToolTip.Tip>
+								<ToolTip.Tip>切换 MinerU 块列</ToolTip.Tip>
 							</PathIcon>
 						</ToggleButton>
 
@@ -230,7 +230,7 @@
 								<PathIcon Width="17"
 										  Height="17"
 										  Data="{StaticResource popo_blocks_regular}">
-									<ToolTip.Tip>Toggle Popo Blocks</ToolTip.Tip>
+									<ToolTip.Tip>切换 Popo 块列</ToolTip.Tip>
 								</PathIcon>
 							</ToggleButton>
 
@@ -244,7 +244,7 @@
                                 <PathIcon Width="17"
                                           Height="17"
                                           Data="{StaticResource semantic_analysis_regular}">
-                                    <ToolTip.Tip>Toggle Semantic Analysis</ToolTip.Tip>
+                                    <ToolTip.Tip>切换语义分析列</ToolTip.Tip>
                                 </PathIcon>
                             </ToggleButton>
 
@@ -259,7 +259,7 @@
                                 <PathIcon Width="17"
                                           Height="17"
                                           Data="{StaticResource map_regular}">
-                                    <ToolTip.Tip>Toggle Geo View</ToolTip.Tip>
+                                    <ToolTip.Tip>切换地理视图列</ToolTip.Tip>
                                 </PathIcon>
                             </ToggleButton>
 
@@ -273,8 +273,8 @@
                                         IsVisible="{Binding HasSemanticData}">
                                 <PathIcon Width="17"
                                           Height="17"
-                                          Data="{StaticResource star_add_regular}">
-                                    <ToolTip.Tip>Toggle Enriched Entities</ToolTip.Tip>
+                                          Data="{StaticResource star_regular}">
+                                    <ToolTip.Tip>切换富化实体列</ToolTip.Tip>
                                 </PathIcon>
                             </ToggleButton>
 
@@ -288,8 +288,8 @@
                                         IsVisible="{Binding HasSemanticData}">
                                 <PathIcon Width="17"
                                           Height="17"
-                                          Data="{StaticResource bookmark_regular}">
-                                    <ToolTip.Tip>Toggle Term Discovery</ToolTip.Tip>
+                                          Data="{StaticResource book_regular}">
+                                    <ToolTip.Tip>切换术语发现列</ToolTip.Tip>
                                 </PathIcon>
                             </ToggleButton>
 
@@ -304,7 +304,7 @@
 							<PathIcon Width="17"
 									  Height="17"
 									  Data="{StaticResource document_search_regular}">
-								<ToolTip.Tip>MinerU-Popo 对齐报告</ToolTip.Tip>
+								<ToolTip.Tip>生成 MinerU-Popo 对齐报告</ToolTip.Tip>
 							</PathIcon>
 						</Button>
 
@@ -340,7 +340,7 @@
                                 IsVisible="{Binding HasSemanticData}">
 							<PathIcon Width="17"
 									  Height="17"
-									  Data="{StaticResource bookmark_regular}"
+									  Data="{StaticResource book_star_regular}"
 									  Opacity="{Binding HasTermData, Converter={StaticResource CompletedToOpacityConverter}}">
 								<ToolTip.Tip>
 									<TextBlock Text="{Binding TermButtonTooltip}"/>
@@ -359,7 +359,7 @@
                                 IsVisible="{Binding HasSemanticData}">
 							<PathIcon Width="17"
 									  Height="17"
-									  Data="{StaticResource arrow_sync_regular}"
+									  Data="{StaticResource star_add_regular}"
 									  Opacity="{Binding HasEnrichedData, Converter={StaticResource CompletedToOpacityConverter}}">
 								<ToolTip.Tip>
 									<TextBlock Text="{Binding EnrichButtonTooltip}"/>
@@ -378,7 +378,7 @@
                                 IsEnabled="{Binding HasSemanticResults}">
 							<PathIcon Width="17"
 									  Height="17"
-									  Data="{StaticResource map_regular}"
+									  Data="{StaticResource map_add_regular}"
 									  Opacity="{Binding IsGeoCompleted, Converter={StaticResource CompletedToOpacityConverter}}">
 								<ToolTip.Tip>
 									<TextBlock Text="{Binding GeoButtonTooltip}"/>
@@ -450,7 +450,7 @@
 							<PathIcon Width="17"
 									  Height="17"
 									  Data="{StaticResource print_regular}">
-								<ToolTip.Tip>Print</ToolTip.Tip>
+								<ToolTip.Tip>打印</ToolTip.Tip>
 							</PathIcon>
 						</Button>
 
@@ -2670,11 +2670,8 @@
 											<TabItem.Header>
 												<PathIcon Width="17"
 														  Height="17"
-														  Data="{StaticResource copy_regular}">
-													<ToolTip.Tip>Thumbnails</ToolTip.Tip>
-													<PathIcon.RenderTransform>
-														<ScaleTransform ScaleY="-1"/>
-													</PathIcon.RenderTransform>
+														  Data="{StaticResource thumbnail_regular}">
+													<ToolTip.Tip>缩略图</ToolTip.Tip>
 												</PathIcon>
 											</TabItem.Header>
 											<Grid>
@@ -2750,7 +2747,7 @@
 												<PathIcon Width="17"
 														  Height="17"
 														  Data="{StaticResource bookmark_regular}">
-													<ToolTip.Tip>Bookmarks</ToolTip.Tip>
+													<ToolTip.Tip>书签</ToolTip.Tip>
 												</PathIcon>
 											</TabItem.Header>
 
@@ -2768,7 +2765,7 @@
 												<PathIcon Width="17"
 														  Height="17"
 														  Data="{StaticResource document_search_regular}">
-													<ToolTip.Tip>Search</ToolTip.Tip>
+													<ToolTip.Tip>搜索</ToolTip.Tip>
 												</PathIcon>
 											</TabItem.Header>
 
@@ -2781,7 +2778,7 @@
 												<PathIcon Width="17"
 														  Height="17"
 														  Data="{StaticResource info_regular}">
-													<ToolTip.Tip>Document Properties</ToolTip.Tip>
+													<ToolTip.Tip>文档属性</ToolTip.Tip>
 												</PathIcon>
 											</TabItem.Header>
 
@@ -2797,7 +2794,7 @@
                                                 <PathIcon Width="17"
                                                           Height="17"
                                                           Data="{StaticResource attach_text_regular}">
-                                                    <ToolTip.Tip>Embedded Files</ToolTip.Tip>
+                                                    <ToolTip.Tip>嵌入文件</ToolTip.Tip>
                                                 </PathIcon>
                                             </TabItem.Header>
                                             
@@ -2858,8 +2855,8 @@
                                             <TabItem.Header>
                                                 <PathIcon Width="17"
                                                           Height="17"
-                                                          Data="{StaticResource question_regular}">
-                                                    <ToolTip.Tip>AI Analysis</ToolTip.Tip>
+                                                          Data="{StaticResource nlp_process_regular}">
+                                                    <ToolTip.Tip>AI 分析</ToolTip.Tip>
                                                 </PathIcon>
                                             </TabItem.Header>
 

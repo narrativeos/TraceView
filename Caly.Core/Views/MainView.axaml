@@ -54,7 +54,7 @@
                           Height="15"
                           Data="{StaticResource settings_regular}"
                           VerticalAlignment="Center">
-					<ToolTip.Tip>Settings</ToolTip.Tip>
+					<ToolTip.Tip>设置</ToolTip.Tip>
 				</PathIcon>
 			</ToggleButton>
 			<TextBlock Text="{Binding SelectedDocument.InteractiveActionOver, FallbackValue=' '}" VerticalAlignment="Center"/>

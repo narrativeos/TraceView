@@ -265,7 +265,7 @@ public sealed partial class DocumentViewModel
             if (HasGeoLibreFile)
                 return "GeoLibre JSON 已导出 · 点击重新导出";
             if (_geoLibreCts is not null)
-                return "导出 GeoLibre JSON 中...";
+                return "GeoLibre JSON 导出中...";
             return "导出 GeoLibre JSON";
         }
     }
