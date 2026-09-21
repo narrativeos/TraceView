@@ -93,7 +93,9 @@ public partial class AnalysisTreeNode : ObservableObject
     }
 
     /// <summary>
-    /// All original block IDs that compose this node.
+    /// Popo internal block sequence numbers that compose this node.
+    /// In popo_result.json this is the "popo_block_ids" field (List[int]) since
+    /// commit 5bdb8ee; older artifacts store it under "block_ids".
     /// </summary>
     private List<int> _blockIds = new();
     public List<int> BlockIds
@@ -105,7 +107,8 @@ public partial class AnalysisTreeNode : ObservableObject
     /// <summary>
     /// Source block IDs (UUID strings) from MinerU middle.json that compose this node.
     /// Used for tracing back to the original MinerU blocks for cross-referencing.
-    /// Corresponds to the source_block_ids field in popo_result.json.
+    /// In popo_result.json this is the "block_ids" field (List[str]) since commit
+    /// 5bdb8ee; older artifacts store it under "source_block_ids".
     /// </summary>
     private List<string> _sourceBlockIds = new();
     public List<string> SourceBlockIds

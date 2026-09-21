@@ -362,6 +362,74 @@ public class PopoJsonServiceTests
     }
 
     [Fact]
+    public void LoadTreeJson_ParsesNewFormatBlockIds()
+    {
+        // popo commit 5bdb8ee: "block_ids" now holds MinerU UUIDs (List[str]) and the
+        // popo internal sequence numbers moved to "popo_block_ids" (List[int]).
+        var tempDir = Path.Combine(Path.GetTempPath(), "caly-popo-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+
+        var jsonPath = Path.Combine(tempDir, "tree.json");
+        File.WriteAllText(jsonPath, """
+        {
+          "type": "root",
+          "title": "",
+          "metadata": "",
+          "content": "",
+          "level": 0,
+          "location": [],
+          "block_ids": [],
+          "children": [
+            {
+              "type": "table_data",
+              "title": "3.绕组连同套管的直流电阻",
+              "metadata": "",
+              "content": "",
+              "level": 1,
+              "location": [
+                {
+                  "bbox": [0.1, 0.1, 0.5, 0.2],
+                  "page": 1
+                }
+              ],
+              "popo_block_ids": [8, 10],
+              "block_ids": ["mineru-8", "mineru-10"],
+              "node_id": "9c1e0000-0000-0000-0000-000000000000",
+              "children": []
+            }
+          ]
+        }
+        """);
+
+        try
+        {
+            var result = PopoJsonService.LoadTreeJson(jsonPath);
+
+            Assert.NotNull(result);
+            var table = result.Children[0];
+            Assert.Equal("table_data", table.Type);
+
+            // NEW format: block_ids (string) -> SourceBlockIds
+            Assert.Equal(2, table.SourceBlockIds.Count);
+            Assert.Equal("mineru-8", table.SourceBlockIds[0]);
+            Assert.Equal("mineru-10", table.SourceBlockIds[1]);
+
+            // NEW format: popo_block_ids (int) -> BlockIds
+            Assert.Equal(2, table.BlockIds.Count);
+            Assert.Equal(8, table.BlockIds[0]);
+            Assert.Equal(10, table.BlockIds[1]);
+
+            // node_id is read verbatim (uuid5 in the new format).
+            Assert.Equal("9c1e0000-0000-0000-0000-000000000000", table.NodeId);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+                Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void BuildStructureDocumentFromTree_PopulatesSourceBlockIdsInBlocks()
     {
         var treeRoot = new Caly.Core.Models.AnalysisTreeNode
@@ -410,6 +478,109 @@ public class PopoJsonServiceTests
         Assert.Equal(2, block.SourceBlockIds.Count);
         Assert.Equal("uuid-1111-2222-3333", block.SourceBlockIds[0]);
         Assert.Equal("uuid-4444-5555-6666", block.SourceBlockIds[1]);
+    }
+
+    [Fact]
+    public void PopulateTreeBlockIds_MinerU40_PopulatesSourceBlockIdsFromMineruBlockIds()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "caly-popo-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+
+        // MinerU 4.0 middle.json: schema "docvortex.middle", a "pages" array with
+        // normalized (0-1) bboxes, and block_id UUIDs in extensions.mineru_block_ids
+        // keyed by (page_idx, block index).
+        var middleJsonPath = Path.Combine(tempDir, "middle_json.json");
+        File.WriteAllText(middleJsonPath, """
+        {
+          "schema": "docvortex.middle",
+          "schema_version": "2.0",
+          "pages": [
+            {
+              "page_idx": 0,
+              "blocks": [
+                { "type": "text", "index": 0, "bbox": [0.09, 0.19, 0.45, 0.22], "content": [] },
+                { "type": "image", "index": 1, "bbox": [0.09, 0.36, 0.26, 0.40], "content": [] }
+              ]
+            }
+          ],
+          "extensions": {
+            "mineru_block_ids": {
+              "0": {
+                "0": "uuid-page0-index0",
+                "1": "uuid-page0-index1"
+              }
+            }
+          }
+        }
+        """);
+
+        // A Popo tree node whose location (1-based page, normalized bbox) overlaps
+        // block index 0 but not block index 1.
+        var treeRoot = new Caly.Core.Models.AnalysisTreeNode { Type = "root", Level = 0 };
+        var node = new Caly.Core.Models.AnalysisTreeNode
+        {
+            Type = "text",
+            Title = "Section 1",
+            Content = "Content here",
+            Level = 1
+        };
+        node.Location.Add(new Caly.Core.Models.LocationEntry
+        {
+            Bbox = new Avalonia.Rect(0.10, 0.195, 0.30, 0.02), // overlaps block 0 [0.09,0.19,0.45,0.22]
+            Page = 1 // 1-based -> page_idx 0
+        });
+        treeRoot.Children.Add(node);
+
+        var doc = PopoJsonService.BuildStructureDocumentFromTree(treeRoot, "test_doc");
+        Assert.NotNull(doc);
+
+        PopoJsonService.PopulateTreeBlockIds(doc, tempDir);
+
+        Assert.Contains("uuid-page0-index0", node.SourceBlockIds);
+        Assert.DoesNotContain("uuid-page0-index1", node.SourceBlockIds);
+    }
+
+    [Fact]
+    public void PopulateTreeBlockIds_MinerU40_NoMatch_LeavesSourceBlockIdsEmpty()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "caly-popo-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+
+        var middleJsonPath = Path.Combine(tempDir, "middle_json.json");
+        File.WriteAllText(middleJsonPath, """
+        {
+          "schema": "docvortex.middle",
+          "schema_version": "2.0",
+          "pages": [
+            {
+              "page_idx": 0,
+              "blocks": [
+                { "type": "text", "index": 0, "bbox": [0.09, 0.19, 0.45, 0.22], "content": [] }
+              ]
+            }
+          ],
+          "extensions": {
+            "mineru_block_ids": { "0": { "0": "uuid-page0-index0" } }
+          }
+        }
+        """);
+
+        // Node on a different page (page 2 -> page_idx 1) so no block matches.
+        var treeRoot = new Caly.Core.Models.AnalysisTreeNode { Type = "root", Level = 0 };
+        var node = new Caly.Core.Models.AnalysisTreeNode { Type = "text", Level = 1 };
+        node.Location.Add(new Caly.Core.Models.LocationEntry
+        {
+            Bbox = new Avalonia.Rect(0.10, 0.195, 0.30, 0.02),
+            Page = 2
+        });
+        treeRoot.Children.Add(node);
+
+        var doc = PopoJsonService.BuildStructureDocumentFromTree(treeRoot, "test_doc");
+        Assert.NotNull(doc);
+
+        PopoJsonService.PopulateTreeBlockIds(doc, tempDir);
+
+        Assert.Empty(node.SourceBlockIds);
     }
 
     #endregion

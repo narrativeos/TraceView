@@ -199,6 +199,11 @@ public sealed partial class DocumentViewModel
         OnPropertyChanged(nameof(HasPopoTree));
         OnPropertyChanged(nameof(CanGenerateToc));
         OnPropertyChanged(nameof(CanGenerateReferences));
+
+        // Re-link semantic results to the (possibly new) Popo tree so the
+        // Popo -> Semantic connection lines are drawn even when the Popo tree
+        // is (re)loaded after the semantic results.
+        LinkSemanticResultsToPopoNodes();
     }
 
     [RelayCommand]

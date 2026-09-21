@@ -627,6 +627,11 @@ public sealed partial class DocumentViewModel
             foreach (var b in value.Blocks)
                 _semanticBlockViewModels.Add(new SemanticBlockViewModel(b));
         }
+
+        // Link each semantic result to its Popo node BEFORE notifying the UI, so the
+        // Popo -> Semantic connection lines are drawn on the next render.
+        LinkSemanticResultsToPopoNodes();
+
         // Notify dependent properties so the UI updates correctly
         OnPropertyChanged(nameof(SemanticNodeCount));
         OnPropertyChanged(nameof(SemanticEntityCount));
@@ -638,6 +643,88 @@ public sealed partial class DocumentViewModel
         OnPropertyChanged(nameof(TermStatusText));
         // No need to raise PropertyChanged for SemanticBlockViewModels: the collection
         // itself raises CollectionChanged events (Reset + Add) that the ItemsControl listens to.
+    }
+
+    /// <summary>
+    /// Links each SemanticBlockResult to the Popo tree node that shares one of its
+    /// SourceBlockIds (MinerU block UUIDs). This sets HasSemanticResult on the node,
+    /// which ConnectionLinesControl requires to draw the Popo -> Semantic connection
+    /// lines. Invoked when either the semantic results or the Popo tree change, so the
+    /// link is established regardless of which finishes loading last.
+    /// </summary>
+    private void LinkSemanticResultsToPopoNodes()
+    {
+        if (PopoTreeRoot is null)
+            return;
+        LinkSemanticResultsToPopoNodes(
+            PopoTreeRoot.Children,
+            SemanticResults?.Blocks is { Count: > 0 } ? SemanticResults.Blocks : null);
+    }
+
+    /// <summary>
+    /// Links each SemanticBlockResult to the Popo tree node that shares one of its
+    /// SourceBlockIds (MinerU block UUIDs), setting HasSemanticResult on the node.
+    /// Clears previously attached results first so re-linking is idempotent.
+    /// Exposed as internal static so the matching can be unit-tested without a
+    /// full DocumentViewModel.
+    /// </summary>
+    internal static void LinkSemanticResultsToPopoNodes(
+        System.Collections.ObjectModel.ObservableCollection<TreeNodeViewModel>? rootChildren,
+        System.Collections.Generic.IReadOnlyList<SemanticBlockResult>? blocks)
+    {
+        if (rootChildren is null)
+            return;
+
+        // Walk the full Popo tree (not just visible nodes): collect every node and
+        // build a SourceBlockId -> node map.
+        var blockIdToNode = new Dictionary<string, TreeNodeViewModel>();
+        var allNodes = new List<TreeNodeViewModel>();
+        CollectPopoNodesForSemanticLink(rootChildren, blockIdToNode, allNodes);
+
+        // Clear any previously attached results so re-linking is idempotent.
+        foreach (var node in allNodes)
+            node.SetSemanticResult(null!);
+
+        if (blocks is null)
+            return;
+
+        foreach (var block in blocks)
+        {
+            if (block.SourceBlockIds is null || block.SourceBlockIds.Count == 0)
+                continue;
+
+            TreeNodeViewModel? match = null;
+            foreach (var srcId in block.SourceBlockIds)
+            {
+                if (!string.IsNullOrEmpty(srcId) && blockIdToNode.TryGetValue(srcId, out var node))
+                {
+                    match = node;
+                    break;
+                }
+            }
+
+            if (match is not null)
+                match.SetSemanticResult(block);
+        }
+    }
+
+    private static void CollectPopoNodesForSemanticLink(
+        System.Collections.ObjectModel.ObservableCollection<TreeNodeViewModel>? nodes,
+        Dictionary<string, TreeNodeViewModel> blockIdToNode,
+        List<TreeNodeViewModel> allNodes)
+    {
+        if (nodes is null)
+            return;
+        foreach (var node in nodes)
+        {
+            allNodes.Add(node);
+            foreach (var srcId in node.SourceBlockIds)
+            {
+                if (!string.IsNullOrEmpty(srcId) && !blockIdToNode.ContainsKey(srcId))
+                    blockIdToNode[srcId] = node;
+            }
+            CollectPopoNodesForSemanticLink(node.Children, blockIdToNode, allNodes);
+        }
     }
 
     #endregion

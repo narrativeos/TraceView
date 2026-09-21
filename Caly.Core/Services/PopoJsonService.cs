@@ -477,17 +477,42 @@ public static class PopoJsonService
         if (elem.TryGetProperty("node_id", out var nodeIdElem))
             node.NodeId = nodeIdElem.GetString() ?? string.Empty;
 
-        // Parse block_ids — guard against non-array values
+        // Parse block_ids — the field semantics changed in popo commit 5bdb8ee:
+        //   NEW format: List[str]  -> MinerU block UUIDs (previously "source_block_ids")
+        //   OLD format: List[int]  -> popo internal sequence numbers (previously "block_ids")
+        // Detect by element type so both persisted formats keep working.
         if (elem.TryGetProperty("block_ids", out var idsElem) &&
             idsElem.ValueKind == JsonValueKind.Array)
         {
             foreach (var id in idsElem.EnumerateArray())
             {
-                node.BlockIds.Add(id.GetInt32());
+                if (id.ValueKind == JsonValueKind.String)
+                {
+                    // NEW format: block_ids holds MinerU UUIDs.
+                    var s = id.GetString();
+                    if (!string.IsNullOrEmpty(s))
+                        node.SourceBlockIds.Add(s);
+                }
+                else if (id.ValueKind == JsonValueKind.Number)
+                {
+                    // OLD format: block_ids holds popo internal sequence numbers.
+                    node.BlockIds.Add(id.GetInt32());
+                }
             }
         }
 
-        // Parse source_block_ids (UUID strings from MinerU middle.json) — guard against non-array values
+        // Parse popo_block_ids (NEW format only): popo internal sequence numbers (List[int]).
+        if (elem.TryGetProperty("popo_block_ids", out var popoIdsElem) &&
+            popoIdsElem.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var id in popoIdsElem.EnumerateArray())
+            {
+                if (id.ValueKind == JsonValueKind.Number)
+                    node.BlockIds.Add(id.GetInt32());
+            }
+        }
+
+        // Parse source_block_ids (OLD format only): MinerU UUIDs (List[str]).
         if (elem.TryGetProperty("source_block_ids", out var sourceIdsElem) &&
             sourceIdsElem.ValueKind == JsonValueKind.Array)
         {
@@ -1448,7 +1473,28 @@ public static class PopoJsonService
         {
             var json = File.ReadAllText(middleJson);
             using var docJson = System.Text.Json.JsonDocument.Parse(json);
-            PopulateTreeBlockIdsRecursive(doc.TreeRoot, docJson.RootElement);
+            var rootElem = docJson.RootElement;
+
+            // MinerU 4.0 (schema "docvortex.middle") stores blocks under a "pages"
+            // array with normalized (0-1) bboxes, and the block_id UUIDs live in
+            // extensions.mineru_block_ids keyed by (page_idx, block index). The 3.x
+            // "pdf_info" matcher below does not understand this layout, so dispatch
+            // to a dedicated 4.0 matcher. Without this, SourceBlockIds stay empty
+            // and the MinerU -> Popo connection lines are never drawn.
+            var isV4 = rootElem.ValueKind == System.Text.Json.JsonValueKind.Object &&
+                       rootElem.TryGetProperty("schema", out var schemaProp) &&
+                       schemaProp.ValueKind == System.Text.Json.JsonValueKind.String &&
+                       string.Equals(schemaProp.GetString(), "docvortex.middle", StringComparison.Ordinal);
+
+            if (isV4)
+            {
+                var v4BlockIdMap = ParseV4BlockIdMap(rootElem);
+                PopulateTreeBlockIdsV4Recursive(doc.TreeRoot, rootElem, v4BlockIdMap);
+            }
+            else
+            {
+                PopulateTreeBlockIdsRecursive(doc.TreeRoot, rootElem);
+            }
 
             // Now populate ImgPath for image nodes that have empty img_path
             PopulateTreeImgPaths(doc.TreeRoot, artifactsDir);
@@ -1853,6 +1899,125 @@ public static class PopoJsonService
         foreach (var child in treeNode.Children)
         {
             MatchTreeNodesToBlocksById(child, blocks, pageIdx, pageW, pageH);
+        }
+    }
+
+    /// <summary>
+    /// Builds the (page_idx, block_index) -> block_id UUID map from a MinerU 4.0
+    /// middle.json's extensions.mineru_block_ids object
+    /// ({str(page_idx): {str(block_index): uuid}}).
+    /// </summary>
+    private static Dictionary<(int page, int index), string> ParseV4BlockIdMap(System.Text.Json.JsonElement root)
+    {
+        var map = new Dictionary<(int, int), string>();
+        if (root.ValueKind == System.Text.Json.JsonValueKind.Object &&
+            root.TryGetProperty("extensions", out var ext) && ext.ValueKind == System.Text.Json.JsonValueKind.Object &&
+            ext.TryGetProperty("mineru_block_ids", out var blockIds) && blockIds.ValueKind == System.Text.Json.JsonValueKind.Object)
+        {
+            foreach (var pageEntry in blockIds.EnumerateObject())
+            {
+                if (!int.TryParse(pageEntry.Name, out var pIdx) || pageEntry.Value.ValueKind != System.Text.Json.JsonValueKind.Object)
+                    continue;
+                foreach (var blockEntry in pageEntry.Value.EnumerateObject())
+                {
+                    if (!int.TryParse(blockEntry.Name, out var bIdx))
+                        continue;
+                    var uuid = blockEntry.Value.ValueKind == System.Text.Json.JsonValueKind.String ? blockEntry.Value.GetString() : null;
+                    if (!string.IsNullOrEmpty(uuid))
+                        map[(pIdx, bIdx)] = uuid;
+                }
+            }
+        }
+        return map;
+    }
+
+    /// <summary>
+    /// MinerU 4.0: walks the tree and matches each node's normalized bbox against the
+    /// blocks in the "pages" array, populating SourceBlockIds with the matched block's
+    /// UUID (looked up from the (page_idx, index) map).
+    /// </summary>
+    private static void PopulateTreeBlockIdsV4Recursive(
+        AnalysisTreeNode node,
+        System.Text.Json.JsonElement root,
+        Dictionary<(int page, int index), string> blockIdMap)
+    {
+        if (blockIdMap.Count > 0 &&
+            root.TryGetProperty("pages", out var pages) && pages.ValueKind == System.Text.Json.JsonValueKind.Array)
+        {
+            foreach (var page in pages.EnumerateArray())
+            {
+                if (page.ValueKind != System.Text.Json.JsonValueKind.Object)
+                    continue;
+                var pageIdx = page.TryGetProperty("page_idx", out var pi) ? pi.GetInt32() : -1;
+                if (pageIdx < 0)
+                    continue;
+                if (!page.TryGetProperty("blocks", out var blocks) || blocks.ValueKind != System.Text.Json.JsonValueKind.Array)
+                    continue;
+                MatchTreeNodesToBlocksV4(node, blocks, pageIdx, blockIdMap);
+            }
+        }
+
+        // Recurse into children
+        foreach (var child in node.Children)
+        {
+            PopulateTreeBlockIdsV4Recursive(child, root, blockIdMap);
+        }
+    }
+
+    /// <summary>
+    /// MinerU 4.0: matches a tree node's normalized bbox against the page's blocks
+    /// (also normalized 0-1) and adds the matched block's UUID to SourceBlockIds.
+    /// Mirrors MatchTreeNodesToBlocksById but reads the "pages"/"blocks" layout and
+    /// resolves the UUID via the (page_idx, index) map instead of a per-block "block_id".
+    /// </summary>
+    private static void MatchTreeNodesToBlocksV4(
+        AnalysisTreeNode treeNode,
+        System.Text.Json.JsonElement blocks,
+        int pageIdx,
+        Dictionary<(int page, int index), string> blockIdMap)
+    {
+        foreach (var block in blocks.EnumerateArray())
+        {
+            if (treeNode.Location.Count == 0)
+                continue;
+
+            // MinerU 4.0 bboxes are already normalized (0-1).
+            if (!block.TryGetProperty("bbox", out var bbox))
+                continue;
+            var bboxArr = bbox.EnumerateArray().Select(v => v.GetDouble()).ToArray();
+            if (bboxArr.Length < 4)
+                continue;
+            var normX1 = bboxArr[0];
+            var normY1 = bboxArr[1];
+            var normX2 = bboxArr[2];
+            var normY2 = bboxArr[3];
+
+            // Resolve the block's UUID by (page_idx, index).
+            var blockIndex = block.TryGetProperty("index", out var idx) ? idx.GetInt32() : -1;
+            if (!blockIdMap.TryGetValue((pageIdx, blockIndex), out var uuid) || string.IsNullOrEmpty(uuid))
+                continue;
+
+            foreach (var loc in treeNode.Location)
+            {
+                if (loc.Page != pageIdx + 1) // Popo uses 1-based, middle.json uses 0-based
+                    continue;
+
+                var treeX1 = loc.Bbox.X;
+                var treeY1 = loc.Bbox.Y;
+                var treeX2 = treeX1 + loc.Bbox.Width;
+                var treeY2 = treeY1 + loc.Bbox.Height;
+
+                var overlapX1 = Math.Max(normX1, treeX1);
+                var overlapY1 = Math.Max(normY1, treeY1);
+                var overlapX2 = Math.Min(normX2, treeX2);
+                var overlapY2 = Math.Min(normY2, treeY2);
+
+                if (overlapX1 < overlapX2 && overlapY1 < overlapY2)
+                {
+                    if (!treeNode.SourceBlockIds.Contains(uuid))
+                        treeNode.SourceBlockIds.Add(uuid);
+                }
+            }
         }
     }
 
