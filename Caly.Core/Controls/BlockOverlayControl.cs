@@ -225,10 +225,14 @@ public sealed class BlockOverlayControl : Control
     // Fill colors (alpha = 0.30)
     private static readonly ImmutableSolidColorBrush TitleFill = new(Colors.Blue, 0.30);
     private static readonly ImmutableSolidColorBrush TextFill = new(Colors.Green, 0.30);
-    private static readonly ImmutableSolidColorBrush ImageFill = new(Colors.Orange, 0.30);
     private static readonly ImmutableSolidColorBrush TableFill = new(Colors.Purple, 0.30);
     private static readonly ImmutableSolidColorBrush CaptionFill = new(Colors.Gray, 0.30);
     private static readonly ImmutableSolidColorBrush DefaultFill = new(Colors.LightGray, 0.30);
+
+    // Image blocks are outline-only by default: a semi-transparent fill over an image
+    // tints the whole picture (especially when a page is a single full-page image),
+    // making the image content hard to judge. Draw only the border instead.
+    private static readonly ImmutableSolidColorBrush OutlineOnlyFill = new(Colors.Transparent);
 
     // Stroke colors (alpha = 0.85)
     private static readonly ImmutableSolidColorBrush TitleStroke = new(Colors.Blue, 0.85);
@@ -259,12 +263,7 @@ public sealed class BlockOverlayControl : Control
         new ImmutableSolidColorBrush(Color.Parse(MinerUConstants.AdoptedColor), 1.0), 4.0);
     private static readonly ImmutablePen DiscardedHighlightPen = new(
         new ImmutableSolidColorBrush(Color.Parse(MinerUConstants.DiscardedColor), 1.0), 4.0);
-    private static readonly ImmutableSolidColorBrush AdoptedHighlightFill = new(
-        Color.Parse(MinerUConstants.AdoptedColor), 0.50);
-    private static readonly ImmutableSolidColorBrush DiscardedHighlightFill = new(
-        Color.Parse(MinerUConstants.DiscardedColor), 0.50);
-    private static readonly ImmutableSolidColorBrush DefaultRelatedHighlightFill = new(
-        Color.Parse(MinerUConstants.HighlightColor), 0.50);
+    // Related-highlight state is outline-only (no fill) — see GetRelatedHighlightStyle.
 
     // Cached pens per type (avoid per-frame allocation)
     private static readonly ImmutablePen TitlePen = new(TitleStroke, 2.5);
@@ -424,9 +423,9 @@ public sealed class BlockOverlayControl : Control
         // Uses pre-allocated static brushes to avoid per-frame allocation.
         return destinationType switch
         {
-            MinerUConstants.DestPara => (AdoptedHighlightFill, AdoptedHighlightPen),
-            MinerUConstants.DestDiscarded => (DiscardedHighlightFill, DiscardedHighlightPen),
-            _ => (DefaultRelatedHighlightFill, HighlightPen)
+            MinerUConstants.DestPara => (OutlineOnlyFill, AdoptedHighlightPen),
+            MinerUConstants.DestDiscarded => (OutlineOnlyFill, DiscardedHighlightPen),
+            _ => (OutlineOnlyFill, HighlightPen)
         };
     }
 
@@ -460,7 +459,8 @@ public sealed class BlockOverlayControl : Control
         {
             "title" => TitleFill,
             "text" => TextFill,
-            "image" => ImageFill,
+            // Image blocks: outline only, no fill (see OutlineOnlyFill)
+            "image" => OutlineOnlyFill,
             "table" => TableFill,
             "caption" => CaptionFill,
             _ => DefaultFill
@@ -621,6 +621,16 @@ public sealed class BlockOverlayControl : Control
         else
         {
             (fill, pen) = GetDefaultStyle(block);
+        }
+
+        // Image blocks are always outline-only, in every state (default, hover,
+        // highlight, related-highlight). A semi-transparent fill — e.g. the red
+        // related-highlight fill — would tint the underlying picture and make it
+        // hard to judge the image content, especially when a whole page is a
+        // single full-page image. The colored border still conveys the state.
+        if (block.Type == "image")
+        {
+            fill = OutlineOnlyFill;
         }
 
         context.DrawGeometry(fill, pen, geometry);
