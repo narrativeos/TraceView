@@ -1,0 +1,30 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:views="clr-namespace:Caly.Core.Views"
+        mc:Ignorable="d" d:DesignWidth="600" d:DesignHeight="450"
+        x:Class="Caly.Core.Views.ColorSpacesWindow"
+        Title="颜色空间"
+        Width="600" Height="450"
+        MinWidth="420" MinHeight="280"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+    <Grid RowDefinitions="Auto,*" x:DataType="views:ColorSpacesWindow">
+        <TextBlock Grid.Row="0"
+                   Margin="12,12,12,6"
+                   FontSize="15"
+                   FontWeight="SemiBold"
+                   Text="{Binding Header, Mode=OneTime}"/>
+        <ScrollViewer Grid.Row="1"
+                     Margin="12,0,12,12"
+                     VerticalScrollBarVisibility="Auto"
+                     HorizontalScrollBarVisibility="Auto">
+            <TextBox IsReadOnly="True"
+                     TextWrapping="NoWrap"
+                     AcceptsReturn="True"
+                     FontFamily="Cascadia Mono, Consolas, monospace"
+                     Text="{Binding Report, Mode=OneTime}"/>
+        </ScrollViewer>
+    </Grid>
+</Window>

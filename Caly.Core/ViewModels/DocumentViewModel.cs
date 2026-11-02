@@ -903,4 +903,27 @@ public sealed partial class DocumentViewModel : ViewModelBase
     {
         App.Messenger.Send(new SelectedDocumentChangedMessage(this));
     }
+
+    /// <summary>
+    /// Shows a window listing the color spaces used by the given page (or the currently
+    /// selected page when no page is supplied) and whether each is rendered faithfully
+    /// or only approximately (e.g. ICCBased).
+    /// </summary>
+    [RelayCommand]
+    private async Task ViewPageColorSpacesAsync(object? parameter)
+    {
+        int pageNumber = parameter is int p ? p : SelectedPageNumber ?? 0;
+        if (pageNumber < 1)
+        {
+            return;
+        }
+
+        var dialogService = App.Current?.Services?.GetService<IDialogService>();
+        if (dialogService is null)
+        {
+            return;
+        }
+
+        await dialogService.ShowPageColorSpacesAsync(_pdfService, pageNumber, _mainToken);
+    }
 }

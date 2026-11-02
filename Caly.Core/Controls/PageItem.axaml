@@ -58,6 +58,11 @@
 					</MenuItem.Icon>
 				</MenuItem>
 
+				<Separator/>
+
+				<MenuItem Header="查看本页颜色空间"
+				          Command="{Binding $parent[controls:PageItemsControl].((vm:DocumentViewModel)DataContext).ViewPageColorSpacesCommand}"
+				          CommandParameter="{Binding PageNumber}"/>
 			</MenuFlyout>
 		</Setter>
 

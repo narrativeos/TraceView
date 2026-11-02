@@ -20,6 +20,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
@@ -200,6 +202,83 @@ internal sealed class DialogService : IDialogService
             var window = new PrintDialogWindow { DataContext = vm };
             await window.ShowDialog(w);
         }, DispatcherPriority.Loaded);
+    }
+
+    public async Task ShowPageColorSpacesAsync(
+        IPdfDocumentService documentService,
+        int pageNumber,
+        CancellationToken token)
+    {
+        // Do the (document-lock-holding) inspection off the UI thread.
+        string report;
+        try
+        {
+            if (documentService is not PdfPigDocumentService pdfDocument)
+            {
+                report = "This document was not opened with the PdfPig engine, so its color spaces cannot be inspected.";
+            }
+            else
+            {
+                var spaces = await pdfDocument.GetPageColorSpacesAsync(pageNumber, token).ConfigureAwait(false);
+                report = FormatColorSpacesReport(documentService, pageNumber, spaces);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch (Exception e)
+        {
+            report = "Failed to identify the color spaces on this page.\n\n" + e;
+        }
+
+        // Show the report on the UI thread.
+        await Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            Debug.ThrowNotOnUiThread();
+
+            if (_target is not Window w)
+            {
+                return;
+            }
+
+            var window = new ColorSpacesWindow($"颜色空间 — Page {pageNumber}", report);
+            await window.ShowDialog(w);
+        }, DispatcherPriority.Loaded);
+    }
+
+    private static string FormatColorSpacesReport(
+        IPdfDocumentService documentService,
+        int pageNumber,
+        IReadOnlyList<PageColorSpaceInfo> spaces)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine($"File: {documentService.FileName}");
+        sb.AppendLine($"Page: {pageNumber} / {documentService.NumberOfPages}");
+        sb.AppendLine();
+
+        if (spaces.Count == 0)
+        {
+            sb.AppendLine("No image color spaces found on this page.");
+            sb.AppendLine("(Text and vector graphics use device color spaces and are always rendered faithfully.)");
+            return sb.ToString();
+        }
+
+        foreach (var cs in spaces)
+        {
+            sb.AppendLine(cs.ToString());
+        }
+
+        var atRisk = spaces.Where(c => c.IsAtRisk).ToList();
+        if (atRisk.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine($"*** {atRisk.Count} color space(s) above are rendered APPROXIMATELY (marked [AT-RISK]). ***");
+            sb.AppendLine("*** Their colors may differ from macOS Preview. ***");
+            sb.AppendLine("*** Fix: convert ICC->sRGB in the PdfPig renderer (see docs/color-space-iccbased-fix-spec.md). ***");
+        }
+
+        return sb.ToString();
     }
 
     public async Task<string?> ShowProjectExistsDialogAsync(string pdfPath, List<string> existingProjects)

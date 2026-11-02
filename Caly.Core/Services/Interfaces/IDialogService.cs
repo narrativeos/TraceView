@@ -76,6 +76,16 @@ namespace Caly.Core.Services.Interfaces
             CancellationToken token);
 
         /// <summary>
+        /// Shows a read-only window listing the color spaces used by <paramref name="pageNumber"/>
+        /// and whether each is rendered faithfully or only approximately
+        /// (e.g. ICCBased, whose embedded ICC profile is not applied by the PdfPig renderer).
+        /// </summary>
+        Task ShowPageColorSpacesAsync(
+            IPdfDocumentService documentService,
+            int pageNumber,
+            CancellationToken token);
+
+        /// <summary>
         /// Shows a dialog listing existing projects for a given PDF and allows the user
         /// to select one or create a new project.
         /// Returns the selected project path, or null if the user chose to create a new project.
