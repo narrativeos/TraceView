@@ -106,6 +106,13 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     public string Version => CalyExtensions.CalyVersion;
 
     /// <summary>
+    /// When true, scanned pages with a warm/pink paper cast are color-corrected
+    /// (per-page white balance) so their background reads as neutral white.
+    /// </summary>
+    [ObservableProperty]
+    private bool _scanWhiteBalance;
+
+    /// <summary>
     /// Gets the current application settings for binding in SettingsControl.
     /// </summary>
     public CalySettings Settings
@@ -119,11 +126,24 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             .SetProperty(CalySettings.CalySettingsProperty.PaneSize, newValue);
     }
 
+    partial void OnScanWhiteBalanceChanged(bool value)
+    {
+        var settingsService = App.Current?.Services?.GetService<ISettingsService>();
+        settingsService?.SetProperty(CalySettings.CalySettingsProperty.ScanWhiteBalance, value);
+        settingsService?.Save();
+
+        foreach (var document in PdfDocuments)
+        {
+            document.SetScanWhiteBalance(value);
+        }
+    }
+
     public MainViewModel()
     {
         // Initialize ShowLayoutAnalysis from settings
         var settings = App.Current?.Services?.GetService<ISettingsService>()?.GetSettings();
         ShowLayoutAnalysis = settings?.Debug?.LayoutAnalysis == true;
+        ScanWhiteBalance = settings?.ScanWhiteBalance == true;
 
         _documentCollectionDisposable = PdfDocuments
             .GetWeakCollectionChangedObservable()

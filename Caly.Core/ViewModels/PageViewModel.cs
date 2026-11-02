@@ -92,6 +92,12 @@ public sealed partial class PageViewModel : ViewModelBase, IDisposable
     [ObservableProperty] private bool _isPageRendering;
 
     /// <summary>
+    /// Whether per-page white balance correction is currently applied to this page.
+    /// Drives the small badge shown on the page.
+    /// </summary>
+    [ObservableProperty] private bool _isWhiteBalanced;
+
+    /// <summary>
     /// Page type classification from MinerU's page-level analysis (cover, toc, body, etc.).
     /// </summary>
     [ObservableProperty]
@@ -305,6 +311,11 @@ public sealed partial class PageViewModel : ViewModelBase, IDisposable
         TextSelection.TextSelectionExtended += _onTextSelectionExtended;
         TextSelection.TextSelectionFocusPageChanged += _onTextSelectionFocusPageChanged;
         TextSelection.TextSelectionReset += _onTextSelectionReset;
+
+        if (tileRenderService is not null)
+        {
+            tileRenderService.PageWhiteBalanceApplied += OnTileWhiteBalanceApplied;
+        }
     }
 
     private void _onTextSelectionReset(object? sender, EventArgs e)
@@ -449,9 +460,24 @@ public sealed partial class PageViewModel : ViewModelBase, IDisposable
         }
     }
 
+    private void OnTileWhiteBalanceApplied(int pageNumber, bool applied)
+    {
+        if (pageNumber != PageNumber)
+        {
+            return;
+        }
+
+        Dispatcher.UIThread.Post(() => IsWhiteBalanced = applied);
+    }
+
     public void Dispose()
     {
         Debug.ThrowOnUiThread();
+
+        if (TileRenderService is not null)
+        {
+            TileRenderService.PageWhiteBalanceApplied -= OnTileWhiteBalanceApplied;
+        }
 
         // We don't unsubscribe from the TextSelection events as it takes
         // forever when the number of pages is large.

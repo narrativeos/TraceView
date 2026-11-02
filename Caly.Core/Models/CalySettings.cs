@@ -53,6 +53,12 @@ public sealed class CalySettings
 
     public bool ShowPdfLogs { get; set; }
 
+    /// <summary>
+    /// When true, scanned pages whose paper has a warm/pink cast are color-corrected
+    /// (per-page white balance) so their background reads as neutral white.
+    /// </summary>
+    public bool ScanWhiteBalance { get; set; } = false;
+
     public CalySettingsDebug? Debug { get; set; }
 
     // ========== MinerU Configuration ==========
@@ -124,6 +130,7 @@ public sealed class CalySettings
     
     public enum CalySettingsProperty
     {
-        PaneSize = 0
+        PaneSize = 0,
+        ScanWhiteBalance = 1
     }
 }

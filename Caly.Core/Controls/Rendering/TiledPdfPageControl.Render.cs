@@ -260,7 +260,14 @@ public partial class TiledPdfPageControl
         SKSamplingOptions samplingOptions = _isInteracting
             ? InteractiveSamplingOptions
             : IdleSamplingOptions;
-        context.Custom(new TiledDrawOperation(viewPort, cullRect, tileBuffer, entryCount, samplingOptions));
+
+        // Read the white-balance gains once here (they are written on the UI thread when the
+        // setting toggles or the picture arrives). Only hand a filter to the draw operation when
+        // a real correction is needed, so neutral/full-colour pages keep the fast null-paint path.
+        var (gainsR, gainsG, gainsB) = _whiteBalanceGains ?? (1f, 1f, 1f);
+        bool hasWhiteBalance = gainsR != 1f || gainsG != 1f || gainsB != 1f;
+        context.Custom(new TiledDrawOperation(viewPort, cullRect, tileBuffer, entryCount, samplingOptions,
+            hasWhiteBalance, gainsR, gainsG, gainsB));
     }
 
     /// <summary>

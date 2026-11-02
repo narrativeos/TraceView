@@ -358,6 +358,14 @@ public sealed partial class DocumentViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// Enables or disables per-page white balance correction for this document.
+    /// </summary>
+    public void SetScanWhiteBalance(bool enabled)
+    {
+        _pdfPageService.SetScanWhiteBalance(enabled);
+    }
+
+    /// <summary>
     /// Sets the project path for this document (called by PdfDocumentsManagerService).
     /// </summary>
     internal void SetProjectPath(string projectPath)

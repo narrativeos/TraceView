@@ -26,6 +26,18 @@
                             <!-- License -->
                             <controls:LicenseControl/>
 
+                            <!-- Display / Rendering -->
+                            <Expander Header="显示设置" IsExpanded="True">
+                                <StackPanel Spacing="8" Margin="8,8">
+                                    <CheckBox Content="扫描件白平衡（去除扫描页暖色/粉色底）"
+                                              IsChecked="{Binding ScanWhiteBalance, Mode=TwoWay}"/>
+                                    <TextBlock Margin="0,4,0,0"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource SystemControlPageTextChromeDisabledBrush}"
+                                               Text="开启后，扫描页会按页自动校正纸张的暖色/粉色偏色，使其背景接近中性白；已校正的页面会显示标识。"/>
+                                </StackPanel>
+                            </Expander>
+
                             <!-- MinerU Configuration -->
                             <Expander Header="MinerU AI Configuration" IsExpanded="True">
                                 <StackPanel Spacing="8" Margin="8,8">

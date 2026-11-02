@@ -22,6 +22,7 @@ using Avalonia;
 using Avalonia.Media;
 using Avalonia.Rendering.SceneGraph;
 using Avalonia.Skia;
+using Caly.Core.Services.Rendering;
 using SkiaSharp;
 using System;
 using System.Buffers;
@@ -36,14 +37,23 @@ public partial class TiledPdfPageControl
         private readonly int _tileCount;
         private readonly SKSamplingOptions _samplingOptions;
         private readonly SKRect _cullRect;
+        private readonly bool _hasWhiteBalance;
+        private readonly float _whiteBalanceGainsR;
+        private readonly float _whiteBalanceGainsG;
+        private readonly float _whiteBalanceGainsB;
 
-        public TiledDrawOperation(Rect bounds, SKRect cullRect, TileDrawEntry[] tiles, int tileCount, SKSamplingOptions samplingOptions)
+        public TiledDrawOperation(Rect bounds, SKRect cullRect, TileDrawEntry[] tiles, int tileCount, SKSamplingOptions samplingOptions,
+            bool hasWhiteBalance, float whiteBalanceGainsR, float whiteBalanceGainsG, float whiteBalanceGainsB)
         {
             Bounds = bounds;
             _cullRect = cullRect;
             _tiles = tiles;
             _tileCount = tileCount;
             _samplingOptions = samplingOptions;
+            _hasWhiteBalance = hasWhiteBalance;
+            _whiteBalanceGainsR = whiteBalanceGainsR;
+            _whiteBalanceGainsG = whiteBalanceGainsG;
+            _whiteBalanceGainsB = whiteBalanceGainsB;
         }
 
         public Rect Bounds { get; }
@@ -98,16 +108,36 @@ public partial class TiledPdfPageControl
             canvas.Save();
             canvas.ClipRect(_cullRect);
 
-            for (int i = 0; i < _tileCount; ++i)
+            // When white balance is active, every tile is drawn through a per-channel gain colour
+            // filter. The paint/filter are created here — on the render thread, inside the SkiaSharp
+            // lease — so the SKColorFilter is never shared across threads. IsAntialias stays false
+            // (the default for a fresh paint) to preserve the seamless, seam-free tile blitting that
+            // a null paint gives.
+            SKPaint? tilePaint = null;
+            SKColorFilter? colorFilter = null;
+            if (_hasWhiteBalance)
             {
-                ref readonly var tile = ref tiles[i];
-                if (tile is { CanRender: true, ImageRef.IsAlive: true } && !canvas.QuickReject(tile.DestRect))
+                var matrix = TileRenderService.BuildGainMatrix(
+                    _whiteBalanceGainsR, _whiteBalanceGainsG, _whiteBalanceGainsB);
+                colorFilter = SKColorFilter.CreateColorMatrix(matrix);
+                tilePaint = new SKPaint { ColorFilter = colorFilter, IsAntialias = false };
+            }
+
+            try
+            {
+                for (int i = 0; i < _tileCount; ++i)
                 {
-                    // Paint param is null. IsAntialias is deliberately false: with AA on, tile edges at
-                    // fractional screen pixel positions (after the zoom transform) get partial coverage
-                    // which blends with the canvas background, creating visible white seams between tiles.
-                    canvas.DrawImage(tile.ImageRef.Item, tile.SrcRect, tile.DestRect, _samplingOptions, null);
+                    ref readonly var tile = ref tiles[i];
+                    if (tile is { CanRender: true, ImageRef.IsAlive: true } && !canvas.QuickReject(tile.DestRect))
+                    {
+                        canvas.DrawImage(tile.ImageRef.Item, tile.SrcRect, tile.DestRect, _samplingOptions, tilePaint);
+                    }
                 }
+            }
+            finally
+            {
+                tilePaint?.Dispose();
+                colorFilter?.Dispose();
             }
 
             canvas.Restore();

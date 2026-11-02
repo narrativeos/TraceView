@@ -211,6 +211,16 @@ namespace Caly.Core.Services
         /// </summary>
         public TileRenderService TileRenderService { get; }
 
+        /// <summary>
+        /// Enables or disables per-page white balance correction for this document. The correction
+        /// is applied at display time, so no cached tile needs to be re-rendered — the service's
+        /// WhiteBalanceChanged event simply makes each visible page recompute its gains and repaint.
+        /// </summary>
+        public void SetScanWhiteBalance(bool enabled)
+        {
+            TileRenderService.SetWhiteBalance(enabled);
+        }
+
         private readonly ConcurrentDictionary<int, IRef<SKPicture>> _cachePictures = new();
         private readonly ConcurrentDictionary<int, PdfTextLayer> _cacheTextLayers = new();
 
@@ -403,12 +413,12 @@ namespace Caly.Core.Services
 
             if (picture is not null)
             {
-                await SetThumbnail(renderRequest.Page, picture.Item, renderRequest.Token)
+                await SetThumbnail(renderRequest.Page, picture, renderRequest.Token)
                     .ConfigureAwait(false);
             }
         }
 
-        private async Task SetThumbnail(PageViewModel vm, SKPicture picture, CancellationToken token)
+        private async Task SetThumbnail(PageViewModel vm, IRef<SKPicture> picture, CancellationToken token)
         {
             Debug.ThrowOnUiThread();
 
@@ -427,10 +437,12 @@ namespace Caly.Core.Services
             {
                 var canvas = surface.Canvas;
                 canvas.Clear(SKColors.White);
-                canvas.DrawPicture(picture, in scale);
+
+                using var picturePaint = new SKPaint();
+                canvas.DrawPicture(picture.Item, in scale, picturePaint);
 
 #if DEBUG
-                string uniqueIdText = picture.UniqueId.ToString();
+                string uniqueIdText = picture.Item.UniqueId.ToString();
                 using (var paint = new SKPaint())
                 {
                     paint.Style = SKPaintStyle.Fill;

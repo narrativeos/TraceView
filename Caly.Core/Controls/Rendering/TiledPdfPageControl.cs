@@ -154,6 +154,14 @@ public sealed partial class TiledPdfPageControl : Control
     /// which fires on a background thread and cannot read styled properties.
     /// </summary>
     private volatile int _cachedPageNumber;
+
+    /// <summary>
+    /// Per-page white-balance gains (per-channel multipliers) currently in effect for this page,
+    /// or null when white balance is disabled or no correction is needed. Computed on the UI thread
+    /// from <see cref="TileRenderService.GetOrComputeGains"/> and read by <see cref="Render"/>.
+    /// The filter is applied at display time, so changing this never re-renders cached tiles.
+    /// </summary>
+    private (float gR, float gG, float gB)? _whiteBalanceGains;
     
     /// <summary>
     /// Number of extra tile rows/columns rendered beyond the visible area, so
@@ -213,14 +221,18 @@ public sealed partial class TiledPdfPageControl : Control
             if (change.OldValue is TileRenderService oldService)
             {
                 oldService.TileReady -= OnTileReady;
+                oldService.WhiteBalanceChanged -= OnWhiteBalanceChanged;
             }
 
             if (change.NewValue is TileRenderService newService)
             {
                 newService.TileReady -= OnTileReady;
                 newService.TileReady += OnTileReady;
+                newService.WhiteBalanceChanged -= OnWhiteBalanceChanged;
+                newService.WhiteBalanceChanged += OnWhiteBalanceChanged;
                 // Service just became available — request tiles if VisibleArea is already set.
                 RequestVisibleTiles();
+                UpdateWhiteBalanceGains();
             }
         }
         else if (change.Property == VisibleAreaProperty)
@@ -258,6 +270,9 @@ public sealed partial class TiledPdfPageControl : Control
                 return;
             }
 
+            // A new picture arrived while white balance may be on: refresh the gains so the
+            // next render pass applies the corrected colour filter to this page's tiles.
+            UpdateWhiteBalanceGains();
             RequestVisibleTiles();
         }
     }
@@ -444,7 +459,12 @@ public sealed partial class TiledPdfPageControl : Control
         {
             TileRenderService.TileReady -= OnTileReady;
             TileRenderService.TileReady += OnTileReady;
+            TileRenderService.WhiteBalanceChanged -= OnWhiteBalanceChanged;
+            TileRenderService.WhiteBalanceChanged += OnWhiteBalanceChanged;
         }
+
+        // Pick up the current white-balance state in case it was enabled before this page attached.
+        UpdateWhiteBalanceGains();
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
@@ -454,11 +474,48 @@ public sealed partial class TiledPdfPageControl : Control
         if (TileRenderService is not null)
         {
             TileRenderService.TileReady -= OnTileReady;
+            TileRenderService.WhiteBalanceChanged -= OnWhiteBalanceChanged;
             TileRenderService.CancelPage(PageNumber);
         }
 
         _settleTimer?.Stop();
         _isInteracting = false;
+    }
+
+    /// <summary>
+    /// Recomputes this page's white-balance gains from its picture, or clears them when white
+    /// balance is disabled. Called on the UI thread (from <see cref="OnWhiteBalanceChanged"/>,
+    /// the <see cref="PictureProperty"/> change handler, and on attach) so the next
+    /// <see cref="Render"/> pass draws the tiles through the corrected colour filter.
+    /// </summary>
+    private void UpdateWhiteBalanceGains()
+    {
+        var service = TileRenderService;
+        if (service is null || !service.IsWhiteBalanceEnabled)
+        {
+            _whiteBalanceGains = null;
+            return;
+        }
+
+        if (Picture is { IsAlive: true } livePicture)
+        {
+            _whiteBalanceGains = service.GetOrComputeGains(PageNumber, livePicture);
+        }
+        else
+        {
+            _whiteBalanceGains = null;
+        }
+    }
+
+    /// <summary>
+    /// Raised by <see cref="TileRenderService.WhiteBalanceChanged"/> when the global setting
+    /// flips. Recomputes the gains and repaints; no tile needs to be re-rendered because the
+    /// colour filter is applied while the (already cached) tiles are drawn.
+    /// </summary>
+    private void OnWhiteBalanceChanged()
+    {
+        UpdateWhiteBalanceGains();
+        InvalidateVisual();
     }
 
     /// <summary>

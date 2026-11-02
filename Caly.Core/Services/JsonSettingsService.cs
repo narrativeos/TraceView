@@ -364,6 +364,10 @@ internal sealed class JsonSettingsService : ISettingsService
                 case CalySettingsProperty.PaneSize:
                     _current.PaneSize = (int)(double)value;
                     break;
+
+                case CalySettingsProperty.ScanWhiteBalance:
+                    _current.ScanWhiteBalance = (bool)value;
+                    break;
             }
         }
         catch (Exception ex)

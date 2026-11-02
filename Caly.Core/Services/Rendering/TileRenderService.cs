@@ -129,6 +129,43 @@ public sealed class TileRenderService : IAsyncDisposable
     public event Action<TileKey>? TileReady;
 
     /// <summary>
+    /// Fired when a page's white-balance state is determined (its gains are computed).
+    /// The handler receives the page number and whether a meaningful correction was applied.
+    /// Raised from whichever thread computes the gains (see <see cref="GetOrComputeGains"/>),
+    /// so handlers must marshal to the UI thread themselves.
+    /// </summary>
+    public event Action<int, bool>? PageWhiteBalanceApplied;
+
+    /// <summary>
+    /// Fired (on the UI thread) after <see cref="SetWhiteBalance"/> changes the enabled state,
+    /// so viewers can recompute their per-page gains and repaint. The filter is applied at
+    /// display time, so this does NOT require re-rendering any cached tiles.
+    /// </summary>
+    public event Action? WhiteBalanceChanged;
+
+    /// <summary>
+    /// Whether per-page white balance correction is currently enabled.
+    /// </summary>
+    private bool _whiteBalanceEnabled;
+
+    /// <summary>
+    /// Whether per-page white balance correction is currently enabled.
+    /// </summary>
+    public bool IsWhiteBalanceEnabled => _whiteBalanceEnabled;
+
+    /// <summary>
+    /// Per-page white-balance gains (per-channel multipliers), computed once and cached so every
+    /// tile of a page uses the same correction (no seams between tiles).
+    /// </summary>
+    private readonly ConcurrentDictionary<int, (float gR, float gG, float gB)> _gains = new();
+
+    /// <summary>
+    /// Per-page flag indicating whether the computed white balance is a meaningful correction
+    /// (used to mark which pages actually had white balance applied).
+    /// </summary>
+    private readonly ConcurrentDictionary<int, bool> _whiteBalanced = new();
+
+    /// <summary>
     /// Gets the tile cache used by this service.
     /// </summary>
     public TileCache Cache { get; }
@@ -465,6 +502,180 @@ public sealed class TileRenderService : IAsyncDisposable
         }
 
         Cache.InvalidatePage(pageNumber);
+    }
+
+    /// <summary>
+    /// Enables or disables per-page white balance correction.
+    /// Disabling clears all cached gains and notifies listeners that no page is corrected.
+    /// </summary>
+    public void SetWhiteBalance(bool enabled)
+    {
+        if (_whiteBalanceEnabled == enabled)
+        {
+            return;
+        }
+
+        _whiteBalanceEnabled = enabled;
+
+        if (enabled)
+        {
+            // Force a fresh computation for every page on the next render.
+            _gains.Clear();
+        }
+        else
+        {
+            // Notify every page we know about that its correction has been removed.
+            foreach (var pageNumber in _whiteBalanced.Keys)
+            {
+                PageWhiteBalanceApplied?.Invoke(pageNumber, false);
+            }
+
+            _whiteBalanced.Clear();
+            _gains.Clear();
+        }
+
+        // Let viewers recompute their gains (or clear them) and repaint. The colour filter is
+        // applied when tiles are drawn, so no cached tile needs to be re-rendered here.
+        WhiteBalanceChanged?.Invoke();
+    }
+
+    /// <summary>
+    /// Returns the per-page white-balance gains, computing (and caching) them on first use.
+    /// Also raises <see cref="PageWhiteBalanceApplied"/> so the UI can mark corrected pages.
+    /// </summary>
+    public (float gR, float gG, float gB) GetOrComputeGains(int pageNumber, IRef<SKPicture> picture)
+    {
+        if (_gains.TryGetValue(pageNumber, out var cached))
+        {
+            return cached;
+        }
+
+        var gains = ComputeGains(picture);
+        bool applied = Math.Max(
+            Math.Abs(gains.gR - 1f),
+            Math.Max(Math.Abs(gains.gG - 1f), Math.Abs(gains.gB - 1f))) > 0.02f;
+
+        _gains[pageNumber] = gains;
+        _whiteBalanced[pageNumber] = applied;
+        PageWhiteBalanceApplied?.Invoke(pageNumber, applied);
+
+        return gains;
+    }
+
+    /// <summary>
+    /// Renders the page picture to a small surface, estimates its white point (the brightest ~5%
+    /// of pixels) and derives per-channel gains that map that white point to neutral white.
+    /// Gains are clamped to [1.0, 1.6] so already-neutral pages are left untouched.
+    /// </summary>
+    private static (float gR, float gG, float gB) ComputeGains(IRef<SKPicture> picture)
+    {
+        const int sampleSize = 96;
+        const int maxChroma = 44;          // channels within this range count as "near white"
+        const int minCandidateCount = 20; // absolute floor of near-white pixels required
+        const float minNeutralRatio = 0.5f; // at least half of the bright pixels must be near-white
+
+        var cull = picture.Item.CullRect;
+        if (cull.Width <= 0 || cull.Height <= 0)
+        {
+            return (1f, 1f, 1f);
+        }
+
+        var info = new SKImageInfo(sampleSize, sampleSize, SKColorType.Bgra8888, SKAlphaType.Premul);
+        using var surface = SKSurface.Create(info);
+        if (surface is null)
+        {
+            return (1f, 1f, 1f);
+        }
+
+        var canvas = surface.Canvas;
+        canvas.Clear(SKColors.White);
+        var scale = SKMatrix.CreateScale(sampleSize / (float)cull.Width, sampleSize / (float)cull.Height);
+        canvas.DrawPicture(picture.Item, scale);
+
+        var span = surface.PeekPixels().GetPixelSpan();
+        int count = span.Length / 4;
+        if (count == 0)
+        {
+            return (1f, 1f, 1f);
+        }
+
+        // Pass 1: luminance per pixel, used to find the bright-pixel threshold.
+        var luminances = new float[count];
+        for (int i = 0; i < count; i++)
+        {
+            int o = i * 4;
+            byte b = span[o], g = span[o + 1], r = span[o + 2];
+            luminances[i] = 0.299f * r + 0.587f * g + 0.114f * b;
+        }
+
+        var sorted = (float[])luminances.Clone();
+        Array.Sort(sorted);
+        float threshold = sorted[Math.Min(count - 1, (int)(count * 0.90f))];
+
+        // Pass 2: among the bright pixels, keep only the near-neutral ones (low chroma) and
+        // average their RGB to get the paper's white point. A scanned page is dominated by
+        // (near-)white paper, so most of its bright pixels are neutral; a full-colour/photo
+        // page is not, so we skip it to avoid introducing false colour.
+        double sumR = 0, sumG = 0, sumB = 0;
+        int bright = 0;
+        int sampled = 0;
+        for (int i = 0; i < count; i++)
+        {
+            if (luminances[i] < threshold)
+            {
+                continue;
+            }
+
+            bright++;
+
+            int o = i * 4;
+            byte b = span[o], g = span[o + 1], r = span[o + 2];
+            int chroma = Math.Max(r, Math.Max(g, b)) - Math.Min(r, Math.Min(g, b));
+            if (chroma > maxChroma)
+            {
+                continue;
+            }
+
+            sumB += b;
+            sumG += g;
+            sumR += r;
+            sampled++;
+        }
+
+        if (sampled < minCandidateCount || (bright > 0 && sampled < minNeutralRatio * bright))
+        {
+            // Not enough near-white background: this is a full-colour page, not a scan.
+            return (1f, 1f, 1f);
+        }
+
+        return (
+            ClampGain((float)(sumR / sampled)),
+            ClampGain((float)(sumG / sampled)),
+            ClampGain((float)(sumB / sampled)));
+    }
+
+    private static float ClampGain(float whiteChannel)
+    {
+        if (whiteChannel < 1f)
+        {
+            return 1f;
+        }
+
+        return Math.Clamp(255f / whiteChannel, 1f, 1.6f);
+    }
+
+    /// <summary>
+    /// Builds the 4x4 color matrix (row-major) that scales R, G and B by the given gains.
+    /// </summary>
+    internal static float[] BuildGainMatrix(float gR, float gG, float gB)
+    {
+        return new float[]
+        {
+            gR, 0f, 0f, 0f,
+            0f, gG, 0f, 0f,
+            0f, 0f, gB, 0f,
+            0f, 0f, 0f, 1f
+        };
     }
 
     /// <summary>

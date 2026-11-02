@@ -132,6 +132,30 @@
                                                                  HorizontalAlignment="Stretch"
                                                                  VerticalAlignment="Stretch"/>
 
+                                                                 <!-- White balance marker -->
+                                                                 <Border IsVisible="{Binding IsWhiteBalanced}"
+                                                                         HorizontalAlignment="Right"
+                                                                         VerticalAlignment="Top"
+                                                                         Margin="0,6,6,0"
+                                                                         CornerRadius="3"
+                                                                         Background="#D93B3B3B"
+                                                                         BorderBrush="#66FFFFFF"
+                                                                         BorderThickness="1"
+                                                                         Padding="5,2">
+                                                                     <StackPanel Orientation="Horizontal"
+                                                                                 Spacing="4"
+                                                                                 VerticalAlignment="Center">
+                                                                         <Ellipse Width="7"
+                                                                                  Height="7"
+                                                                                  Fill="#FF7AB8FF"
+                                                                                  VerticalAlignment="Center"/>
+                                                                         <TextBlock Text="白平衡"
+                                                                                    FontSize="10"
+                                                                                    Foreground="White"
+                                                                                    VerticalAlignment="Center"/>
+                                                                     </StackPanel>
+                                                                 </Border>
+
 							</Grid>
 						</LayoutTransformControl>
 
