@@ -67,6 +67,15 @@ public sealed class BlockOverlayControl : Control
         AvaloniaProperty.Register<BlockOverlayControl, bool>(nameof(ShowLabels), true);
 
     /// <summary>
+    /// Whether to draw the 1-based block index badge in the top-left corner of every block.
+    /// Indexes are assigned automatically in the order the blocks appear in <see cref="Blocks"/>
+    /// (which is per page), so numbering restarts at 1 on each page and matches the
+    /// index badges shown in the MinerU blocks column.
+    /// </summary>
+    public static readonly StyledProperty<bool> ShowBlockIndexProperty =
+        AvaloniaProperty.Register<BlockOverlayControl, bool>(nameof(ShowBlockIndex), true);
+
+    /// <summary>
     /// PDF page size for coordinate conversion.
     /// Required to convert normalized (0-1) block coordinates to PDF pixel coordinates.
     /// </summary>
@@ -92,7 +101,7 @@ public sealed class BlockOverlayControl : Control
     {
         AffectsRender<BlockOverlayControl>(BlocksProperty, VisibleAreaProperty,
             HighlightBlockIdProperty, RelatedHighlightBlockIdsProperty, RelatedHighlightDestinationTypeProperty,
-            ShowLabelsProperty, PageSizeProperty, PpiScaleProperty, ZoomLevelProperty);
+            ShowLabelsProperty, ShowBlockIndexProperty, PageSizeProperty, PpiScaleProperty, ZoomLevelProperty);
     }
 
     public IReadOnlyList<MinerUBlock>? Blocks
@@ -129,6 +138,12 @@ public sealed class BlockOverlayControl : Control
     {
         get => GetValue(ShowLabelsProperty);
         set => SetValue(ShowLabelsProperty, value);
+    }
+
+    public bool ShowBlockIndex
+    {
+        get => GetValue(ShowBlockIndexProperty);
+        set => SetValue(ShowBlockIndexProperty, value);
     }
 
     public Size PageSize
@@ -306,6 +321,19 @@ public sealed class BlockOverlayControl : Control
     private static readonly ImmutableSolidColorBrush CaptionHoverFill = new(Colors.Gray, 0.50);
     // Default hover uses a vibrant yellow for high contrast on any background
     private static readonly ImmutableSolidColorBrush DefaultHoverFill = new(Colors.Yellow, 0.50);
+
+    // Block index badge (top-left corner of every block)
+    private const double IndexFontSize = 11.0;
+    private static readonly ImmutableSolidColorBrush IndexBadgeFill = new(Colors.Black, 0.65);
+    private static readonly ImmutableSolidColorBrush IndexTextBrush = new(Colors.White, 1.0);
+
+    /// <summary>
+    /// Cached index badge texts, keyed by the displayed number. Cleared whenever the
+    /// zoom-dependent font size changes, so the render loop never allocates a
+    /// <see cref="FormattedText"/> per block per frame.
+    /// </summary>
+    private readonly Dictionary<int, FormattedText> _indexTextCache = new();
+    private double _indexTextFontSize = -1;
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
@@ -635,11 +663,20 @@ public sealed class BlockOverlayControl : Control
 
         context.DrawGeometry(fill, pen, geometry);
 
+        double zoom = Math.Max(ZoomLevel, 0.01);
+        double badgeWidth = 0.0;
+
+        // Index badge: 1-based position of the block within the page's block list,
+        // drawn in the top-left corner so it matches the MinerU column numbering.
+        if (ShowBlockIndex)
+        {
+            badgeWidth = DrawBlockIndex(context, geometry.Bounds.TopLeft, index + 1, zoom);
+        }
+
         if (ShowLabels && (isHovered || isHighlighted) && !string.IsNullOrEmpty(block.Content))
         {
             var label = $"{block.Type}: {Truncate(block.Content, 60)}";
-            double zoom = Math.Max(ZoomLevel, 0.01);
-            double fontSize = 11.0 / zoom;
+            double fontSize = IndexFontSize / zoom;
             var formattedText = new FormattedText(
                 label,
                 CultureInfo.CurrentCulture,
@@ -648,9 +685,46 @@ public sealed class BlockOverlayControl : Control
                 fontSize,
                 Brushes.Black);
 
-            var labelPos = geometry.Bounds.TopLeft;
+            var labelPos = geometry.Bounds.TopLeft + new Point(badgeWidth + 2.0 / zoom, 0);
             context.DrawText(formattedText, labelPos);
         }
+    }
+
+    /// <summary>
+    /// Draws the 1-based block index badge at the given top-left position.
+    /// Returns the width of the badge so the content label can be offset past it.
+    /// </summary>
+    private double DrawBlockIndex(DrawingContext context, Point topLeft, int number, double zoom)
+    {
+        double fontSize = IndexFontSize / zoom;
+
+        if (Math.Abs(_indexTextFontSize - fontSize) > 0.01)
+        {
+            _indexTextCache.Clear();
+            _indexTextFontSize = fontSize;
+        }
+
+        if (!_indexTextCache.TryGetValue(number, out var text))
+        {
+            text = new FormattedText(
+                number.ToString(CultureInfo.InvariantCulture),
+                CultureInfo.InvariantCulture,
+                FlowDirection.LeftToRight,
+                Typeface.Default,
+                fontSize,
+                IndexTextBrush);
+            _indexTextCache[number] = text;
+        }
+
+        double paddingX = fontSize * 0.3;
+        double badgeWidth = text.Width + paddingX * 2;
+        double badgeHeight = text.Height;
+
+        context.DrawRectangle(IndexBadgeFill, null,
+            new RoundedRect(new Rect(topLeft.X, topLeft.Y, badgeWidth, badgeHeight), fontSize * 0.25));
+        context.DrawText(text, new Point(topLeft.X + paddingX, topLeft.Y));
+
+        return badgeWidth;
     }
 
     /// <summary>

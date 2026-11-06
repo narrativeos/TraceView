@@ -24,6 +24,7 @@ using Caly.Core.Models;
 using Caly.Core.Utilities;
 using CommunityToolkit.Mvvm.ComponentModel;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
@@ -83,6 +84,39 @@ public partial class MinerUBlockViewModel : ObservableObject
     /// Whether this block's match to its target was a fallback match.
     /// </summary>
     public bool IsFallbackMatch => _block.IsFallbackMatch;
+
+    /// <summary>
+    /// Display text for the auto-assigned index badge (e.g. "#3").
+    /// </summary>
+    public string IndexLabel => $"#{BlockIndex}";
+
+    /// <summary>
+    /// Tooltip exposing the underlying MinerU identifiers (page, internal integer id and
+    /// the block_id UUID used for Popo alignment) behind the auto-assigned index.
+    /// </summary>
+    public string IdentifiersToolTip => $"page {Page} · id {Id} · block_id {(string.IsNullOrEmpty(BlockId) ? "-" : BlockId)}";
+
+    partial void OnBlockIndexChanged(int value)
+    {
+        OnPropertyChanged(nameof(IndexLabel));
+    }
+
+    /// <summary>
+    /// Assigns a 1-based index to every block, restarting at 1 for each page.
+    /// Blocks are numbered in the order they appear in <paramref name="blocks"/>, which is
+    /// also the order they are rendered in the MinerU column.
+    /// </summary>
+    public static void AssignPageIndexes(IEnumerable<MinerUBlockViewModel> blocks)
+    {
+        var counters = new Dictionary<int, int>();
+        foreach (var block in blocks)
+        {
+            counters.TryGetValue(block.Page, out var count);
+            count++;
+            counters[block.Page] = count;
+            block.BlockIndex = count;
+        }
+    }
 
     /// <summary>
     /// Whether this block is from para_blocks (adopted/merged).
@@ -282,6 +316,15 @@ public partial class MinerUBlockViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _isSelected;
+
+    /// <summary>
+    /// 1-based sequential index of this block within its page, assigned automatically when the
+    /// MinerU blocks collection is built (see <see cref="AssignPageIndexes"/>). Numbering
+    /// restarts at 1 on every page so the badge matches the index drawn on the PDF block
+    /// overlay for the same page.
+    /// </summary>
+    [ObservableProperty]
+    private int _blockIndex;
 
     [ObservableProperty]
     private bool _isExpanded;

@@ -339,6 +339,12 @@ public sealed partial class DocumentViewModel
         foreach (var block in newBlocks)
             _visibleMinerUBlocks.Add(block);
 
+        // (Re-)assign the per-page 1-based index shown on the block cards and on the
+        // connection line endpoints. The page filter keeps whole pages, so numbering the
+        // filtered subset yields exactly the same per-page numbers as the full collection,
+        // which makes the badges correct no matter which path populated the blocks.
+        MinerUBlockViewModel.AssignPageIndexes(_visibleMinerUBlocks);
+
         OnPropertyChanged(nameof(VisibleMinerUBlocks.Count));
         OnPropertyChanged(nameof(VisiblePagesText));
     }
@@ -731,6 +737,9 @@ public sealed partial class DocumentViewModel
             foreach (var b in newMinerUViewModels)
                 MinerUBlocks.Add(b);
 
+            // Number the blocks 1..N within each page for the index badges
+            MinerUBlockViewModel.AssignPageIndexes(MinerUBlocks);
+
             // Rebuild the block ID map for O(1) lookups
             RebuildBlockIdMap();
             
@@ -820,6 +829,9 @@ public sealed partial class DocumentViewModel
         {
             MinerUBlocks.Add(ToMinerUBlockViewModel(block, _minerUArtifactsDirectory));
         }
+
+        // Number the blocks 1..N within each page for the index badges
+        MinerUBlockViewModel.AssignPageIndexes(MinerUBlocks);
 
         // Rebuild the block ID map for O(1) lookups
         RebuildBlockIdMap();

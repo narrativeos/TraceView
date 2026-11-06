@@ -592,15 +592,22 @@
                                                               CornerRadius="3"
                                                               BorderThickness="1.5"
                                                               BorderBrush="{Binding BorderBrush}"
+                                                              ToolTip.Tip="{Binding IdentifiersToolTip}"
                                                               PointerPressed="MinerUBlock_OnPointerPressed"
                                                               Loaded="MinerUBlockBorder_OnLoaded">
                                                           <StackPanel Spacing="3">
                                                               <StackPanel Orientation="Horizontal"
                                                                           Spacing="4">
-                                                                  <TextBlock Text="{Binding Id, StringFormat='#{0}'}"
-                                                                             FontSize="11"
-                                                                             FontWeight="Bold"
-                                                                             Foreground="{DynamicResource SystemAccentColor}"/>
+                                                                  <!-- Auto 1-based index within the page; same badge style as the PDF overlay -->
+                                                                  <Border Padding="4,1"
+                                                                          CornerRadius="3"
+                                                                          Background="#BF000000"
+                                                                          VerticalAlignment="Center">
+                                                                      <TextBlock Text="{Binding IndexLabel}"
+                                                                                 FontSize="11"
+                                                                                 FontWeight="Bold"
+                                                                                 Foreground="White"/>
+                                                                  </Border>
                                                                   <TextBlock Text="{Binding TypeLabel}"
                                                                              FontSize="10"
                                                                              FontWeight="SemiBold"/>
