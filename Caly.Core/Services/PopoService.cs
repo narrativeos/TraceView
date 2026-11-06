@@ -60,6 +60,21 @@ public sealed class PopoService : IDisposable
     public static readonly TimeSpan DefaultTimeout = TimeSpan.FromMinutes(600);
 
     /// <summary>
+    /// Per-request timeout for task status polling requests. The HttpClient-wide
+    /// timeout is intentionally huge (to allow very long result downloads), so each
+    /// poll GET must enforce its own shorter deadline; otherwise a single hung
+    /// connection (server restart, network drop, half-open TCP) blocks the polling
+    /// loop for hours and freezes the UI at the last known progress.
+    /// </summary>
+    public static readonly TimeSpan StatusRequestTimeout = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Consecutive transient status-request failures tolerated before giving up
+    /// (10 polls x 2 s interval ≈ 20 s of server unreachability).
+    /// </summary>
+    private const int MaxConsecutiveStatusFailures = 10;
+
+    /// <summary>
     /// Creates a new PopoService instance.
     /// </summary>
     /// <param name="baseUrl">Popo API base URL (default: http://localhost:8440).</param>
@@ -181,10 +196,15 @@ public sealed class PopoService : IDisposable
     /// </summary>
     public async Task<PopoTaskStatusResponse> GetTaskStatusAsync(string taskId, CancellationToken ct = default)
     {
-        using var response = await _httpClient.GetAsync($"{_baseUrl}/tasks/{taskId}", ct);
+        // Enforce a short per-request deadline (see StatusRequestTimeout): the
+        // HttpClient-wide timeout is 630 minutes and would let a hung connection
+        // stall the polling loop almost indefinitely.
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(StatusRequestTimeout);
+        using var response = await _httpClient.GetAsync($"{_baseUrl}/tasks/{taskId}", timeoutCts.Token);
         response.EnsureSuccessStatusCode();
 
-        var json = await response.Content.ReadAsStringAsync(ct);
+        var json = await response.Content.ReadAsStringAsync(timeoutCts.Token);
 
         if (string.IsNullOrEmpty(json) || !json.TrimStart().StartsWith("{"))
         {
@@ -231,6 +251,9 @@ public sealed class PopoService : IDisposable
         var effectiveTimeout = timeout ?? DefaultTimeout;
         var deadline = DateTime.UtcNow.Add(effectiveTimeout);
         int lastProgress = -1;
+        string? lastProgressMessage = null;
+        int consecutiveStatusFailures = 0;
+        int unknownStatusCount = 0;
         int pollCount = 0;
         var progressRecords = new List<PopoProgressRecord>();
 
@@ -261,7 +284,41 @@ public sealed class PopoService : IDisposable
                     + $"Processing record saved to: {GetProgressRecordPath(taskId)}");
             }
 
-            var status = await GetTaskStatusAsync(taskId, ct);
+            PopoTaskStatusResponse status;
+            try
+            {
+                status = await GetTaskStatusAsync(taskId, ct);
+                consecutiveStatusFailures = 0;
+                unknownStatusCount = 0;
+            }
+            catch (Exception ex)
+                when ((ex is HttpRequestException || ex is TaskCanceledException) && !ct.IsCancellationRequested)
+            {
+                // Transient failure: the status request hung past StatusRequestTimeout
+                // (server restart, network drop, half-open TCP) or the server was briefly
+                // unreachable. The task itself is unaffected server-side, so keep polling
+                // instead of failing the whole processing run.
+                consecutiveStatusFailures++;
+                System.Diagnostics.Debug.WriteLine(
+                    $"[Popo] Status request failed ({ex.GetType().Name}: {ex.Message}), " +
+                    $"attempt {consecutiveStatusFailures}/{MaxConsecutiveStatusFailures}");
+
+                if (consecutiveStatusFailures >= MaxConsecutiveStatusFailures)
+                {
+                    currentRecord.Status = "unreachable";
+                    currentRecord.EndedAt = DateTime.UtcNow;
+                    currentRecord.ErrorMessage =
+                        $"Status request failed {consecutiveStatusFailures} times in a row: {ex.Message}";
+                    SaveProgressRecords(taskId, progressRecords);
+                    throw new PopoServiceException(
+                        $"Lost contact with the Popo server while polling task {taskId}: {ex.Message}. " +
+                        $"The server may have been restarted; the task itself may still have completed " +
+                        $"server-side. Processing record saved to: {GetProgressRecordPath(taskId)}");
+                }
+
+                await Task.Delay(DefaultPollInterval, ct);
+                continue;
+            }
             pollCount++;
 
             if (status.IsRunning)
@@ -287,9 +344,10 @@ public sealed class PopoService : IDisposable
                     SaveProgressRecords(taskId, progressRecords);
                 }
 
-                if (apiProgress != lastProgress)
+                if (apiProgress != lastProgress || progressMessage != lastProgressMessage)
                 {
                     lastProgress = apiProgress;
+                    lastProgressMessage = progressMessage;
                     onProgress?.Invoke(PopoProcessStatus.Processing, apiProgress);
                     detailedCallback?.OnProgress(PopoProcessStatus.Processing, apiProgress, progressMessage);
                 }
@@ -322,6 +380,25 @@ public sealed class PopoService : IDisposable
                 onProgress?.Invoke(PopoProcessStatus.Failed, -1);
                 var errorMessage = status.GetErrorMessage() ?? "Unknown error";
                 throw new PopoServiceException($"Popo task failed: {errorMessage}");
+            }
+            else
+            {
+                // Unrecognized status string — never spin silently forever.
+                unknownStatusCount++;
+                System.Diagnostics.Debug.WriteLine(
+                    $"[Popo] Poll #{pollCount}: unrecognized status '{status.Status}' " +
+                    $"(attempt {unknownStatusCount}/5)");
+
+                if (unknownStatusCount >= 5)
+                {
+                    currentRecord.Status = status.Status;
+                    currentRecord.EndedAt = DateTime.UtcNow;
+                    currentRecord.ErrorMessage = $"Unrecognized task status '{status.Status}'";
+                    SaveProgressRecords(taskId, progressRecords);
+                    throw new PopoServiceException(
+                        $"Popo server returned unrecognized task status '{status.Status}' " +
+                        $"{unknownStatusCount} times in a row for task {taskId}.");
+                }
             }
 
             await Task.Delay(DefaultPollInterval, ct);
