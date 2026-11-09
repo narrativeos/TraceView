@@ -248,4 +248,38 @@ public partial class DocumentViewModel
 
         SelectedTextSearchResult = e.SelectedItems[0];
     }
+
+    /// <summary>
+    /// Moves the selection to the next / previous search result - the 'Find Next' / 'Find Previous'
+    /// commands (Cmd+G / Cmd+Shift+G on macOS). The selection wraps around.
+    /// </summary>
+    private void MoveSearchSelection(int offset)
+    {
+        if (SearchResultsSource?.RowSelection is not { } selection)
+        {
+            return;
+        }
+
+        var rowCount = SearchResultsSource.Rows.Count;
+        if (rowCount == 0)
+        {
+            return;
+        }
+
+        var selected = selection.SelectedIndex;
+        var current = selected == IndexPath.Unselected || selected.Count == 0 ? -1 : selected[0];
+        var next = current < 0 ?
+            (offset > 0 ? 0 : rowCount - 1) :
+            ((current + offset) % rowCount + rowCount) % rowCount;
+
+        selection.SelectedIndex = next;
+    }
+
+    private bool CanMoveSearchSelection() => SearchResults.Count != 0;
+
+    [RelayCommand(CanExecute = nameof(CanMoveSearchSelection))]
+    private void FindNextSearchResult() => MoveSearchSelection(1);
+
+    [RelayCommand(CanExecute = nameof(CanMoveSearchSelection))]
+    private void FindPreviousSearchResult() => MoveSearchSelection(-1);
 }

@@ -318,6 +318,12 @@ public sealed partial class DocumentViewModel : ViewModelBase
                         case NotifyCollectionChangedAction.Move:
                             throw new NotImplementedException($"SearchResults Action '{e.Action}'.");
                     }
+
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        FindNextSearchResultCommand.NotifyCanExecuteChanged();
+                        FindPreviousSearchResultCommand.NotifyCanExecuteChanged();
+                    });
                 }
                 catch (OperationCanceledException)
                 {
@@ -886,6 +892,8 @@ public sealed partial class DocumentViewModel : ViewModelBase
                 page.PdfPicture = null;
                 page.Thumbnail = null;
             }
+
+            ClearRotationHistory();
         });
 
         foreach (var item in toDispose)
@@ -902,6 +910,60 @@ public sealed partial class DocumentViewModel : ViewModelBase
     private void Activated()
     {
         App.Messenger.Send(new SelectedDocumentChangedMessage(this));
+    }
+
+    /// <summary>
+    /// Reveals the document in the platform file manager
+    /// (Finder on macOS - the standard 'Show in Finder' command).
+    /// </summary>
+    [RelayCommand]
+    private void RevealInFinder()
+    {
+        string fullPath;
+
+        try
+        {
+            fullPath = System.IO.Path.GetFullPath(_pdfService.FileName ?? string.Empty);
+        }
+        catch (Exception)
+        {
+            return;
+        }
+
+        if (string.IsNullOrEmpty(fullPath) || !System.IO.File.Exists(fullPath))
+        {
+            return;
+        }
+
+        try
+        {
+            var startInfo = new System.Diagnostics.ProcessStartInfo { UseShellExecute = false };
+
+            if (OperatingSystem.IsMacOS())
+            {
+                // Finder: select the file in its enclosing folder.
+                startInfo.FileName = "open";
+                startInfo.ArgumentList.Add("-R");
+                startInfo.ArgumentList.Add(fullPath);
+            }
+            else if (OperatingSystem.IsWindows())
+            {
+                startInfo.FileName = "explorer";
+                startInfo.ArgumentList.Add($"/select,{fullPath}");
+                startInfo.UseShellExecute = true;
+            }
+            else
+            {
+                startInfo.FileName = "xdg-open";
+                startInfo.ArgumentList.Add(System.IO.Path.GetDirectoryName(fullPath) ?? fullPath);
+            }
+
+            System.Diagnostics.Process.Start(startInfo);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteExceptionToFile(ex);
+        }
     }
 
     /// <summary>

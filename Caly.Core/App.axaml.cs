@@ -30,6 +30,7 @@ using Avalonia.Data.Core.Plugins;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Markup.Xaml;
+using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Caly.Core.Services;
@@ -53,6 +54,8 @@ public partial class App : Application
     public static readonly Cursor HandCursor = new(StandardCursorType.Hand);
 
     #endregion
+
+    public static MainViewModel? MainViewModelInstance { get; private set; }
 
     public static readonly IMessenger Messenger = StrongReferenceMessenger.Default;
 
@@ -90,9 +93,13 @@ public partial class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             desktop.ShutdownMode = ShutdownMode.OnMainWindowClose;
+
+            var mainViewModel = new MainViewModel();
+            MainViewModelInstance = mainViewModel;
+
             desktop.MainWindow = new MainWindow
             {
-                DataContext = new MainViewModel()
+                DataContext = mainViewModel
             };
 
             services.AddSingleton<Visual>(_ => desktop.MainWindow);
@@ -102,13 +109,32 @@ public partial class App : Application
 
             desktop.Startup += Desktop_Startup;
             desktop.Exit += Desktop_Exit;
+
+            if (OperatingSystem.IsMacOS())
+            {
+                // macOS body text is 13 pt (HIG - Typography); other platforms keep 12.
+                Resources["ControlContentThemeFontSize"] = 13.0;
+
+                // The bundled Inter has no CJK glyphs and the automatic fallback does not reach the
+                // system fonts, which renders Chinese text as boxes. The system font carries the
+                // platform's own fallback chain (HIG - Typography: use the system font).
+                Resources["CalyUiFontFamily"] = new FontFamily(".AppleSystemUIFont");
+
+                // Same reasoning for the monospace surfaces (Markdown/JSON/formula): Menlo has no CJK
+                // glyphs, so the chain must end at the system font to keep Chinese readable.
+                Resources["CalyMonoFontFamily"] = new FontFamily("Menlo, .AppleSystemUIFont");
+
+                // NOTE: closing the last window quits the app (OnMainWindowClose) rather than keeping
+                // a window-less process alive. A Dock click on a running app brings the window back
+                // through the 'reopen' callback - see MacAppleEventBridge.
+            }
         }
         else if (ApplicationLifetime is IActivityApplicationLifetime activityLifetime)
         {
             MainView? mainView = null;
             activityLifetime.MainViewFactory = () => mainView = new MainView
             {
-                DataContext = new MainViewModel()
+                DataContext = MainViewModelInstance ??= new MainViewModel()
             };
             services.AddSingleton<Visual>(_ => mainView ??
                 throw new InvalidOperationException("MainView has not been created yet."));
@@ -123,7 +149,7 @@ public partial class App : Application
         {
             singleViewPlatform.MainView = new MainView
             {
-                DataContext = new MainViewModel()
+                DataContext = MainViewModelInstance ??= new MainViewModel()
             };
             services.AddSingleton<Visual>(_ => singleViewPlatform.MainView);
             services.AddSingleton<IStorageProvider>(_ =>
@@ -136,7 +162,7 @@ public partial class App : Application
 #if DEBUG
         else if (ApplicationLifetime is null && Avalonia.Controls.Design.IsDesignMode)
         {
-            var mainView = new MainView { DataContext = new MainViewModel() };
+            var mainView = new MainView { DataContext = MainViewModelInstance ??= new MainViewModel() };
             services.AddSingleton<Visual>(_ => mainView);
             services.AddSingleton<IStorageProvider>(_ => TopLevel.GetTopLevel(mainView)?.StorageProvider);
             services.AddSingleton<IClipboard>(_ => TopLevel.GetTopLevel(mainView)?.Clipboard);
@@ -164,6 +190,15 @@ public partial class App : Application
 
         // We need to make sure IPdfDocumentsService singleton is initiated in UI thread
         _pdfDocumentsService = Services.GetRequiredService<IPdfDocumentsManagerService>();
+
+        if (OperatingSystem.IsMacOS() && ApplicationLifetime is IClassicDesktopStyleApplicationLifetime)
+        {
+            // Opening a document from the Finder and clicking the Dock icon only reach the process
+            // through the AppKit delegate callbacks - see MacAppleEventBridge.
+            MacAppleEventBridge.Install(
+                path => _ = OpenMacDocumentAsync(path),
+                static () => (Application.Current as App)?.TryBringToFront());
+        }
 
         base.OnFrameworkInitializationCompleted();
     }
@@ -203,6 +238,23 @@ public partial class App : Application
         catch
         {
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Opens a document handed over by AppKit (Finder double click, "Open With", drag onto the Dock icon).
+    /// The callback comes from a native trampoline, so a failure here must never take the process down.
+    /// </summary>
+    private async Task OpenMacDocumentAsync(string path)
+    {
+        try
+        {
+            await OpenDoc(path, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            ShowExceptionWindowSafely(ex);
+            Debug.WriteExceptionToFile(ex);
         }
     }
 
@@ -295,8 +347,8 @@ public partial class App : Application
             if (string.IsNullOrEmpty(path) || !File.Exists(path))
             {
                 var dialogService = Services?.GetRequiredService<IDialogService>();
-                dialogService?.ShowNotification("Cannot open file",
-                    "The file does not exist or the path is invalid.",
+                dialogService?.ShowNotification("无法打开文件",
+                    "文件不存在或路径无效。",
                     NotificationType.Error);
 
                 return;
@@ -321,7 +373,7 @@ public partial class App : Application
             if (ex is null) return;
 
             var dialogService = Services?.GetRequiredService<IDialogService>();
-            dialogService?.ShowNotification("Error", ex.Message, NotificationType.Error);
+            dialogService?.ShowNotification("错误", ex.Message, NotificationType.Error);
         }
         catch
         {

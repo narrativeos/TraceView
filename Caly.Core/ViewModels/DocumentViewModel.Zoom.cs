@@ -19,6 +19,7 @@
 // SOFTWARE.
 
 using System;
+using System.Collections.Generic;
 using Avalonia;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -139,6 +140,55 @@ public partial class DocumentViewModel
         ZoomLevel = Math.Max(MinZoomLevel, Math.Min(MaxZoomLevel, targetZoom));
     }
 
+    /// <summary>
+    /// Whether an undoable page-rotation step is available. Drives the enabled state of
+    /// <see cref="UndoRotationCommand"/> (Edit / Undo, Cmd+Z).
+    /// </summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(UndoRotationCommand))]
+    private bool _hasRotationUndo;
+
+    /// <summary>
+    /// History of whole-document rotation steps; <c>true</c> = clockwise was applied.
+    /// </summary>
+    private readonly Stack<bool> _rotationHistory = new();
+
+    private bool CanUndoRotation() => HasRotationUndo;
+
+    [RelayCommand(CanExecute = nameof(CanUndoRotation))]
+    private void UndoRotation()
+    {
+        if (_rotationHistory.Count == 0)
+        {
+            return;
+        }
+
+        bool wasClockwise = _rotationHistory.Pop();
+
+        foreach (PageViewModel page in Pages)
+        {
+            if (wasClockwise)
+            {
+                page.RotateCounterclockwise();
+            }
+            else
+            {
+                page.RotateClockwise();
+            }
+        }
+
+        HasRotationUndo = _rotationHistory.Count > 0;
+    }
+
+    /// <summary>
+    /// Clears the rotation undo history. Called when the document state is reset.
+    /// </summary>
+    internal void ClearRotationHistory()
+    {
+        _rotationHistory.Clear();
+        HasRotationUndo = false;
+    }
+
     [RelayCommand]
     private void RotateAllPagesClockwise()
     {
@@ -146,6 +196,9 @@ public partial class DocumentViewModel
         {
             page.RotateClockwise();
         }
+
+        _rotationHistory.Push(true);
+        HasRotationUndo = true;
     }
 
     [RelayCommand]
@@ -155,5 +208,8 @@ public partial class DocumentViewModel
         {
             page.RotateCounterclockwise();
         }
+
+        _rotationHistory.Push(false);
+        HasRotationUndo = true;
     }
 }

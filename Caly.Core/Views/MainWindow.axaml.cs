@@ -21,6 +21,7 @@
 using Avalonia.Controls;
 using Avalonia.Controls.Notifications;
 using Avalonia.Interactivity;
+using System;
 
 namespace Caly.Core.Views;
 
@@ -31,13 +32,50 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+
+        // macOS: keep the standard title bar with the traffic-light buttons above the
+        // content instead of drawing our own chrome over it (HIG - never hide or
+        // reposition the window controls).
+        if (OperatingSystem.IsMacOS())
+        {
+            ExtendClientAreaToDecorationsHint = false;
+        }
+
+        // The title bar should identify the document being read (HIG - document windows
+        // show the document name).
+        AffectsTitle();
+    }
+
+    private void AffectsTitle()
+    {
+        if (DataContext is ViewModels.MainViewModel vm)
+        {
+            vm.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(vm.SelectedDocument))
+                {
+                    UpdateTitle(vm);
+                }
+            };
+
+            UpdateTitle(vm);
+        }
+    }
+
+    private void UpdateTitle(ViewModels.MainViewModel vm)
+    {
+        Title = string.IsNullOrEmpty(vm.SelectedDocument?.FileName)
+            ? "TraceView"
+            : vm.SelectedDocument!.FileName;
     }
 
     protected override void OnLoaded(RoutedEventArgs e)
     {
         NotificationManager = new WindowNotificationManager(this)
         {
-            Position = NotificationPosition.BottomRight,
+            // macOS notifications slide in under the menu bar (top right); on other
+            // platforms the bottom-right corner is the conventional spot.
+            Position = OperatingSystem.IsMacOS() ? NotificationPosition.TopRight : NotificationPosition.BottomRight,
 #if DEBUG
             MaxItems = 50
 #else

@@ -50,6 +50,36 @@ internal static class CalyHotkeyConfiguration
     public static KeyGesture OpenFileGesture => new KeyGesture(Key.O, CommandModifiers);
 
     /// <summary>
+    /// Gets the platform-specific <see cref="KeyGesture"/> for the 'Settings' action (Cmd+, on macOS).
+    /// </summary>
+    public static KeyGesture SettingsGesture => new KeyGesture(Key.OemComma, CommandModifiers);
+
+    /// <summary>
+    /// Gets the platform-specific <see cref="KeyGesture"/> for the 'Undo' action.
+    /// </summary>
+    public static KeyGesture? UndoGesture => Application.Current?.PlatformSettings?.HotkeyConfiguration.Undo.FirstOrDefault();
+
+    /// <summary>
+    /// Gets a platform-specific <see cref="KeyGesture"/> for the 'Find Next' action.
+    /// </summary>
+    public static KeyGesture FindNextGesture => new KeyGesture(Key.G, CommandModifiers);
+
+    /// <summary>
+    /// Gets a platform-specific <see cref="KeyGesture"/> for the 'Find Previous' action.
+    /// </summary>
+    public static KeyGesture FindPreviousGesture => new KeyGesture(Key.G, CommandModifiers | KeyModifiers.Shift);
+
+    /// <summary>
+    /// Gets a platform-specific <see cref="KeyGesture"/> for toggling the document sidebar.
+    /// </summary>
+    public static KeyGesture ToggleSidebarGesture => new KeyGesture(Key.S, CommandModifiers | KeyModifiers.Control);
+
+    /// <summary>
+    /// Gets a platform-specific <see cref="KeyGesture"/> for the 'Zoom To Page Width' action.
+    /// </summary>
+    public static KeyGesture DocumentZoomToFitGesture => new KeyGesture(Key.D0, CommandModifiers);
+
+    /// <summary>
     /// Gets a platform-specific <see cref="KeyGesture"/> for the 'Print Document' action.
     /// </summary>
     public static KeyGesture DocumentPrintGesture => new KeyGesture(Key.P, CommandModifiers);
@@ -57,7 +87,11 @@ internal static class CalyHotkeyConfiguration
     /// <summary>
     /// Gets a platform-specific <see cref="KeyGesture"/> for the 'Go to Specific Page' action.
     /// </summary>
-    public static KeyGesture DocumentGoToGesture => new KeyGesture(Key.G, CommandModifiers);
+    /// <remarks>
+    /// Uses <c>Cmd+J</c> (<c>Ctrl+J</c> elsewhere): <c>Cmd+G</c> is reserved by the platform
+    /// for 'Find Next' (see <see cref="FindNextGesture"/>).
+    /// </remarks>
+    public static KeyGesture DocumentGoToGesture => new KeyGesture(Key.J, CommandModifiers);
 
     /// <summary>
     /// Gets a platform-specific <see cref="KeyGesture"/> for the 'Zoom In' action.
@@ -77,7 +111,10 @@ internal static class CalyHotkeyConfiguration
     /// <summary>
     /// Gets a platform-specific <see cref="KeyGesture"/> for the 'Close Document' action.
     /// </summary>
-    public static KeyGesture DocumentCloseGesture => new KeyGesture(Key.F4, CommandModifiers);
+    /// <remarks>
+    /// <c>Cmd+W</c> is the platform standard for closing a document / tab / window.
+    /// </remarks>
+    public static KeyGesture DocumentCloseGesture => new KeyGesture(Key.W, CommandModifiers);
 
     /// <summary>
     /// Gets a platform-specific <see cref="KeyGesture"/> for the 'Go To Next Page' action.
