@@ -1,8 +1,7 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:tabalonia="clr-namespace:Tabalonia.Themes.Custom;assembly=Tabalonia"
-             x:Class="Caly.Core.App"
-             RequestedThemeVariant="Dark">
+             x:Class="Caly.Core.App">
 
 	<Application.Resources>
         <ResourceDictionary>
@@ -22,14 +21,225 @@
                 <ResourceInclude Source="avares://Caly.Core/Controls/SettingsControl.axaml"/>
                 <ResourceInclude Source="avares://Caly.Core/Controls/LicenseControl.axaml"/>
 			</ResourceDictionary.MergedDictionaries>
+
+            <!--
+                Semantic brushes. Views must never hardcode colours: every colour has a
+                Light and Dark value so the app follows the system appearance and the
+                accessibility contrast settings (HIG - Visual Design).
+            -->
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <!--
+                        主题色唯一来源。所有主色派生 brush 必须由它生成（改色只改这里 +
+                        下面 ColorPaletteResources 的 Accent，二者必须一致 - 有单元测试把关）。
+                    -->
+                    <Color x:Key="CalyPrimaryColor">#FF0E9E8A</Color>
+                    <SolidColorBrush x:Key="CalyPrimaryBrush" Color="{StaticResource CalyPrimaryColor}" />
+                    <SolidColorBrush x:Key="CalyAlertCardBackgroundBrush" Color="#FFF2F2" />
+                    <SolidColorBrush x:Key="CalyAlertCardForegroundBrush" Color="#C62828" />
+                    <SolidColorBrush x:Key="CalyScrimBrush" Color="#80000000" />
+                    <SolidColorBrush x:Key="CalyScrimStrongBrush" Color="#BF000000" />
+                    <SolidColorBrush x:Key="CalyOverlayBackgroundBrush" Color="#E6F5F5F5" />
+                    <SolidColorBrush x:Key="CalyCodeBackgroundBrush" Color="#FFF7F7F7" />
+                    <SolidColorBrush x:Key="CalySubtleBackgroundBrush" Color="#11000000" />
+                    <SolidColorBrush x:Key="CalySubtleBorderBrush" Color="#2A000000" />
+                    <SolidColorBrush x:Key="CalyFaintBackgroundBrush" Color="#08333333" />
+                    <SolidColorBrush x:Key="CalyBadgeBackgroundBrush" Color="#D9EEEEEE" />
+                    <SolidColorBrush x:Key="CalyBadgeBorderBrush" Color="#66000000" />
+                    <SolidColorBrush x:Key="CalySelectionFillBrush" Color="#66A8D8FF" />
+                    <SolidColorBrush x:Key="CalyChipBackgroundBrush" Color="#FFFAFAFA" />
+                    <SolidColorBrush x:Key="CalyChipBorderBrush" Color="#FFE0E0E0" />
+                    <SolidColorBrush x:Key="CalyDividerBrush" Color="#FFCCCCCC" />
+                    <SolidColorBrush x:Key="CalyStrongForegroundBrush" Color="#FF212121" />
+                    <SolidColorBrush x:Key="CalyOnAccentForegroundBrush" Color="#FF1A1A1A" />
+                    <SolidColorBrush x:Key="CalyMutedForegroundBrush" Color="#FF616161" />
+                    <SolidColorBrush x:Key="CalyErrorForegroundBrush" Color="#FFD32F2F" />
+                    <SolidColorBrush x:Key="CalyWarningForegroundBrush" Color="#FFEF6C00" />
+                    <SolidColorBrush x:Key="CalySuccessForegroundBrush" Color="#FF2E7D32" />
+                    <SolidColorBrush x:Key="CalyInfoForegroundBrush" Color="#FF1565C0" />
+                    <SolidColorBrush x:Key="CalyPurpleSolidBrush" Color="#FF8E24AA" />
+                    <SolidColorBrush x:Key="CalyPurpleDeepBrush" Color="#FF6A1B9A" />
+                    <SolidColorBrush x:Key="CalyBlueDeepBrush" Color="#FF1565C0" />
+                    <SolidColorBrush x:Key="CalyTagGreenBackgroundBrush" Color="#1F2E7D32" />
+                    <SolidColorBrush x:Key="CalyTagGreenBorderBrush" Color="#554CAF50" />
+                    <SolidColorBrush x:Key="CalyTagGreenForegroundBrush" Color="#FF2E7D32" />
+                    <SolidColorBrush x:Key="CalyTagAmberBackgroundBrush" Color="#1FEF6C00" />
+                    <SolidColorBrush x:Key="CalyTagAmberBorderBrush" Color="#55FB8C00" />
+                    <SolidColorBrush x:Key="CalyTagAmberForegroundBrush" Color="#FFEF6C00" />
+                    <SolidColorBrush x:Key="CalyTagBlueBackgroundBrush" Color="#1F1565C0" />
+                    <SolidColorBrush x:Key="CalyTagBlueBorderBrush" Color="#552196F3" />
+                    <SolidColorBrush x:Key="CalyTagBlueForegroundBrush" Color="#FF1565C0" />
+                    <SolidColorBrush x:Key="CalyTagPurpleBackgroundBrush" Color="#1F8E24AA" />
+                    <SolidColorBrush x:Key="CalyTagPurpleBorderBrush" Color="#55AB47BC" />
+                    <SolidColorBrush x:Key="CalyTagPurpleForegroundBrush" Color="#FF7B1FA2" />
+                    <SolidColorBrush x:Key="CalyTagPinkBackgroundBrush" Color="#1FC2185B" />
+                    <SolidColorBrush x:Key="CalyTagPinkBorderBrush" Color="#55E91E63" />
+                    <SolidColorBrush x:Key="CalyTagPinkForegroundBrush" Color="#FFC2185B" />
+                    <SolidColorBrush x:Key="CalyTagSlateBackgroundBrush" Color="#1F455A64" />
+                    <SolidColorBrush x:Key="CalyTagSlateBorderBrush" Color="#55607D8B" />
+                    <SolidColorBrush x:Key="CalyTagSlateForegroundBrush" Color="#FF455A64" />
+                    <SolidColorBrush x:Key="CalyTagSteelBackgroundBrush" Color="#1F37474F" />
+                    <SolidColorBrush x:Key="CalyTagSteelBorderBrush" Color="#44546E7A" />
+                    <SolidColorBrush x:Key="CalyTagSteelForegroundBrush" Color="#FF37474F" />
+                    <SolidColorBrush x:Key="CalyTagAzureBackgroundBrush" Color="#1F1565C0" />
+                    <SolidColorBrush x:Key="CalyTagAzureForegroundBrush" Color="#FF1565C0" />
+                    <SolidColorBrush x:Key="CalyTagVioletBackgroundBrush" Color="#1F6A1B9A" />
+                    <SolidColorBrush x:Key="CalyTagVioletForegroundBrush" Color="#FF6A1B9A" />
+                    <SolidColorBrush x:Key="CalyAccentGreenBrush" Color="#FF558B2F" />
+                    <SolidColorBrush x:Key="CalyAccentMintBrush" Color="#FF7CB342" />
+                    <SolidColorBrush x:Key="CalyAccentAmberBrush" Color="#FFEF6C00" />
+                    <SolidColorBrush x:Key="CalyAccentBlueBrush" Color="#FF1976D2" />
+                    <SolidColorBrush x:Key="CalyAccentLightBlueBrush" Color="#FF0288D1" />
+                    <SolidColorBrush x:Key="CalyAccentSkyBrush" Color="#FF1E88E5" />
+                    <SolidColorBrush x:Key="CalyAccentPurpleBrush" Color="#FF8E24AA" />
+                    <SolidColorBrush x:Key="CalyAccentVioletBrush" Color="#FF8E24AA" />
+                    <SolidColorBrush x:Key="CalyAccentPinkBrush" Color="#FFD81B60" />
+                    <SolidColorBrush x:Key="CalyAccentGreyBrush" Color="#FF546E7A" />
+                    <SolidColorBrush x:Key="CalyAccentSlateBrush" Color="#FF546E7A" />
+
+                    <!--
+                        纸面优先（Paper-first）画布 token。
+                        设计语言：白卡片浮在点阵纸面上，结构只靠 1px 发丝线；
+                        颜色只保留三种语义 —— 主色环=当前页/激活工具，暖黄=命中高亮，灰=次要信息。
+                    -->
+                    <SolidColorBrush x:Key="CalyCardBackgroundBrush" Color="#FFFFFFFF" />
+                    <SolidColorBrush x:Key="CalyCardBorderBrush" Color="#FFE4E4E7" />
+                    <!-- PDF 页面纸张：两种主题下都保持白底（与预览/略览类工具一致）。 -->
+                    <SolidColorBrush x:Key="CalyPaperBrush" Color="#FFFFFFFF" />
+                    <!-- 彩色实底（徽标、遮罩）之上的前景色：底色本身是高饱和色，与主题无关。 -->
+                    <SolidColorBrush x:Key="CalyOnSolidBrush" Color="#FFFFFFFF" />
+                    <SolidColorBrush x:Key="CalyCanvasBackgroundBrush" Color="#FFF6F6F7" />
+                    <SolidColorBrush x:Key="CalySelectionRingBrush" Color="{StaticResource CalyPrimaryColor}" />
+                    <SolidColorBrush x:Key="CalyHighlightBackgroundBrush" Color="#FFFFE9A8" />
+                    <SolidColorBrush x:Key="CalyHighlightForegroundBrush" Color="#FF5C4700" />
+                    <SolidColorBrush x:Key="CalyToolbarHoverBackgroundBrush" Color="#14000000" />
+                    <SolidColorBrush x:Key="CalyToolbarPressedBackgroundBrush" Color="#24000000" />
+                    <SolidColorBrush x:Key="CalyToolbarActiveBackgroundBrush" Color="{StaticResource CalyPrimaryColor}" Opacity="0.18" />
+                    <SolidColorBrush x:Key="CalyToolbarActiveBorderBrush" Color="{StaticResource CalyPrimaryColor}" Opacity="0.40" />
+                    <DrawingBrush x:Key="CalyCanvasTileBrush" TileMode="Tile"
+                                  SourceRect="0,0,24,24" DestinationRect="0,0,24,24">
+                        <DrawingBrush.Drawing>
+                            <DrawingGroup>
+                                <GeometryDrawing Brush="#FFF6F6F7" Geometry="M0,0 H24 V24 H0 Z" />
+                                <GeometryDrawing Brush="#FFE3E3E7">
+                                    <GeometryDrawing.Geometry>
+                                        <RectangleGeometry Rect="11.25,11.25,1.5,1.5" />
+                                    </GeometryDrawing.Geometry>
+                                </GeometryDrawing>
+                            </DrawingGroup>
+                        </DrawingBrush.Drawing>
+                    </DrawingBrush>
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <!-- 主题色唯一来源（深色提亮同色相），必须与下面 Accent 一致。 -->
+                    <Color x:Key="CalyPrimaryColor">#FF15F2C7</Color>
+                    <SolidColorBrush x:Key="CalyPrimaryBrush" Color="{StaticResource CalyPrimaryColor}" />
+                    <SolidColorBrush x:Key="CalyAlertCardBackgroundBrush" Color="#2AD95B5B" />
+                    <SolidColorBrush x:Key="CalyAlertCardForegroundBrush" Color="#FFFF8A80" />
+                    <SolidColorBrush x:Key="CalyScrimBrush" Color="#80000000" />
+                    <SolidColorBrush x:Key="CalyScrimStrongBrush" Color="#BF000000" />
+                    <SolidColorBrush x:Key="CalyOverlayBackgroundBrush" Color="#E62D2D2D" />
+                    <SolidColorBrush x:Key="CalyCodeBackgroundBrush" Color="#FF1E1E1E" />
+                    <SolidColorBrush x:Key="CalySubtleBackgroundBrush" Color="#22222222" />
+                    <SolidColorBrush x:Key="CalySubtleBorderBrush" Color="#44444444" />
+                    <SolidColorBrush x:Key="CalyFaintBackgroundBrush" Color="#33333308" />
+                    <SolidColorBrush x:Key="CalyBadgeBackgroundBrush" Color="#D93B3B3B" />
+                    <SolidColorBrush x:Key="CalyBadgeBorderBrush" Color="#66FFFFFF" />
+                    <SolidColorBrush x:Key="CalySelectionFillBrush" Color="#FF7AB8FF" />
+                    <SolidColorBrush x:Key="CalyChipBackgroundBrush" Color="#FF2A2A2A" />
+                    <SolidColorBrush x:Key="CalyChipBorderBrush" Color="#FF4A4A4A" />
+                    <SolidColorBrush x:Key="CalyDividerBrush" Color="#FF4A4A4A" />
+                    <SolidColorBrush x:Key="CalyStrongForegroundBrush" Color="#FFEDEDED" />
+                    <SolidColorBrush x:Key="CalyOnAccentForegroundBrush" Color="#FF1A1A1A" />
+                    <SolidColorBrush x:Key="CalyMutedForegroundBrush" Color="#FF9E9E9E" />
+                    <SolidColorBrush x:Key="CalyErrorForegroundBrush" Color="#FFF44336" />
+                    <SolidColorBrush x:Key="CalyWarningForegroundBrush" Color="#FFFF9800" />
+                    <SolidColorBrush x:Key="CalySuccessForegroundBrush" Color="#FF4CAF50" />
+                    <SolidColorBrush x:Key="CalyInfoForegroundBrush" Color="#FF2196F3" />
+                    <SolidColorBrush x:Key="CalyPurpleSolidBrush" Color="#FF9C27B0" />
+                    <SolidColorBrush x:Key="CalyPurpleDeepBrush" Color="#FF7B1FA2" />
+                    <SolidColorBrush x:Key="CalyBlueDeepBrush" Color="#FF1565C0" />
+                    <SolidColorBrush x:Key="CalyTagGreenBackgroundBrush" Color="#4CAF5018" />
+                    <SolidColorBrush x:Key="CalyTagGreenBorderBrush" Color="#4CAF5055" />
+                    <SolidColorBrush x:Key="CalyTagGreenForegroundBrush" Color="#FFC8E6C9" />
+                    <SolidColorBrush x:Key="CalyTagAmberBackgroundBrush" Color="#FF980018" />
+                    <SolidColorBrush x:Key="CalyTagAmberBorderBrush" Color="#FF980055" />
+                    <SolidColorBrush x:Key="CalyTagAmberForegroundBrush" Color="#FFFFE0B2" />
+                    <SolidColorBrush x:Key="CalyTagBlueBackgroundBrush" Color="#2196F318" />
+                    <SolidColorBrush x:Key="CalyTagBlueBorderBrush" Color="#2196F355" />
+                    <SolidColorBrush x:Key="CalyTagBlueForegroundBrush" Color="#FFBBDEFB" />
+                    <SolidColorBrush x:Key="CalyTagPurpleBackgroundBrush" Color="#9C27B018" />
+                    <SolidColorBrush x:Key="CalyTagPurpleBorderBrush" Color="#9C27B055" />
+                    <SolidColorBrush x:Key="CalyTagPurpleForegroundBrush" Color="#FFE1BEE7" />
+                    <SolidColorBrush x:Key="CalyTagPinkBackgroundBrush" Color="#E91E6318" />
+                    <SolidColorBrush x:Key="CalyTagPinkBorderBrush" Color="#E91E6355" />
+                    <SolidColorBrush x:Key="CalyTagPinkForegroundBrush" Color="#FFF8BBD0" />
+                    <SolidColorBrush x:Key="CalyTagSlateBackgroundBrush" Color="#607D8B18" />
+                    <SolidColorBrush x:Key="CalyTagSlateBorderBrush" Color="#607D8B55" />
+                    <SolidColorBrush x:Key="CalyTagSlateForegroundBrush" Color="#FFB0BEC5" />
+                    <SolidColorBrush x:Key="CalyTagSteelBackgroundBrush" Color="#546E7A18" />
+                    <SolidColorBrush x:Key="CalyTagSteelBorderBrush" Color="#546E7A44" />
+                    <SolidColorBrush x:Key="CalyTagSteelForegroundBrush" Color="#FF90A4AE" />
+                    <SolidColorBrush x:Key="CalyTagAzureBackgroundBrush" Color="#1565C018" />
+                    <SolidColorBrush x:Key="CalyTagAzureForegroundBrush" Color="#FF90CAF9" />
+                    <SolidColorBrush x:Key="CalyTagVioletBackgroundBrush" Color="#7B1FA218" />
+                    <SolidColorBrush x:Key="CalyTagVioletForegroundBrush" Color="#FFCE93D8" />
+                    <SolidColorBrush x:Key="CalyAccentGreenBrush" Color="#FF81C784" />
+                    <SolidColorBrush x:Key="CalyAccentMintBrush" Color="#FFA5D6A7" />
+                    <SolidColorBrush x:Key="CalyAccentAmberBrush" Color="#FFFFB74D" />
+                    <SolidColorBrush x:Key="CalyAccentBlueBrush" Color="#FF64B5F6" />
+                    <SolidColorBrush x:Key="CalyAccentLightBlueBrush" Color="#FF4FC3F7" />
+                    <SolidColorBrush x:Key="CalyAccentSkyBrush" Color="#FF90CAF9" />
+                    <SolidColorBrush x:Key="CalyAccentPurpleBrush" Color="#FFCE93D8" />
+                    <SolidColorBrush x:Key="CalyAccentVioletBrush" Color="#FFAB47BC" />
+                    <SolidColorBrush x:Key="CalyAccentPinkBrush" Color="#FFF48FB1" />
+                    <SolidColorBrush x:Key="CalyAccentGreyBrush" Color="#FF90A4AE" />
+                    <SolidColorBrush x:Key="CalyAccentSlateBrush" Color="#FF78909C" />
+
+                    <!-- 纸面优先 token（深色）：纸面转深灰，卡片略亮于画布，发丝线仍是最主要的结构手段。 -->
+                    <SolidColorBrush x:Key="CalyCardBackgroundBrush" Color="#FF26262A" />
+                    <SolidColorBrush x:Key="CalyCardBorderBrush" Color="#FF35353B" />
+                    <SolidColorBrush x:Key="CalyPaperBrush" Color="#FFFFFFFF" />
+                    <SolidColorBrush x:Key="CalyOnSolidBrush" Color="#FFFFFFFF" />
+                    <SolidColorBrush x:Key="CalyCanvasBackgroundBrush" Color="#FF1C1C1E" />
+                    <SolidColorBrush x:Key="CalySelectionRingBrush" Color="{StaticResource CalyPrimaryColor}" />
+                    <SolidColorBrush x:Key="CalyHighlightBackgroundBrush" Color="#FF6B5312" />
+                    <SolidColorBrush x:Key="CalyHighlightForegroundBrush" Color="#FFFFE9A8" />
+                    <SolidColorBrush x:Key="CalyToolbarHoverBackgroundBrush" Color="#26FFFFFF" />
+                    <SolidColorBrush x:Key="CalyToolbarPressedBackgroundBrush" Color="#3DFFFFFF" />
+                    <SolidColorBrush x:Key="CalyToolbarActiveBackgroundBrush" Color="{StaticResource CalyPrimaryColor}" Opacity="0.20" />
+                    <SolidColorBrush x:Key="CalyToolbarActiveBorderBrush" Color="{StaticResource CalyPrimaryColor}" Opacity="0.53" />
+                    <DrawingBrush x:Key="CalyCanvasTileBrush" TileMode="Tile"
+                                  SourceRect="0,0,24,24" DestinationRect="0,0,24,24">
+                        <DrawingBrush.Drawing>
+                            <DrawingGroup>
+                                <GeometryDrawing Brush="#FF1C1C1E" Geometry="M0,0 H24 V24 H0 Z" />
+                                <GeometryDrawing Brush="#FF2C2C31">
+                                    <GeometryDrawing.Geometry>
+                                        <RectangleGeometry Rect="11.25,11.25,1.5,1.5" />
+                                    </GeometryDrawing.Geometry>
+                                </GeometryDrawing>
+                            </DrawingGroup>
+                        </DrawingBrush.Drawing>
+                    </DrawingBrush>
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+
+            <!--
+                字体回退：Inter 不含中日韩字形，而 Skia 的回退不会自动命中系统中文字体，
+                中文会渲染成方块。显式给出回退链（macOS 苹方 / Windows 雅黑 / Linux 思源黑体）。
+            -->
+            <FontFamily x:Key="CalyUiFontFamily">Inter, PingFang SC, Hiragino Sans GB, Microsoft YaHei, Noto Sans CJK SC, Segoe UI</FontFamily>
+            <!-- 等宽文本（Markdown/JSON/公式）同样必须带 CJK 回退，否则中文在 macOS 上会渲染成方框。 -->
+            <FontFamily x:Key="CalyMonoFontFamily">Consolas, Cascadia Mono, Menlo, PingFang SC, Noto Sans Mono CJK SC, monospace</FontFamily>
         </ResourceDictionary>
 	</Application.Resources>
 
 	<Application.Styles>
 		<FluentTheme DensityStyle="Compact">
 			<FluentTheme.Palettes>
-                <ColorPaletteResources x:Key="Light" Accent="#15f2c7" AltHigh="White" AltLow="White" AltMedium="White" AltMediumHigh="White" AltMediumLow="White" BaseHigh="Black" BaseLow="#ff999999" BaseMedium="#ff616161" BaseMediumHigh="#ff3b3b3b" BaseMediumLow="#ff4e4e4e" ChromeAltLow="#ff3b3b3b" ChromeBlackHigh="Black" ChromeBlackLow="#ff999999" ChromeBlackMedium="#ff3b3b3b" ChromeBlackMediumLow="#ff616161" ChromeDisabledHigh="#ff999999" ChromeDisabledLow="#ff616161" ChromeGray="#ff4e4e4e" ChromeHigh="#ff999999" ChromeLow="#ffd9d9d9" ChromeMedium="#ffcccccc" ChromeMediumLow="#ffd9d9d9" ChromeWhite="White" ListLow="#ffcccccc" ListMedium="#ff999999" RegionColor="#ffcccccc" />
-                <ColorPaletteResources x:Key="Dark" Accent="#ff585858" AltHigh="Black" AltLow="Black" AltMedium="Black" AltMediumHigh="Black" AltMediumLow="Black" BaseHigh="White" BaseLow="#ff666666" BaseMedium="#ffb3b3b3" BaseMediumHigh="#ffc6c6c6" BaseMediumLow="#ff8c8c8c" ChromeAltLow="#ffc6c6c6" ChromeBlackHigh="Black" ChromeBlackLow="#ffc6c6c6" ChromeBlackMedium="Black" ChromeBlackMediumLow="Black" ChromeDisabledHigh="#ff666666" ChromeDisabledLow="#ffb3b3b3" ChromeGray="#ffa0a0a0" ChromeHigh="#ffa0a0a0" ChromeLow="#ff2d2d2d" ChromeMedium="#ff3b3b3b" ChromeMediumLow="#ff585858" ChromeWhite="White" ListLow="#ff3b3b3b" ListMedium="#ff666666" RegionColor="#ff333333" />
+                <ColorPaletteResources x:Key="Light" Accent="#0e9e8a" AltHigh="White" AltLow="White" AltMedium="White" AltMediumHigh="White" AltMediumLow="White" BaseHigh="Black" BaseLow="#ff999999" BaseMedium="#ff616161" BaseMediumHigh="#ff3b3b3b" BaseMediumLow="#ff4e4e4e" ChromeAltLow="#ff3b3b3b" ChromeBlackHigh="Black" ChromeBlackLow="#ff999999" ChromeBlackMedium="#ff3b3b3b" ChromeBlackMediumLow="#ff616161" ChromeDisabledHigh="#ff999999" ChromeDisabledLow="#ff616161" ChromeGray="#ff4e4e4e" ChromeHigh="#ff999999" ChromeLow="#ffd9d9d9" ChromeMedium="#ffcccccc" ChromeMediumLow="#ffd9d9d9" ChromeWhite="White" ListLow="#ffcccccc" ListMedium="#ff999999" RegionColor="#ffcccccc" />
+                <ColorPaletteResources x:Key="Dark" Accent="#15f2c7" AltHigh="Black" AltLow="Black" AltMedium="Black" AltMediumHigh="Black" AltMediumLow="Black" BaseHigh="White" BaseLow="#ff666666" BaseMedium="#ffb3b3b3" BaseMediumHigh="#ffc6c6c6" BaseMediumLow="#ff8c8c8c" ChromeAltLow="#ffc6c6c6" ChromeBlackHigh="Black" ChromeBlackLow="#ffc6c6c6" ChromeBlackMedium="Black" ChromeBlackMediumLow="Black" ChromeDisabledHigh="#ff666666" ChromeDisabledLow="#ffb3b3b3" ChromeGray="#ffa0a0a0" ChromeHigh="#ffa0a0a0" ChromeLow="#ff2d2d2d" ChromeMedium="#ff3b3b3b" ChromeMediumLow="#ff585858" ChromeWhite="White" ListLow="#ff3b3b3b" ListMedium="#ff666666" RegionColor="#ff333333" />
 			</FluentTheme.Palettes>
 		</FluentTheme>
 		<tabalonia:CustomTheme/>
@@ -39,6 +249,26 @@
 		<StyleInclude Source="avares://Caly.Core/Assets/Icons.axaml"/>
         <StyleInclude Source="avares://AvaloniaProgressRing/Styles/ProgressRing.xaml"/>
         <StyleInclude Source="avares://Caly.Core/CalyStyles.axaml"/>
+
+        <!-- 全局字体：所有文本走带 CJK 回退的字体族（显式写明的等宽字体不受影响）。 -->
+        <Style Selector="TextBlock">
+            <Setter Property="FontFamily" Value="{DynamicResource CalyUiFontFamily}"/>
+        </Style>
+        <Style Selector="TemplatedControl">
+            <Setter Property="FontFamily" Value="{DynamicResource CalyUiFontFamily}"/>
+        </Style>
+
+        <!-- 界面图标统一用描边绘制：一套线宽、颜色跟随按钮前景（hover/pressed/active 自动生效）。
+             glyph_* 为功能字形，act_* 为同一字形加 "+" 徽标（生成/加工类动作）。 -->
+        <Style Selector="Path.toolIcon">
+            <Setter Property="Stroke" Value="{Binding $parent[Button].Foreground}"/>
+            <Setter Property="StrokeThickness" Value="1.7"/>
+            <Setter Property="StrokeJoin" Value="Round"/>
+            <Setter Property="StrokeLineCap" Value="Round"/>
+            <Setter Property="Stretch" Value="Uniform"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
 
 	</Application.Styles>
 </Application>

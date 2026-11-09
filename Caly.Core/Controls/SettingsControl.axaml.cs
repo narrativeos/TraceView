@@ -52,7 +52,7 @@ public class SettingsControl : TemplatedControl
 
         var folders = await window.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
         {
-            Title = "Select Project Home Directory",
+            Title = "选择项目主目录",
         });
 
         if (folders.Count > 0)

@@ -23,7 +23,7 @@
             <TextBox IsReadOnly="True"
                      TextWrapping="NoWrap"
                      AcceptsReturn="True"
-                     FontFamily="Cascadia Mono, Consolas, monospace"
+                     FontFamily="{DynamicResource CalyMonoFontFamily}"
                      Text="{Binding Report, Mode=OneTime}"/>
         </ScrollViewer>
     </Grid>

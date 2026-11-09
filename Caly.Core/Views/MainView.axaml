@@ -22,7 +22,11 @@
 		<KeyBinding Gesture="{x:Static utilities:CalyHotkeyConfiguration.DocumentNextGesture}" Command="{Binding ActivateNextDocumentCommand}"/>
 		<KeyBinding Gesture="{x:Static utilities:CalyHotkeyConfiguration.DocumentPreviousGesture}" Command="{Binding ActivatePreviousDocumentCommand}"/>
         <KeyBinding Gesture="{x:Static utilities:CalyHotkeyConfiguration.DocumentPrintGesture}" Command="{Binding PrintDocumentCommand}"/>
-        <KeyBinding Gesture="{x:Static utilities:CalyHotkeyConfiguration.DocumentSearchGesture}" Command="{Binding ActivateSearchTextTabCommand}" />
+		<KeyBinding Gesture="{x:Static utilities:CalyHotkeyConfiguration.SettingsGesture}" Command="{Binding ToggleSettingsCommand}" />
+		<KeyBinding Gesture="{x:Static utilities:CalyHotkeyConfiguration.ToggleSidebarGesture}" Command="{Binding ToggleDocumentPaneCommand}" />
+		<KeyBinding Gesture="{x:Static utilities:CalyHotkeyConfiguration.UndoGesture}" Command="{Binding SelectedDocument.UndoRotationCommand}" />
+		<KeyBinding Gesture="{x:Static utilities:CalyHotkeyConfiguration.FindNextGesture}" Command="{Binding SelectedDocument.FindNextSearchResultCommand}" />
+		<KeyBinding Gesture="{x:Static utilities:CalyHotkeyConfiguration.FindPreviousGesture}" Command="{Binding SelectedDocument.FindPreviousSearchResultCommand}" />
 	</UserControl.KeyBindings>
 
 	<Grid RowDefinitions="*,22">
@@ -49,12 +53,14 @@
 			<ToggleButton DockPanel.Dock="Left"
                           VerticalAlignment="Stretch"
                           Background="Transparent"
+                          AutomationProperties.Name="设置"
+                          ToolTip.Tip="设置 (Cmd+,)"
                           IsChecked="{Binding IsSettingsPaneOpen}">
 				<PathIcon Width="15"
                           Height="15"
                           Data="{StaticResource settings_regular}"
+                          IsHitTestVisible="False"
                           VerticalAlignment="Center">
-					<ToolTip.Tip>设置</ToolTip.Tip>
 				</PathIcon>
 			</ToggleButton>
 			<TextBlock Text="{Binding SelectedDocument.InteractiveActionOver, FallbackValue=' '}" VerticalAlignment="Center"/>

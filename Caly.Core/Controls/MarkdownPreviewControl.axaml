@@ -8,7 +8,7 @@
     <ScrollViewer>
         <TextBlock Text="{Binding MarkdownText}"
                    TextWrapping="Wrap"
-                   FontFamily="Consolas, monospace"
+                   FontFamily="{DynamicResource CalyMonoFontFamily}"
                    FontSize="13"
                    Margin="8"/>
     </ScrollViewer>

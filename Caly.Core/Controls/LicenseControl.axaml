@@ -26,7 +26,7 @@
                                HorizontalAlignment="Left" />
 
                     <TextBlock DockPanel.Dock="Top">
-                        <Run Text="Version "/>
+                        <Run Text="版本 "/>
                         <Run Text="{Binding Version, Mode=OneTime}"/>
                     </TextBlock>
 
@@ -62,7 +62,7 @@ SOFTWARE.</TextBox>
                     <Separator DockPanel.Dock="Top"/>
 
                     <TextBlock DockPanel.Dock="Top"
-                               Text="Third Party notices can be found at:"/>
+                               Text="第三方组件声明见："/>
 
                     <HyperlinkButton DockPanel.Dock="Top"
                                      Foreground="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
@@ -79,7 +79,7 @@ SOFTWARE.</TextBox>
                               IsExpanded="True">
                         <Border Margin="5">
                             <StackPanel HorizontalAlignment="Stretch">
-                                <CheckBox Content="Layout Analysis"
+                                <CheckBox Content="版面分析"
                                           IsChecked="{Binding ShowLayoutAnalysis}"
                                           HorizontalAlignment="Stretch"/>
                             </StackPanel>
@@ -91,7 +91,7 @@ SOFTWARE.</TextBox>
 
                     <Button DockPanel.Dock="Bottom"
                             Name="PART_OpenLogsButton"
-                            Content="Open logs folder"
+                            Content="打开日志文件夹"
                             HorizontalAlignment="Left"
                             Margin="0,5"/>
 

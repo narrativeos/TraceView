@@ -230,7 +230,14 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     private async Task CloseTab(object tabItem, CancellationToken token)
     {
         // TODO - Finish proper dispose / unload of document on close 
-        if (((DragTabItem)tabItem)?.DataContext is DocumentViewModel vm)
+        DocumentViewModel? vm = tabItem switch
+        {
+            DragTabItem item => item.DataContext as DocumentViewModel,
+            DocumentViewModel document => document,
+            _ => null
+        };
+
+        if (vm is not null)
         {
             await CloseDocumentInternal(vm, token);
         }
@@ -318,5 +325,40 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         }
 
         SelectedDocumentIndex = newIndex;
+    }
+
+    /// <summary>
+    /// Toggles the document side pane. Exposed as a command so it can also be reached
+    /// from the native menu bar (View / Show Sidebar).
+    /// </summary>
+    [RelayCommand]
+    private void ToggleDocumentPane()
+    {
+        IsDocumentPaneOpen = !IsDocumentPaneOpen;
+    }
+
+    /// <summary>
+    /// Toggles the settings pane. Exposed as a command so it can also be reached
+    /// from the keyboard shortcut (Cmd+,) and the native menu bar.
+    /// </summary>
+    [RelayCommand]
+    private void ToggleSettings()
+    {
+        IsSettingsPaneOpen = !IsSettingsPaneOpen;
+    }
+
+    /// <summary>
+    /// Shows the 'About' information. Exposed for the native Help menu.
+    /// </summary>
+    [RelayCommand]
+    private void ShowAbout()
+    {
+        var dialogService = App.Current?.Services?.GetService<IDialogService>();
+
+        var version = typeof(App).Assembly.GetName().Version?.ToString() ?? "0.0";
+
+        dialogService?.ShowNotification("TraceView",
+            $"TraceView {version}\nPDF 阅读与结构化分析工具。",
+            Avalonia.Controls.Notifications.NotificationType.Information);
     }
 }

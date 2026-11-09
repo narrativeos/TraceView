@@ -24,13 +24,13 @@
                 CornerRadius="4">
             <StackPanel Spacing="6">
                 <TextBlock Name="PART_StatusText"
-                           Text="No location data available."
+                           Text="暂无地理位置数据。"
                            FontSize="11"
                            Opacity="0.7"
                            TextWrapping="Wrap"/>
                 
                 <TextBlock Name="PART_GeoJsonPathText"
-                           FontSize="10"
+                           FontSize="11"
                            Opacity="0.5"
                            TextWrapping="Wrap"/>
             </StackPanel>
@@ -46,13 +46,13 @@
                     HorizontalAlignment="Stretch"/>
             
             <Button Name="PART_OpenInGeoLibreBtn"
-                    Content="Open in GeoLibre"
+                    Content="在 GeoLibre 中打开"
                     Click="OnOpenInGeoLibre"
                     IsEnabled="False"
                     HorizontalAlignment="Stretch"/>
             
             <Button Name="PART_RefreshBtn"
-                    Content="Refresh GeoJSON"
+                    Content="刷新 GeoJSON"
                     Click="OnRefreshGeoJson"
                     HorizontalAlignment="Stretch"/>
         </StackPanel>
@@ -62,7 +62,7 @@
                 CornerRadius="4"
                 Margin="0,0,0,8">
             <Grid>
-                <TextBlock Text="WebView will be integrated here"
+                <TextBlock Text="此处将接入地图视图"
                            HorizontalAlignment="Center"
                            VerticalAlignment="Center"
                            Opacity="0.4"

@@ -19,6 +19,7 @@
 // SOFTWARE.
 
 using Avalonia.Controls;
+using Avalonia.Input;
 
 namespace Caly.Core.Views;
 
@@ -49,5 +50,20 @@ public partial class ColorSpacesWindow : Window
         Title = header;
         DataContext = this;
         InitializeComponent();
+    }
+
+    /// <summary>
+    /// Esc closes the window (platform convention for dismissing a report window).
+    /// </summary>
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            Close();
+            e.Handled = true;
+            return;
+        }
+
+        base.OnKeyDown(e);
     }
 }

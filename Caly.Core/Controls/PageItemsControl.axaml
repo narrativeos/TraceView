@@ -20,6 +20,9 @@
 		<Setter Property="MaxZoomLevel" Value="{Binding MaxZoomLevel}"/>
 		<Setter Property="InteractiveActionOver" Value="{Binding InteractiveActionOver}"/>
 
+        <!-- 画布底：点阵纸面（DrawingBrush 内含底色），页面卡片浮在其上。 -->
+        <Setter Property="Background" Value="{DynamicResource CalyCanvasTileBrush}"/>
+
 		<Setter Property="Template">
 			<ControlTemplate>
 

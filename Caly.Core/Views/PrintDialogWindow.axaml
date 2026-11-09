@@ -38,6 +38,7 @@
                     VerticalAlignment="Stretch"
                     ToolTip.Tip="刷新打印机列表"
                     IsEnabled="{Binding !IsPrinting}"
+                AutomationProperties.Name="刷新打印机列表"
                     Command="{Binding LoadPrintersCommand}">
                 <PathIcon Width="14" Height="14" Data="{StaticResource arrow_sync_regular}"/>
             </Button>
@@ -50,12 +51,12 @@
                      IsEnabled="{Binding IsLoadingPrinters}"/>
 
         <!-- Page range -->
-        <TextBlock DockPanel.Dock="Top" Text="Pages" FontWeight="SemiBold" Margin="0,8,0,4"/>
+        <TextBlock DockPanel.Dock="Top" Text="页码范围" FontWeight="SemiBold" Margin="0,8,0,4"/>
 
         <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10">
 
             <RadioButton GroupName="PageRange"
-                         Content="All pages"
+                         Content="全部页面"
                          IsChecked="{Binding IsAllPagesSelected}"
                          IsEnabled="{Binding !IsPrinting}"/>
 
@@ -66,11 +67,11 @@
 
             <StackPanel>
                 <RadioButton GroupName="PageRange"
-                             Content="Custom range:"
+                             Content="自定义范围："
                              IsChecked="{Binding IsCustomRangeSelected}"
                              IsEnabled="{Binding !IsPrinting}"/>
                 <TextBox Margin="20,2,0,0"
-                         PlaceholderText="e.g.  1-3, 5, 7-9"
+                         PlaceholderText="例：1-3、5、7-9"
                          Text="{Binding CustomPageRange}"
                          IsEnabled="{Binding IsCustomRangeSelected}"
                          IsReadOnly="{Binding IsPrinting}"/>
@@ -82,17 +83,17 @@
         <TextBlock DockPanel.Dock="Top" Text="Orientation" FontWeight="SemiBold" Margin="0,8,0,4"/>
         <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,10">
             <RadioButton GroupName="Orientation"
-                         Content="Auto"
+                         Content="自动"
                          IsChecked="{Binding IsOrientationAuto}"
                          IsEnabled="{Binding !IsPrinting}"
                          Margin="0,0,12,0"/>
             <RadioButton GroupName="Orientation"
-                         Content="Portrait"
+                         Content="纵向"
                          IsChecked="{Binding IsOrientationPortrait}"
                          IsEnabled="{Binding !IsPrinting}"
                          Margin="0,0,12,0"/>
             <RadioButton GroupName="Orientation"
-                         Content="Landscape"
+                         Content="横向"
                          IsChecked="{Binding IsOrientationLandscape}"
                          IsEnabled="{Binding CanSelectLandscape}"/>
         </StackPanel>
@@ -101,20 +102,20 @@
         <TextBlock DockPanel.Dock="Top" Text="Fit" FontWeight="SemiBold" Margin="0,8,0,4"/>
         <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10">
             <RadioButton GroupName="Fit"
-                         Content="Fit to page"
+                         Content="适应页面"
                          IsChecked="{Binding IsFitToPage}"
                          IsEnabled="{Binding !IsPrinting}"/>
             <RadioButton GroupName="Fit"
-                         Content="Actual size"
+                         Content="实际大小"
                          IsChecked="{Binding IsActualSize}"
                          IsEnabled="{Binding !IsPrinting}"/>
             <RadioButton GroupName="Fit"
-                         Content="Shrink to fit"
+                         Content="缩小以适应"
                          IsChecked="{Binding IsShrinkToFit}"
                          IsEnabled="{Binding !IsPrinting}"/>
             <StackPanel Orientation="Horizontal">
                 <RadioButton GroupName="Fit"
-                             Content="Custom scale:"
+                             Content="自定义比例："
                              IsChecked="{Binding IsCustomScale}"
                              IsEnabled="{Binding !IsPrinting}"/>
                 <NumericUpDown Width="120"
@@ -144,7 +145,7 @@
 
         <!-- Black and white -->
         <CheckBox DockPanel.Dock="Top"
-                  Content="Print in black and white"
+                  Content="黑白打印"
                   IsChecked="{Binding IsBlackAndWhite}"
                   IsEnabled="{Binding !IsPrinting}"
                   Margin="0,0,0,10"/>
@@ -182,14 +183,15 @@
                     HorizontalAlignment="Right"
                     Margin="0,4,0,0">
 
-            <Button Content="Cancel"
+            <Button Content="取消"
                     IsDefault="False"
+                    IsCancel="True"
                     Click="CancelButton_OnClick"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Center"
                     Margin="0,0,8,0"/>
 
-            <Button Content="Print"
+            <Button Content="打印"
                     IsDefault="True"
                     Command="{Binding PrintCommand}"
                     HorizontalAlignment="Center"

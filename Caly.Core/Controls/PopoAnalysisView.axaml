@@ -70,10 +70,9 @@
 
         <!-- Alignment Report Overlay -->
         <Panel IsVisible="{Binding ShowAlignmentReport}">
-            <Rectangle Fill="Gray"
-                       Opacity="0.3"/>
-            <Border Background="White"
-                    BorderBrush="Gray"
+            <Rectangle Fill="{DynamicResource CalyScrimBrush}"/>
+            <Border Background="{DynamicResource CalyCardBackgroundBrush}"
+                    BorderBrush="{DynamicResource CalyCardBorderBrush}"
                     BorderThickness="1"
                     CornerRadius="4"
                     Padding="16"
@@ -90,16 +89,20 @@
                                    FontWeight="Bold"
                                    FontSize="16"
                                    VerticalAlignment="Center"/>
-                        <Button Content="✕"
+                        <Button 
                                 Command="{Binding CloseAlignmentReportCommand}"
+                                AutomationProperties.Name="关闭对齐报告"
+                                ToolTip.Tip="关闭对齐报告"
                                 Margin="12,0,0,0"
-                                Padding="8,4"/>
+                                Padding="8,4">
+                            <Path Classes="toolIcon" Width="14" Height="14" Data="{StaticResource glyph_close_regular}"/>
+                        </Button>
                     </StackPanel>
                     <ScrollViewer VerticalScrollBarVisibility="Auto"
                                   MaxHeight="500">
                         <TextBlock Text="{Binding AlignmentReportText}"
                                    TextWrapping="Wrap"
-                                   FontFamily="Consolas, Menlo, monospace"
+                                   FontFamily="{DynamicResource CalyMonoFontFamily}"
                                    FontSize="12"/>
                     </ScrollViewer>
                 </DockPanel>
@@ -108,10 +111,9 @@
 
         <!-- TOC Overlay -->
         <Panel IsVisible="{Binding ShowTocPanel}">
-            <Rectangle Fill="Gray"
-                       Opacity="0.3"/>
-            <Border Background="White"
-                    BorderBrush="Gray"
+            <Rectangle Fill="{DynamicResource CalyScrimBrush}"/>
+            <Border Background="{DynamicResource CalyCardBackgroundBrush}"
+                    BorderBrush="{DynamicResource CalyCardBorderBrush}"
                     BorderThickness="1"
                     CornerRadius="4"
                     Padding="16"
@@ -128,16 +130,20 @@
                                    FontWeight="Bold"
                                    FontSize="16"
                                    VerticalAlignment="Center"/>
-                        <Button Content="✕"
+                        <Button 
                                 Command="{Binding CloseTocPanelCommand}"
+                                AutomationProperties.Name="关闭目录面板"
+                                ToolTip.Tip="关闭目录面板"
                                 Margin="12,0,0,0"
-                                Padding="8,4"/>
+                                Padding="8,4">
+                            <Path Classes="toolIcon" Width="14" Height="14" Data="{StaticResource glyph_close_regular}"/>
+                        </Button>
                     </StackPanel>
                     <ScrollViewer VerticalScrollBarVisibility="Auto"
                                   MaxHeight="500">
                         <TextBlock Text="{Binding TocMarkdownText}"
                                    TextWrapping="Wrap"
-                                   FontFamily="Consolas, Menlo, monospace"
+                                   FontFamily="{DynamicResource CalyMonoFontFamily}"
                                    FontSize="12"/>
                     </ScrollViewer>
                 </DockPanel>
@@ -146,10 +152,9 @@
 
         <!-- Reference Overlay -->
         <Panel IsVisible="{Binding ShowReferencePanel}">
-            <Rectangle Fill="Gray"
-                       Opacity="0.3"/>
-            <Border Background="White"
-                    BorderBrush="Gray"
+            <Rectangle Fill="{DynamicResource CalyScrimBrush}"/>
+            <Border Background="{DynamicResource CalyCardBackgroundBrush}"
+                    BorderBrush="{DynamicResource CalyCardBorderBrush}"
                     BorderThickness="1"
                     CornerRadius="4"
                     Padding="16"
@@ -166,16 +171,20 @@
                                    FontWeight="Bold"
                                    FontSize="16"
                                    VerticalAlignment="Center"/>
-                        <Button Content="✕"
+                        <Button 
                                 Command="{Binding CloseReferencePanelCommand}"
+                                AutomationProperties.Name="关闭参考文献面板"
+                                ToolTip.Tip="关闭参考文献面板"
                                 Margin="12,0,0,0"
-                                Padding="8,4"/>
+                                Padding="8,4">
+                            <Path Classes="toolIcon" Width="14" Height="14" Data="{StaticResource glyph_close_regular}"/>
+                        </Button>
                     </StackPanel>
                     <ScrollViewer VerticalScrollBarVisibility="Auto"
                                   MaxHeight="500">
                         <TextBlock Text="{Binding ReferenceMarkdownText}"
                                    TextWrapping="Wrap"
-                                   FontFamily="Consolas, Menlo, monospace"
+                                   FontFamily="{DynamicResource CalyMonoFontFamily}"
                                    FontSize="12"/>
                     </ScrollViewer>
                 </DockPanel>

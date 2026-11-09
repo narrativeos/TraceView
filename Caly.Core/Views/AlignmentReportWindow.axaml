@@ -20,18 +20,26 @@
                        FontSize="16"
                        VerticalAlignment="Center"/>
             
-            <Button Content="📋 复制"
+            <Button 
                     Click="CopyButton_OnClick"
+                    AutomationProperties.Name="复制报告全文"
+                    ToolTip.Tip="复制报告全文到剪贴板"
                     Margin="8,0,0,0"
-                    Padding="8,4"/>
+                    Padding="8,4">
+                <StackPanel Orientation="Horizontal" Spacing="4"><Path Classes="toolIcon" Width="13" Height="13" Data="{StaticResource glyph_copy_regular}"/><TextBlock Text="复制" VerticalAlignment="Center"/></StackPanel>
+            </Button>
             
             <StackPanel DockPanel.Dock="Right"
                         Orientation="Horizontal"
                         HorizontalAlignment="Right">
-                <Button Content="✕"
+                <Button 
                         Command="{Binding CloseAlignmentReportCommand}"
+                        AutomationProperties.Name="关闭对齐报告"
+                        ToolTip.Tip="关闭对齐报告"
                         Margin="8,0,0,0"
-                        Padding="8,4"/>
+                        Padding="8,4">
+                    <Path Classes="toolIcon" Width="14" Height="14" Data="{StaticResource glyph_close_regular}"/>
+                </Button>
             </StackPanel>
         </StackPanel>
 
@@ -41,10 +49,10 @@
                      IsReadOnly="True"
                      AcceptsReturn="True"
                      TextWrapping="Wrap"
-                     FontFamily="Consolas, Menlo, monospace"
+                     FontFamily="{DynamicResource CalyMonoFontFamily}"
                      FontSize="12"
                      BorderThickness="1"
-                     BorderBrush="#CCCCCC"
+                     BorderBrush="{DynamicResource CalyDividerBrush}"
                      Padding="8"/>
         </ScrollViewer>
     </DockPanel>

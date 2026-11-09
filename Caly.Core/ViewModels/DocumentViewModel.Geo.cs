@@ -589,6 +589,15 @@ public sealed partial class DocumentViewModel
         }
     }
 
+    /// <summary>
+    /// Toggles the GeoView column. Exposed so the native menu bar can toggle it with a checkmark.
+    /// </summary>
+    [RelayCommand]
+    private void ToggleGeoColumn()
+    {
+        ShowGeoColumn = !ShowGeoColumn;
+    }
+
     [RelayCommand]
     private void CancelGeoProcess()
     {

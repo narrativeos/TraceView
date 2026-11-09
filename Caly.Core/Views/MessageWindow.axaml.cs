@@ -19,6 +19,8 @@
 // SOFTWARE.
 
 using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Interactivity;
 
 namespace Caly.Core.Views;
 
@@ -27,5 +29,20 @@ public sealed partial class MessageWindow : Window
     public MessageWindow()
     {
         InitializeComponent();
+    }
+
+    /// <summary>
+    /// Esc dismisses the window (platform convention for cancelling / closing a dialog).
+    /// </summary>
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            Close();
+            e.Handled = true;
+            return;
+        }
+
+        base.OnKeyDown(e);
     }
 }

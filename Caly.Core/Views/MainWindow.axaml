@@ -3,18 +3,143 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:views="clr-namespace:Caly.Core.Views"
+        xmlns:app="clr-namespace:Caly.Core"
         xmlns:chrome="using:Avalonia.Controls.Chrome"
         mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
         x:Class="Caly.Core.Views.MainWindow"
         Icon="/Assets/caly-logo.ico"
         Title="TraceView"
-        MinWidth="250"
-        Width="250"
-        Height="150"
+        MinWidth="900"
+        MinHeight="500"
+        Width="1000"
+        Height="600"
         ExtendClientAreaToDecorationsHint="True"
         WindowStartupLocation="CenterScreen">
-    <Border DragDrop.AllowDrop="True"
-            Margin="{Binding $parent[Window].OffScreenMargin}">
-        <views:MainView WindowDecorationProperties.ElementRole="User" />
-    </Border>
+
+    <!--
+        Native menu bar (macOS) / application menu (Linux, Windows).
+        Every command reachable from the toolbar must also be reachable here with a
+        standard shortcut, per the platform Human Interface Guidelines.
+    -->
+    <NativeMenu.Menu>
+        <NativeMenu>
+            <NativeMenuItem Header="文件">
+                <NativeMenuItem.Menu>
+                    <NativeMenu>
+                        <NativeMenuItem Header="打开…" Command="{Binding Path=OpenFileCommand, Source={x:Static app:App.MainViewModelInstance}}"
+                                        Gesture="Cmd+O" />
+                        <NativeMenuItem Header="关闭文档" Command="{Binding Path=CloseDocumentCommand, Source={x:Static app:App.MainViewModelInstance}}"
+                                        Gesture="Cmd+W" />
+                        <NativeMenuItemSeparator />
+                        <NativeMenuItem Header="打印…" Command="{Binding Path=PrintDocumentCommand, Source={x:Static app:App.MainViewModelInstance}}"
+                                        Gesture="Cmd+P" />
+                        <NativeMenuItemSeparator />
+                        <NativeMenuItem Header="设置…" Command="{Binding Path=ToggleSettingsCommand, Source={x:Static app:App.MainViewModelInstance}}"
+                                        Gesture="Cmd+OemComma" />
+                    </NativeMenu>
+                </NativeMenuItem.Menu>
+            </NativeMenuItem>
+
+            <NativeMenuItem Header="编辑">
+                <NativeMenuItem.Menu>
+                    <NativeMenu>
+                        <NativeMenuItem Header="复制" Command="{Binding Path=CopyTextCommand, Source={x:Static app:App.MainViewModelInstance}}"
+                                        Gesture="Cmd+C" />
+                        <NativeMenuItem Header="撤销旋转"
+                                        Command="{Binding Path=SelectedDocument.UndoRotationCommand, Source={x:Static app:App.MainViewModelInstance}}"
+                                        Gesture="Cmd+Z" />
+                        <NativeMenuItemSeparator />
+                        <NativeMenuItem Header="查找下一个"
+                                        Command="{Binding Path=SelectedDocument.FindNextSearchResultCommand, Source={x:Static app:App.MainViewModelInstance}}"
+                                        Gesture="Cmd+G" />
+                        <NativeMenuItem Header="查找上一个"
+                                        Command="{Binding Path=SelectedDocument.FindPreviousSearchResultCommand, Source={x:Static app:App.MainViewModelInstance}}"
+                                        Gesture="Cmd+Shift+G" />
+                    </NativeMenu>
+                </NativeMenuItem.Menu>
+            </NativeMenuItem>
+
+            <NativeMenuItem Header="显示">
+                <NativeMenuItem.Menu>
+                    <NativeMenu>
+                        <NativeMenuItem Header="显示侧边栏" ToggleType="CheckBox"
+                                        IsChecked="{Binding Path=IsDocumentPaneOpen, Source={x:Static app:App.MainViewModelInstance}}"
+                                        Command="{Binding Path=ToggleDocumentPaneCommand, Source={x:Static app:App.MainViewModelInstance}}"
+                                        Gesture="Cmd+Ctrl+S" />
+                        <NativeMenuItemSeparator />
+                        <NativeMenuItem Header="放大" Command="{Binding Path=SelectedDocument.ZoomInCommand, Source={x:Static app:App.MainViewModelInstance}}"
+                                        Gesture="Cmd+OemPlus" />
+                        <NativeMenuItem Header="缩小" Command="{Binding Path=SelectedDocument.ZoomOutCommand, Source={x:Static app:App.MainViewModelInstance}}"
+                                        Gesture="Cmd+OemMinus" />
+                        <NativeMenuItem Header="适应页宽"
+                                        Command="{Binding Path=SelectedDocument.ZoomToPageWidthCommand, Source={x:Static app:App.MainViewModelInstance}}"
+                                        Gesture="Cmd+D0" />
+                        <NativeMenuItemSeparator />
+                        <NativeMenuItem Header="搜索文档"
+                                        Command="{Binding Path=ActivateSearchTextTabCommand, Source={x:Static app:App.MainViewModelInstance}}"
+                                        Gesture="Cmd+F" />
+                    </NativeMenu>
+                </NativeMenuItem.Menu>
+            </NativeMenuItem>
+
+            <NativeMenuItem Header="分析列">
+                <NativeMenuItem.Menu>
+                    <NativeMenu>
+                        <NativeMenuItem Header="MinerU 块" ToggleType="CheckBox"
+                                        IsChecked="{Binding Path=SelectedDocument.ShowMinerUColumn, Source={x:Static app:App.MainViewModelInstance}}"
+                                        Command="{Binding Path=SelectedDocument.ToggleMinerUColumnCommand, Source={x:Static app:App.MainViewModelInstance}}" />
+                        <NativeMenuItem Header="Popo 块" ToggleType="CheckBox"
+                                        IsChecked="{Binding Path=SelectedDocument.ShowAnalysisColumn, Source={x:Static app:App.MainViewModelInstance}}"
+                                        Command="{Binding Path=SelectedDocument.ToggleAnalysisColumnCommand, Source={x:Static app:App.MainViewModelInstance}}" />
+                        <NativeMenuItem Header="语义分析" ToggleType="CheckBox"
+                                        IsChecked="{Binding Path=SelectedDocument.ShowSemanticColumn, Source={x:Static app:App.MainViewModelInstance}}"
+                                        Command="{Binding Path=SelectedDocument.ToggleSemanticColumnCommand, Source={x:Static app:App.MainViewModelInstance}}" />
+                        <NativeMenuItem Header="富化实体" ToggleType="CheckBox"
+                                        IsChecked="{Binding Path=SelectedDocument.ShowEnrichedColumn, Source={x:Static app:App.MainViewModelInstance}}"
+                                        Command="{Binding Path=SelectedDocument.ToggleEnrichedColumnCommand, Source={x:Static app:App.MainViewModelInstance}}" />
+                        <NativeMenuItem Header="术语发现" ToggleType="CheckBox"
+                                        IsChecked="{Binding Path=SelectedDocument.ShowTermColumn, Source={x:Static app:App.MainViewModelInstance}}"
+                                        Command="{Binding Path=SelectedDocument.ToggleTermColumnCommand, Source={x:Static app:App.MainViewModelInstance}}" />
+                        <NativeMenuItem Header="地理视图" ToggleType="CheckBox"
+                                        IsChecked="{Binding Path=SelectedDocument.ShowGeoColumn, Source={x:Static app:App.MainViewModelInstance}}"
+                                        Command="{Binding Path=SelectedDocument.ToggleGeoColumnCommand, Source={x:Static app:App.MainViewModelInstance}}" />
+                    </NativeMenu>
+                </NativeMenuItem.Menu>
+            </NativeMenuItem>
+
+            <NativeMenuItem Header="窗口">
+                <NativeMenuItem.Menu>
+                    <NativeMenu>
+                        <NativeMenuItem Header="下一个文档"
+                                        Command="{Binding Path=ActivateNextDocumentCommand, Source={x:Static app:App.MainViewModelInstance}}"
+                                        Gesture="Cmd+PageDown" />
+                        <NativeMenuItem Header="上一个文档"
+                                        Command="{Binding Path=ActivatePreviousDocumentCommand, Source={x:Static app:App.MainViewModelInstance}}"
+                                        Gesture="Cmd+PageUp" />
+                    </NativeMenu>
+                </NativeMenuItem.Menu>
+            </NativeMenuItem>
+
+            <NativeMenuItem Header="帮助">
+                <NativeMenuItem.Menu>
+                    <NativeMenu>
+                        <NativeMenuItem Header="关于 TraceView" Command="{Binding Path=ShowAboutCommand, Source={x:Static app:App.MainViewModelInstance}}" />
+                    </NativeMenu>
+                </NativeMenuItem.Menu>
+            </NativeMenuItem>
+        </NativeMenu>
+    </NativeMenu.Menu>
+
+    <DockPanel>
+        <!--
+            Shows the menu above the content on platforms without a system menu bar; on
+            macOS the native exporter takes the items and this bar hides itself.
+        -->
+        <NativeMenuBar DockPanel.Dock="Top" />
+
+        <Border DragDrop.AllowDrop="True"
+                Margin="{Binding $parent[Window].OffScreenMargin}">
+            <views:MainView WindowDecorationProperties.ElementRole="User" />
+        </Border>
+    </DockPanel>
 </Window>

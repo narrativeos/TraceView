@@ -20,7 +20,7 @@
 				<Panel IsVisible="{Binding IsMinerUParsing}">
 					<Border HorizontalAlignment="Stretch"
 					        VerticalAlignment="Bottom"
-					        Background="#E62D2D2D"
+					        Background="{DynamicResource CalyOverlayBackgroundBrush}"
 					        BorderThickness="0,1"
 					        BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
 					        Padding="12,8">
@@ -44,7 +44,7 @@
 								            IsVisible="{Binding MinerUProgressDetail, Mode=OneWay}">
 									<!-- Separator dot -->
 									<TextBlock Text="•"
-									           FontSize="10"
+									           FontSize="11"
 									           VerticalAlignment="Center"
 									           Opacity="0.5"/>
 									<!-- Detail text -->
@@ -72,7 +72,7 @@
 							           Opacity="0.7"/>
 
 							<!-- Cancel Button -->
-							<Button Content="Cancel"
+							<Button Content="取消"
 							        Command="{Binding CancelMinerUParseCommand}"
 							        HorizontalAlignment="Right"
 							        Padding="12,2"

@@ -14,7 +14,7 @@
         <TextBlock x:Name="TitleText" Grid.Row="0" FontSize="14" FontWeight="Bold" Margin="0,0,0,8"/>
         <TextBlock x:Name="MessageText" Grid.Row="1" FontSize="13" TextWrapping="Wrap" Margin="0,0,0,12"/>
         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
-            <Button x:Name="CancelButton" Content="取消" Click="OnCancelClick" Width="80"/>
+            <Button x:Name="CancelButton" Content="取消" Click="OnCancelClick" IsCancel="True" Width="80"/>
             <Button x:Name="SkipButton" Content="跳过" Click="OnSkipClick" Width="80"/>
             <Button x:Name="RegenerateButton" Content="重新生成" Click="OnRegenerateClick" Width="100" IsDefault="True"/>
         </StackPanel>

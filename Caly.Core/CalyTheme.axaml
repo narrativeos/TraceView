@@ -4,4 +4,15 @@
     <x:Double x:Key="CalySplitViewHandleWidth">3</x:Double>
     <x:Double x:Key="ControlContentThemeFontSize">12</x:Double>
 
+    <!--
+        圆角刻度：6 用于工具轨按钮/输入片，8 用于卡片，12 用于悬浮浮层。
+        发丝线统一 1px（CalyCardBorderBrush），不要再用色块做分隔。
+    -->
+    <CornerRadius x:Key="CalyToolbarButtonCornerRadius">6</CornerRadius>
+    <CornerRadius x:Key="CalyCardCornerRadius">8</CornerRadius>
+    <CornerRadius x:Key="CalyFloatingCornerRadius">12</CornerRadius>
+
+    <!-- Localised strings referenced with {DynamicResource String...}. -->
+    <x:String x:Key="StringTextFlyoutCopyText">复制</x:String>
+
 </ResourceDictionary>

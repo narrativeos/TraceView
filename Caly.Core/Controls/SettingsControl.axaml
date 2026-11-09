@@ -47,7 +47,7 @@
                                         <TextBlock Grid.Column="0"
                                                    Grid.Row="0"
                                                    VerticalAlignment="Center"
-                                                   Text="Server URL"/>
+                                                   Text="服务器地址"/>
                                         <TextBox Grid.Column="2"
                                                  Grid.Row="0"
                                                  Margin="0,2"
@@ -59,7 +59,7 @@
                                         <TextBlock Grid.Column="0"
                                                    Grid.Row="0"
                                                    VerticalAlignment="Center"
-                                                   Text="Tier"/>
+                                                   Text="服务档位"/>
                                         <ComboBox Grid.Column="2"
                                                   Grid.Row="0"
                                                   Margin="0,2"
@@ -76,7 +76,7 @@
                                         <TextBlock Grid.Column="0"
                                                    Grid.Row="0"
                                                    VerticalAlignment="Center"
-                                                   Text="API Key"/>
+                                                   Text="API 密钥"/>
                                         <TextBox Grid.Column="2"
                                                  Grid.Row="0"
                                                  Margin="0,2"
@@ -86,10 +86,10 @@
                                     <TextBlock Margin="0,2,0,0"
                                                FontSize="11"
                                                Foreground="{DynamicResource SystemControlPageTextChromeDisabledBrush}"
-                                               Text="API key is only needed when the MinerU service is started with --api-key."/>
+                                               Text="仅当 MinerU 服务以 --api-key 启动时才需要填写密钥。"/>
 
                                     <!-- Enable Toggle -->
-                                    <CheckBox Content="Enable MinerU AI Parsing"
+                                    <CheckBox Content="启用 MinerU AI 解析"
                                               Margin="0,4,0,0"
                                               IsChecked="{Binding Settings.MinerUEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
                                 </StackPanel>
@@ -104,7 +104,7 @@
                                          <TextBlock Grid.Column="0"
                                                     Grid.Row="0"
                                                     VerticalAlignment="Center"
-                                                    Text="Server URL"/>
+                                                    Text="服务器地址"/>
                                          <TextBox Grid.Column="2"
                                                   Grid.Row="0"
                                                   Margin="0,2"
@@ -122,7 +122,7 @@
                                          <TextBlock Grid.Column="0"
                                                     Grid.Row="0"
                                                     VerticalAlignment="Center"
-                                                    Text="Project Home"/>
+                                                    Text="项目主目录"/>
                                          <TextBox Grid.Column="2"
                                                   Grid.Row="0"
                                                   Margin="0,2"
@@ -131,13 +131,13 @@
                                                   Grid.Column="3"
                                                   Grid.Row="0"
                                                   Margin="4,0,0,0"
-                                                  Content="Browse..."/>
+                                                  Content="浏览…"/>
                                      </Grid>
 
                                       <TextBlock Margin="0,4,0,0"
                                                  FontSize="11"
                                                  Foreground="{DynamicResource SystemControlPageTextChromeDisabledBrush}"
-                                                 Text="All TraceView projects will be stored in this directory."/>
+                                                 Text="所有 TraceView 项目都会保存在此目录下。"/>
                                   </StackPanel>
                               </Expander>
 
@@ -150,7 +150,7 @@
                                           <TextBlock Grid.Column="0"
                                                      Grid.Row="0"
                                                      VerticalAlignment="Center"
-                                                     Text="GeoLibre URL"/>
+                                                     Text="GeoLibre 地址"/>
                                           <TextBox Grid.Column="2"
                                                    Grid.Row="0"
                                                    Margin="0,2"

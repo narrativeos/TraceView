@@ -22,7 +22,7 @@
         <utilities:IsGreaterThanConverter x:Key="IsGreaterThanConverter"/>
         <utilities:InverseBoolConverter x:Key="InverseBoolConverter"/>
         <utilities:CompletedToOpacityConverter x:Key="CompletedToOpacityConverter"/>
-    </UserControl.Resources>
+</UserControl.Resources>
 
     <Design.DataContext>
         <vm:MainViewModel />
@@ -41,7 +41,18 @@
 			<DataTemplate>
 				<TextBlock DockPanel.Dock="Left"
 						   Text="{Binding FileName}"
-						   TextTrimming="CharacterEllipsis"/>
+						   TextTrimming="CharacterEllipsis">
+					<!-- Right click (or Control+click) on a document tab -->
+					<TextBlock.ContextFlyout>
+						<MenuFlyout>
+							<MenuItem Header="关闭文档"
+									  Command="{Binding $parent[tabalonia:TabsControl].((vm:MainViewModel)DataContext).CloseTabCommand}"
+									  CommandParameter="{Binding}" />
+							<MenuItem Header="在 Finder 中显示"
+									  Command="{Binding RevealInFinderCommand}" />
+						</MenuFlyout>
+					</TextBlock.ContextFlyout>
+				</TextBlock>
 			</DataTemplate>
 		</TabControl.ItemTemplate>
 		<TabControl.ContentTemplate>
@@ -52,10 +63,59 @@
 					<!-- Top navigation bar -->
 					<DockPanel Grid.Row="0">
 
+					<DockPanel.Styles>
+						<!--
+							工具轨按钮：28x26、圆角 6 的图标按钮。
+							默认透明 -> hover 淡色 -> 按下更深 -> 勾选态用主色淡底 + 主色描边，
+							让“当前工具”一眼可见。
+						-->
+						<Style Selector="Button, ToggleButton">
+							<Setter Property="Width" Value="28"/>
+							<Setter Property="Height" Value="26"/>
+							<Setter Property="Padding" Value="0"/>
+							<Setter Property="VerticalAlignment" Value="Center"/>
+							<Setter Property="CornerRadius" Value="{StaticResource CalyToolbarButtonCornerRadius}"/>
+							<Setter Property="Background" Value="Transparent"/>
+							<Setter Property="BorderThickness" Value="1"/>
+							<Setter Property="BorderBrush" Value="Transparent"/>
+						</Style>
+						<Style Selector="Button:pointerover /template/ ContentPresenter#PART_ContentPresenter, ToggleButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+							<Setter Property="Background" Value="{DynamicResource CalyToolbarHoverBackgroundBrush}"/>
+						</Style>
+						<Style Selector="Button:pressed /template/ ContentPresenter#PART_ContentPresenter, ToggleButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
+							<Setter Property="Background" Value="{DynamicResource CalyToolbarPressedBackgroundBrush}"/>
+						</Style>
+						<Style Selector="ToggleButton:checked /template/ ContentPresenter#PART_ContentPresenter">
+							<Setter Property="Background" Value="{DynamicResource CalyToolbarActiveBackgroundBrush}"/>
+							<Setter Property="BorderBrush" Value="{DynamicResource CalyToolbarActiveBorderBrush}"/>
+						</Style>
+						<!-- Active toggle also takes the accent colour, which the stroked toolbar glyphs inherit. -->
+						<Style Selector="ToggleButton:checked">
+							<Setter Property="Foreground" Value="{DynamicResource CalyPrimaryBrush}"/>
+						</Style>
+						<!-- 次要信息（页码 / 缩放百分比）：12pt 灰字；页码输入框去掉边框，融入工具轨 -->
+						<Style Selector="TextBlock.meta">
+							<Setter Property="FontSize" Value="12"/>
+							<Setter Property="Foreground" Value="{DynamicResource CalyMutedForegroundBrush}"/>
+						</Style>
+						<Style Selector="TextBox.meta">
+							<Setter Property="FontSize" Value="12"/>
+							<Setter Property="Foreground" Value="{DynamicResource CalyMutedForegroundBrush}"/>
+							<Setter Property="Background" Value="Transparent"/>
+							<Setter Property="BorderThickness" Value="0"/>
+							<Setter Property="CornerRadius" Value="{StaticResource CalyToolbarButtonCornerRadius}"/>
+							<Setter Property="Height" Value="22"/>
+							<Setter Property="Padding" Value="2,0"/>
+						</Style>
+						<Style Selector="TextBox.meta:pointerover /template/ Border#PART_BorderElement">
+							<Setter Property="Background" Value="{DynamicResource CalyToolbarHoverBackgroundBrush}"/>
+						</Style>
+					</DockPanel.Styles>
+
 						<!-- Toggle sidebar -->
 						<ToggleButton DockPanel.Dock="Left"
-                                      VerticalAlignment="Stretch"
-                                      Background="Transparent"
+                                      AutomationProperties.Name="显示侧边栏"
+                                      ToolTip.Tip="显示侧边栏 (Cmd+Ctrl+S)"
                                       IsChecked="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).IsDocumentPaneOpen}">
 							<ToggleButton.Styles>
 								<Style Selector="PathIcon.closed">
@@ -77,8 +137,7 @@
 						<!-- Page navigation -->
                         <Button DockPanel.Dock="Left"
                                 HorizontalAlignment="Center"
-                                VerticalAlignment="Stretch"
-                                Background="Transparent"
+                            AutomationProperties.Name="上一页"
                                 Command="{Binding GoToPreviousPageCommand}">
                             <PathIcon Width="14"
                                       Height="14"
@@ -89,8 +148,7 @@
 
                         <Button DockPanel.Dock="Left"
                                 HorizontalAlignment="Center"
-                                VerticalAlignment="Stretch"
-                                Background="Transparent"
+                            AutomationProperties.Name="下一页"
                                 Command="{Binding GoToNextPageCommand}">
                             <PathIcon Width="14"
                                       Height="14"
@@ -100,6 +158,7 @@
                         </Button>
 
 						<TextBox Name="PART_TextBoxPageNumber"
+                                 Classes="meta"
                                  MinWidth="50"
                                  MaxWidth="50"
                                  TextAlignment="Center"
@@ -126,6 +185,7 @@
 								   VerticalAlignment="Center"
 								   HorizontalAlignment="Center"
 								   TextAlignment="Center"
+					   Classes="meta"
 								   Margin="5,0">
 							<Run Text="/"/>
 							<Run Text="{Binding PageCount}"/>
@@ -136,8 +196,7 @@
 						<!-- Rotate pages -->
 						<Button DockPanel.Dock="Left"
                                 HorizontalAlignment="Center"
-                                VerticalAlignment="Stretch"
-                                Background="Transparent"
+						    AutomationProperties.Name="逆时针旋转页面"
                                 Command="{Binding RotateAllPagesCounterclockwiseCommand}">
 							<PathIcon Width="17"
                                       Height="17"
@@ -148,8 +207,7 @@
 
 						<Button DockPanel.Dock="Left"
                                 HorizontalAlignment="Center"
-                                VerticalAlignment="Stretch"
-                                Background="Transparent"
+						    AutomationProperties.Name="顺时针旋转页面"
                                 Command="{Binding RotateAllPagesClockwiseCommand}">
 							<PathIcon Width="17"
                                       Height="17"
@@ -163,8 +221,7 @@
 						<!-- Zoom in / out -->
 						<Button DockPanel.Dock="Left"
 								HorizontalAlignment="Center"
-								VerticalAlignment="Stretch"
-								Background="Transparent"
+						    AutomationProperties.Name="缩小"
 								Command="{Binding ZoomOutCommand}">
 							<PathIcon Width="17"
 									  Height="17"
@@ -175,8 +232,7 @@
 
 						<Button DockPanel.Dock="Left"
 								HorizontalAlignment="Center"
-								VerticalAlignment="Stretch"
-								Background="Transparent"
+						    AutomationProperties.Name="放大"
 								Command="{Binding ZoomInCommand}">
 							<PathIcon Width="17"
 									  Height="17"
@@ -188,8 +244,7 @@
 						<!-- Fit to Page Width -->
 						<Button DockPanel.Dock="Left"
 								HorizontalAlignment="Center"
-								VerticalAlignment="Stretch"
-								Background="Transparent"
+						    AutomationProperties.Name="适应页面宽度"
 								Command="{Binding ZoomToPageWidthCommand}">
 							<PathIcon Width="17"
 									  Height="17"
@@ -202,6 +257,7 @@
 								   Margin="5,0"
 								   Text="{Binding ZoomLevel, StringFormat={}{0:0.#%}}"
 								   VerticalAlignment="Center"
+					   Classes="meta"
 								   HorizontalAlignment="Center"/>
 
 						<controls:VerticalSeparator/>
@@ -210,102 +266,95 @@
 						<ToggleButton DockPanel.Dock="Left"
                                         Margin="5,0,0,0"
 									   HorizontalAlignment="Center"
-									   VerticalAlignment="Stretch"
-									   Background="Transparent"
+						    AutomationProperties.Name="切换 MinerU 块列"
 									   IsChecked="{Binding ShowMinerUColumn}">
-							<PathIcon Width="17"
-									  Height="17"
-									  Data="{StaticResource mineru_blocks_regular}">
+							<Path Classes="toolIcon" Width="20"
+									  Height="20"
+									  Data="{StaticResource glyph_blocks_regular}">
 								<ToolTip.Tip>切换 MinerU 块列</ToolTip.Tip>
-							</PathIcon>
+							</Path>
 						</ToggleButton>
 
 							<!-- Toggle Popo Column -->
 							<ToggleButton DockPanel.Dock="Left"
                                         Margin="0,0,0,0"
 									   HorizontalAlignment="Center"
-									   VerticalAlignment="Stretch"
-									   Background="Transparent"
+							    AutomationProperties.Name="切换 Popo 块列"
 									   IsChecked="{Binding ShowAnalysisColumn}">
-								<PathIcon Width="17"
-										  Height="17"
-										  Data="{StaticResource popo_blocks_regular}">
+								<Path Classes="toolIcon" Width="20"
+										  Height="20"
+										  Data="{StaticResource glyph_link_regular}">
 									<ToolTip.Tip>切换 Popo 块列</ToolTip.Tip>
-								</PathIcon>
+								</Path>
 							</ToggleButton>
 
                             <!-- Toggle Semantic Column -->
                             <ToggleButton DockPanel.Dock="Left"
                                         Margin="0,0,0,0"
                                        HorizontalAlignment="Center"
-                                       VerticalAlignment="Stretch"
-                                       Background="Transparent"
+                                AutomationProperties.Name="切换语义分析列"
                                        IsChecked="{Binding ShowSemanticColumn}">
-                                <PathIcon Width="17"
-                                          Height="17"
-                                          Data="{StaticResource semantic_analysis_regular}">
+                                <Path Classes="toolIcon" Width="20"
+                                          Height="20"
+                                          Data="{StaticResource glyph_graph_regular}">
                                     <ToolTip.Tip>切换语义分析列</ToolTip.Tip>
-                                </PathIcon>
+                                </Path>
                             </ToggleButton>
 
                             <!-- Toggle Geo Column -->
                             <ToggleButton DockPanel.Dock="Left"
                                          Margin="0,0,0,0"
                                         HorizontalAlignment="Center"
-                                        VerticalAlignment="Stretch"
-                                        Background="Transparent"
                                         IsChecked="{Binding ShowGeoColumn}"
+                                AutomationProperties.Name="切换地理视图列"
                                         IsVisible="{Binding HasSemanticData}">
-                                <PathIcon Width="17"
-                                          Height="17"
-                                          Data="{StaticResource map_regular}">
+                                <Path Classes="toolIcon" Width="20"
+                                          Height="20"
+                                          Data="{StaticResource glyph_map_regular}">
                                     <ToolTip.Tip>切换地理视图列</ToolTip.Tip>
-                                </PathIcon>
+                                </Path>
                             </ToggleButton>
 
                             <!-- Toggle Enriched Column -->
                             <ToggleButton DockPanel.Dock="Left"
                                          Margin="0,0,0,0"
                                         HorizontalAlignment="Center"
-                                        VerticalAlignment="Stretch"
-                                        Background="Transparent"
                                         IsChecked="{Binding ShowEnrichedColumn}"
+                                AutomationProperties.Name="切换富化实体列"
                                         IsVisible="{Binding HasSemanticData}">
-                                <PathIcon Width="17"
-                                          Height="17"
-                                          Data="{StaticResource star_regular}">
+                                <Path Classes="toolIcon" Width="20"
+                                          Height="20"
+                                          Data="{StaticResource glyph_tag_regular}">
                                     <ToolTip.Tip>切换富化实体列</ToolTip.Tip>
-                                </PathIcon>
+                                </Path>
                             </ToggleButton>
 
                             <!-- Toggle Term Column -->
                             <ToggleButton DockPanel.Dock="Left"
                                          Margin="0,0,0,0"
                                         HorizontalAlignment="Center"
-                                        VerticalAlignment="Stretch"
-                                        Background="Transparent"
                                         IsChecked="{Binding ShowTermColumn}"
+                                AutomationProperties.Name="切换术语发现列"
                                         IsVisible="{Binding HasSemanticData}">
-                                <PathIcon Width="17"
-                                          Height="17"
-                                          Data="{StaticResource book_regular}">
+                                <Path Classes="toolIcon" Width="20"
+                                          Height="20"
+                                          Data="{StaticResource glyph_book_regular}">
                                     <ToolTip.Tip>切换术语发现列</ToolTip.Tip>
-                                </PathIcon>
+                                </Path>
                             </ToggleButton>
 
                             <!-- Alignment Report -->
 						<Button DockPanel.Dock="Left"
                                 Margin="5,0,0,0"
 								HorizontalAlignment="Center"
-								VerticalAlignment="Stretch"
-								Background="Transparent"
 								Command="{Binding GenerateAlignmentReportCommand}"
+						    AutomationProperties.Name="生成 MinerU-Popo 对齐报告"
                                 IsVisible="{Binding HasStructureDocument}">
-							<PathIcon Width="17"
-									  Height="17"
-									  Data="{StaticResource document_search_regular}">
+							<Path Classes="toolIcon" Width="20"
+									  Height="20"
+									  Data="{StaticResource glyph_report_regular}">
 								<ToolTip.Tip>生成 MinerU-Popo 对齐报告</ToolTip.Tip>
-							</PathIcon>
+							</Path>
 						</Button>
 
 						<controls:VerticalSeparator/>
@@ -314,144 +363,136 @@
 						<Button DockPanel.Dock="Right"
                                 Margin="0,0,5,0"
 								HorizontalAlignment="Center"
-								VerticalAlignment="Stretch"
-								Background="Transparent"
                                 Click="OnExportGeoLibreClick"
                                 IsVisible="{Binding HasSemanticData}"
+						    AutomationProperties.Name="导出到 GeoLibre"
                                 IsEnabled="{Binding HasSemanticResults}">
-							<PathIcon Width="17"
-									  Height="17"
-									  Data="{StaticResource share_regular}"
+							<Path Classes="toolIcon" Width="20"
+									  Height="20"
+									  Data="{StaticResource glyph_export_regular}"
 									  Opacity="{Binding HasGeoLibreFile, Converter={StaticResource CompletedToOpacityConverter}}">
 								<ToolTip.Tip>
 									<TextBlock Text="{Binding ExportGeoLibreButtonTooltip}"/>
 								</ToolTip.Tip>
-							</PathIcon>
+							</Path>
 						</Button>
 
 						<!-- Term Process (visible when semantic data exists) -->
 						<Button DockPanel.Dock="Right"
                                 Margin="0,0,5,0"
 								HorizontalAlignment="Center"
-								VerticalAlignment="Stretch"
-								Background="Transparent"
                                 Click="OnTermProcessClick"
                                 IsEnabled="{Binding CanProcessTerm}"
+						    AutomationProperties.Name="术语发现"
                                 IsVisible="{Binding HasSemanticData}">
-							<PathIcon Width="17"
-									  Height="17"
-									  Data="{StaticResource book_star_regular}"
+							<Path Classes="toolIcon" Width="20"
+									  Height="20"
+									  Data="{StaticResource act_book_regular}"
 									  Opacity="{Binding HasTermData, Converter={StaticResource CompletedToOpacityConverter}}">
 								<ToolTip.Tip>
 									<TextBlock Text="{Binding TermButtonTooltip}"/>
 								</ToolTip.Tip>
-							</PathIcon>
+							</Path>
 						</Button>
 
 						<!-- Enrich Entities (visible when semantic data exists) -->
 						<Button DockPanel.Dock="Right"
                                 Margin="0,0,5,0"
 								HorizontalAlignment="Center"
-								VerticalAlignment="Stretch"
-								Background="Transparent"
                                 Click="OnEnrichClick"
                                 IsEnabled="{Binding CanEnrich}"
+						    AutomationProperties.Name="富化实体"
                                 IsVisible="{Binding HasSemanticData}">
-							<PathIcon Width="17"
-									  Height="17"
-									  Data="{StaticResource star_add_regular}"
+							<Path Classes="toolIcon" Width="20"
+									  Height="20"
+									  Data="{StaticResource act_tag_regular}"
 									  Opacity="{Binding HasEnrichedData, Converter={StaticResource CompletedToOpacityConverter}}">
 								<ToolTip.Tip>
 									<TextBlock Text="{Binding EnrichButtonTooltip}"/>
 								</ToolTip.Tip>
-							</PathIcon>
+							</Path>
 						</Button>
 
 						<!-- GeoJSON Generate (visible when semantic data exists, enabled when loaded in memory) -->
 						<Button DockPanel.Dock="Right"
                                 Margin="0,0,5,0"
 								HorizontalAlignment="Center"
-								VerticalAlignment="Stretch"
-								Background="Transparent"
                                 Click="OnGenerateGeoJsonClick"
                                 IsVisible="{Binding HasSemanticData}"
+						    AutomationProperties.Name="生成 GeoJSON"
                                 IsEnabled="{Binding HasSemanticResults}">
-							<PathIcon Width="17"
-									  Height="17"
-									  Data="{StaticResource map_add_regular}"
+							<Path Classes="toolIcon" Width="20"
+									  Height="20"
+									  Data="{StaticResource act_map_regular}"
 									  Opacity="{Binding IsGeoCompleted, Converter={StaticResource CompletedToOpacityConverter}}">
 								<ToolTip.Tip>
 									<TextBlock Text="{Binding GeoButtonTooltip}"/>
 								</ToolTip.Tip>
-							</PathIcon>
+							</Path>
 						</Button>
 
 							<!-- NLP Analyze (visible when MinerU data exists) -->
 						<Button DockPanel.Dock="Right"
                                   Margin="0,0,5,0"
 								HorizontalAlignment="Center"
-								VerticalAlignment="Stretch"
-								Background="Transparent"
                                 Click="OnSemanticProcessClick"
+						    AutomationProperties.Name="NLP 语义分析"
                                   IsVisible="{Binding HasMinerUData}">
-							<PathIcon Width="17"
-									  Height="17"
-									  Data="{StaticResource nlp_process_regular}"
+							<Path Classes="toolIcon" Width="20"
+									  Height="20"
+									  Data="{StaticResource act_graph_regular}"
 									  Opacity="{Binding IsSemanticCompleted, Converter={StaticResource CompletedToOpacityConverter}}">
 								<ToolTip.Tip>
 									<TextBlock Text="{Binding SemanticButtonTooltip}"/>
 								</ToolTip.Tip>
-							</PathIcon>
+							</Path>
 						</Button>
 
 						<!-- Popo Process (always visible when MinerU ZIP exists, allows re-processing) -->
 						<Button DockPanel.Dock="Right"
                                 Margin="0,0,5,0"
 								HorizontalAlignment="Center"
-								VerticalAlignment="Stretch"
-								Background="Transparent"
                                 Click="OnPopoProcessClick"
+						    AutomationProperties.Name="Popo 块分析"
                                 IsVisible="{Binding HasMinerUZip}">
-							<PathIcon Width="17"
-									  Height="17"
-									  Data="{StaticResource popo_process_regular}"
+							<Path Classes="toolIcon" Width="20"
+									  Height="20"
+									  Data="{StaticResource act_link_regular}"
 									  Opacity="{Binding IsPopoCompleted, Converter={StaticResource CompletedToOpacityConverter}}">
 								<ToolTip.Tip>
 									<TextBlock Text="{Binding PopoButtonTooltip}"/>
 								</ToolTip.Tip>
-							</PathIcon>
+							</Path>
 						</Button>
 
 						<!-- MinerU AI Parse -->
 						<Button DockPanel.Dock="Right"
                                 Margin="0,0,5,0"
 								HorizontalAlignment="Center"
-								VerticalAlignment="Stretch"
-								Background="Transparent"
                                 Click="OnMinerUParseClick"
+						    AutomationProperties.Name="MinerU 解析"
                                 IsVisible="{Binding MinerUEnabled}">
-							<PathIcon Width="17"
-									  Height="17"
-									  Data="{StaticResource mineru_parse_regular}"
+							<Path Classes="toolIcon" Width="20"
+									  Height="20"
+									  Data="{StaticResource act_blocks_regular}"
 									  Opacity="{Binding IsMinerUCompleted, Converter={StaticResource CompletedToOpacityConverter}}">
 								<ToolTip.Tip>
 									<TextBlock Text="{Binding MinerUButtonTooltip}"/>
 								</ToolTip.Tip>
-							</PathIcon>
+							</Path>
 						</Button>
 
 						<!-- Print -->
 						<Button DockPanel.Dock="Right"
                                 Margin="0,0,5,0"
 								HorizontalAlignment="Center"
-								VerticalAlignment="Stretch"
-								Background="Transparent"
+						    AutomationProperties.Name="打印"
 								Command="{Binding PrintCommand}">
-							<PathIcon Width="17"
-									  Height="17"
-									  Data="{StaticResource print_regular}">
+							<Path Classes="toolIcon" Width="20"
+									  Height="20"
+									  Data="{StaticResource glyph_print_regular}">
 								<ToolTip.Tip>打印</ToolTip.Tip>
-							</PathIcon>
+							</Path>
 						</Button>
 
 						<Grid/>
@@ -550,9 +591,10 @@
                                                         Opacity="0.7"/>
 
                                              <!-- Cancel Button -->
-                                             <Button Content="Cancel"
+                                             <Button Content="取消"
                                                      Command="{Binding CancelMinerUParseCommand}"
                                                      HorizontalAlignment="Center"
+                                                 AutomationProperties.Name="取消 MinerU 解析"
                                                      Padding="20,4"/>
                                          </StackPanel>
                                      </Border>
@@ -562,18 +604,19 @@
                                              VerticalAlignment="Center"
                                              HorizontalAlignment="Stretch"
                                              Padding="12"
-                                             Background="#FFF2F2"
+                                             Background="{DynamicResource CalyAlertCardBackgroundBrush}"
                                              CornerRadius="4">
                                          <StackPanel Spacing="8"
                                                      HorizontalAlignment="Center">
                                              <TextBlock Text="{Binding MinerUStatusText}"
                                                         FontSize="12"
-                                                        Foreground="#FF4444"
+                                                        Foreground="{DynamicResource CalyAlertCardForegroundBrush}"
                                                         TextAlignment="Center"
                                                         TextWrapping="Wrap"/>
-                                             <Button Content="Retry"
+                                             <Button Content="重试"
                                                      Command="{Binding ParseWithMinerUCommand}"
                                                      HorizontalAlignment="Center"
+                                                 AutomationProperties.Name="重新解析"
                                                      Padding="20,4"/>
                                          </StackPanel>
                                      </Border>
@@ -601,15 +644,15 @@
                                                                   <!-- Auto 1-based index within the page; same badge style as the PDF overlay -->
                                                                   <Border Padding="4,1"
                                                                           CornerRadius="3"
-                                                                          Background="#BF000000"
+                                                                          Background="{DynamicResource CalyScrimStrongBrush}"
                                                                           VerticalAlignment="Center">
                                                                       <TextBlock Text="{Binding IndexLabel}"
                                                                                  FontSize="11"
                                                                                  FontWeight="Bold"
-                                                                                 Foreground="White"/>
+                                                                                 Foreground="{DynamicResource CalyOnSolidBrush}"/>
                                                                   </Border>
                                                                   <TextBlock Text="{Binding TypeLabel}"
-                                                                             FontSize="10"
+                                                                             FontSize="11"
                                                                              FontWeight="SemiBold"/>
                                                                   <!-- Source Badge: only visible for para/discarded blocks -->
                                                                   <Border Padding="2,1"
@@ -618,8 +661,8 @@
                                                                           Background="{Binding BadgeBackground}"
                                                                           Opacity="0.8">
                                                                       <TextBlock Text="{Binding SourceBadgeText}"
-                                                                                 FontSize="9"
-                                                                                 Foreground="White"
+                                                                                 FontSize="11"
+                                                                                 Foreground="{DynamicResource CalyOnSolidBrush}"
                                                                                  TextAlignment="Center"
                                                                                  VerticalAlignment="Center"/>
                                                                   </Border>
@@ -637,8 +680,8 @@
                                                                              HorizontalAlignment="Stretch"
                                                                              VerticalAlignment="Stretch"/>
                                                                       <TextBlock Text="{Binding ImagePathText}"
-                                                                                 FontSize="10"
-                                                                                 Foreground="#FF9800"
+                                                                                 FontSize="11"
+                                                                                 Foreground="{DynamicResource CalyWarningForegroundBrush}"
                                                                                  TextWrapping="Wrap"
                                                                                  VerticalAlignment="Center"
                                                                                  HorizontalAlignment="Center"
@@ -648,7 +691,7 @@
 
                                                               <!-- Content preview for non-image blocks -->
                                                               <TextBlock Text="{Binding ContentPreview}"
-                                                                         FontSize="10"
+                                                                         FontSize="11"
                                                                          TextWrapping="Wrap"
                                                                          Opacity="0.8"
                                                                          MaxLines="3"
@@ -700,12 +743,14 @@
                                                      IsEnabled="{Binding CanGenerateToc}"
                                                      IsVisible="{Binding !IsPopoProcessing}"
                                                      MinWidth="60"
+                                                 AutomationProperties.Name="生成目录"
                                                      FontSize="11"/>
                                              <Button Content="参考文献"
                                                      Command="{Binding GenerateReferencesCommand}"
                                                      IsEnabled="{Binding CanGenerateReferences}"
                                                      IsVisible="{Binding !IsPopoProcessing}"
                                                      MinWidth="60"
+                                                 AutomationProperties.Name="生成参考文献"
                                                      FontSize="11"/>
                                          </StackPanel>
                                      </Grid>
@@ -745,7 +790,7 @@
 
                                               <!-- Detailed Progress Message from Popo API -->
                                               <TextBlock Text="{Binding PopoProgressMessage}"
-                                                         FontSize="10"
+                                                         FontSize="11"
                                                          HorizontalAlignment="Center"
                                                          TextAlignment="Center"
                                                          Opacity="0.5"
@@ -754,9 +799,10 @@
                                                          IsVisible="{Binding PopoProgressMessage, Converter={StaticResource IsNotNullConverter}}"/>
 
                                              <!-- Cancel Button -->
-                                             <Button Content="Cancel"
+                                             <Button Content="取消"
                                                      Command="{Binding CancelPopoProcessCommand}"
                                                      HorizontalAlignment="Center"
+                                                 AutomationProperties.Name="取消 Popo 处理"
                                                      Padding="20,4"/>
                                          </StackPanel>
                                      </Border>
@@ -766,17 +812,18 @@
                                             VerticalAlignment="Center"
                                             HorizontalAlignment="Stretch"
                                             Padding="12"
-                                            Background="#FFF2F2"
+                                            Background="{DynamicResource CalyAlertCardBackgroundBrush}"
                                             CornerRadius="4">
                                         <StackPanel Spacing="8">
                                             <TextBlock Text="{Binding PopoStatusText}"
                                                        FontSize="12"
-                                                       Foreground="#FF4444"
+                                                       Foreground="{DynamicResource CalyAlertCardForegroundBrush}"
                                                        TextAlignment="Center"
                                                        TextWrapping="Wrap"/>
-                                            <Button Content="Retry"
+                                            <Button Content="重试"
                                                     Command="{Binding ProcessWithPopoCommand}"
                                                     HorizontalAlignment="Center"
+                                                AutomationProperties.Name="重新处理"
                                                     Padding="20,4"/>
                                         </StackPanel>
                                     </Border>
@@ -815,9 +862,9 @@
                                                                          Background="{Binding TypeColorHex}"
                                                                          Margin="4,0,6,0">
                                                                      <TextBlock Text="{Binding Type}"
-                                                                                FontSize="9"
+                                                                                FontSize="11"
                                                                                 FontWeight="SemiBold"
-                                                                                Foreground="White"
+                                                                                Foreground="{DynamicResource CalyOnSolidBrush}"
                                                                                 TextAlignment="Center"/>
                                                                   </Border>
                                                                    <TextBlock Grid.Column="1"
@@ -831,8 +878,8 @@
                                                                               TextAlignment="Left"/>
                                                                   <TextBlock Grid.Column="2"
                                                                              Text="{Binding PageRange}"
-                                                                             FontSize="9"
-                                                                             Foreground="#4FC3F7"
+                                                                             FontSize="11"
+                                                                             Foreground="{DynamicResource CalyAccentLightBlueBrush}"
                                                                              VerticalAlignment="Center"
                                                                              Margin="6,0,4,0"/>
                                                               </Grid>
@@ -849,8 +896,8 @@
                                                                               HorizontalAlignment="Stretch"
                                                                               VerticalAlignment="Stretch"/>
                                                                        <TextBlock Text="{Binding ImagePathText}"
-                                                                                  FontSize="10"
-                                                                                  Foreground="#FF9800"
+                                                                                  FontSize="11"
+                                                                                  Foreground="{DynamicResource CalyWarningForegroundBrush}"
                                                                                   TextWrapping="Wrap"
                                                                                   VerticalAlignment="Center"
                                                                                   HorizontalAlignment="Center"
@@ -860,7 +907,7 @@
 
                                                               <!-- Content preview (collapsed, non-image nodes) -->
                                                               <TextBlock Text="{Binding ContentPreview}"
-                                                                         FontSize="10"
+                                                                         FontSize="11"
                                                                          Opacity="0.7"
                                                                          MaxLines="2"
                                                                          TextTrimming="CharacterEllipsis"
@@ -870,7 +917,7 @@
 
                                                               <!-- Full content (expanded, non-image nodes) -->
                                                               <TextBlock Text="{Binding DisplayContent}"
-                                                                         FontSize="10"
+                                                                         FontSize="11"
                                                                          Opacity="0.8"
                                                                          TextWrapping="Wrap"
                                                                          IsVisible="{Binding ShowFullContent}"
@@ -878,21 +925,23 @@
                                                                          TextAlignment="Left"/>
 
                                                               <!-- Structured table (table_data / table_key_value / legacy HTML table) -->
-                                                              <Button Content="📋"
-                                                                      FontSize="9"
+                                                              <Button 
+                                                                      FontSize="11"
                                                                       Padding="4,1"
                                                                       HorizontalAlignment="Right"
                                                                       Background="Transparent"
                                                                       BorderThickness="0"
                                                                       IsVisible="{Binding CanCopyTable}"
+                                                                  AutomationProperties.Name="复制 Markdown"
                                                                       Click="OnCopyTableMarkdownClick">
+                                                                  <Path Classes="toolIcon" Width="13" Height="13" Data="{StaticResource glyph_copy_regular}"/>
                                                                   <ToolTip.Tip>复制 Markdown</ToolTip.Tip>
                                                               </Button>
                                                               <DataGrid ItemsSource="{Binding TableRows}"
                                                                         AutoGenerateColumns="False"
                                                                         HeadersVisibility="{Binding TableHeadersVisibility}"
                                                                         GridLinesVisibility="Horizontal"
-                                                                        FontSize="10"
+                                                                        FontSize="11"
                                                                         MaxHeight="200"
                                                                         HorizontalAlignment="Stretch"
                                                                         IsVisible="{Binding ShowTableGrid}"
@@ -903,9 +952,11 @@
                                                                      HorizontalAlignment="Right"
                                                                      VerticalAlignment="Bottom"
                                                                      Padding="6,2"
-                                                                     FontSize="9"
+                                                                     FontSize="11"
                                                                      Background="Transparent"
                                                                      BorderThickness="0"
+                                                                 AutomationProperties.Name="展开或折叠内容"
+                                                                     ToolTip.Tip="展开或折叠这段内容"
                                                                      IsVisible="{Binding CanToggleContentExpand}">
                                                                  <Button.Content>
                                                                      <StackPanel Orientation="Horizontal" Spacing="2">
@@ -953,7 +1004,7 @@
                                                        Opacity="0.6"
                                                        IsVisible="{Binding !IsSemanticProcessing}"/>
                                             <TextBlock Text="{Binding SemanticEntityCount, StringFormat='({0} entities)'}"
-                                                       FontSize="10"
+                                                       FontSize="11"
                                                        Opacity="0.4"
                                                        IsVisible="{Binding !IsSemanticProcessing}"/>
                                         </StackPanel>
@@ -962,6 +1013,7 @@
                                                 Command="{Binding OpenFormulaPanelCommand}"
                                                 IsVisible="{Binding !IsSemanticProcessing}"
                                                 MinWidth="50"
+                                            AutomationProperties.Name="公式索引"
                                                 FontSize="11"/>
                                     </Grid>
 
@@ -991,9 +1043,10 @@
                                                        FontSize="11"
                                                        HorizontalAlignment="Center"
                                                        Opacity="0.7"/>
-                                            <Button Content="Cancel"
+                                            <Button Content="取消"
                                                     Command="{Binding CancelSemanticProcessCommand}"
                                                     HorizontalAlignment="Center"
+                                                AutomationProperties.Name="取消语义分析"
                                                     Padding="20,4"/>
                                         </StackPanel>
                                     </Border>
@@ -1003,17 +1056,18 @@
                                             VerticalAlignment="Center"
                                             HorizontalAlignment="Stretch"
                                             Padding="12"
-                                            Background="#FFF2F2"
+                                            Background="{DynamicResource CalyAlertCardBackgroundBrush}"
                                             CornerRadius="4">
                                         <StackPanel Spacing="8">
                                             <TextBlock Text="{Binding SemanticStatusText}"
                                                        FontSize="12"
-                                                       Foreground="#FF4444"
+                                                       Foreground="{DynamicResource CalyAlertCardForegroundBrush}"
                                                        TextAlignment="Center"
                                                        TextWrapping="Wrap"/>
-                                            <Button Content="Retry"
+                                            <Button Content="重试"
                                                     Command="{Binding ProcessWithSemanticCommand}"
                                                     HorizontalAlignment="Center"
+                                                AutomationProperties.Name="重新分析"
                                                     Padding="20,4"/>
                                         </StackPanel>
                                     </Border>
@@ -1025,11 +1079,11 @@
                                               Padding="16">
                                           <StackPanel Spacing="8"
                                                       HorizontalAlignment="Center">
-                                              <TextBlock Text="NLP Analysis"
+                                              <TextBlock Text="NLP 分析"
                                                          FontSize="14"
                                                          FontWeight="SemiBold"
                                                          HorizontalAlignment="Center"/>
-                                              <TextBlock Text="Click 'Analyze with NLP' to process Popo blocks"
+                                              <TextBlock Text="点击“NLP 分析”开始处理 Popo 内容块"
                                                          FontSize="11"
                                                          Opacity="0.6"
                                                          TextAlignment="Center"/>
@@ -1060,9 +1114,9 @@
                                                                               Background="{Binding TypeColorHex}"
                                                                               Margin="0,0,6,0">
                                                                           <TextBlock Text="{Binding Type}"
-                                                                                     FontSize="9"
+                                                                                     FontSize="11"
                                                                                      FontWeight="SemiBold"
-                                                                                     Foreground="White"
+                                                                                     Foreground="{DynamicResource CalyOnSolidBrush}"
                                                                                      TextAlignment="Center"/>
                                                                       </Border>
                                                                       <TextBlock Grid.Column="1"
@@ -1074,15 +1128,15 @@
                                                                                  VerticalAlignment="Center"/>
                                                                       <TextBlock Grid.Column="2"
                                                                                  Text="{Binding EntitySummary}"
-                                                                                 FontSize="9"
-                                                                                 Foreground="#4FC3F7"
+                                                                                 FontSize="11"
+                                                                                 Foreground="{DynamicResource CalyAccentLightBlueBrush}"
                                                                                  VerticalAlignment="Center"
                                                                                  Margin="6,0,0,0"/>
                                                                   </Grid>
 
                                                                   <!-- Content preview -->
                                                                   <TextBlock Text="{Binding ContentPreview}"
-                                                                             FontSize="10"
+                                                                             FontSize="11"
                                                                              Opacity="0.6"
                                                                              MaxLines="2"
                                                                              TextTrimming="CharacterEllipsis"
@@ -1097,9 +1151,9 @@
                                                                        <StackPanel Spacing="2"
                                                                                    IsVisible="{Binding LocationEntities.Count}">
                                                                            <TextBlock Text="地点"
-                                                                                      FontSize="9"
+                                                                                      FontSize="11"
                                                                                       FontWeight="SemiBold"
-                                                                                      Foreground="#81C784"
+                                                                                      Foreground="{DynamicResource CalyAccentGreenBrush}"
                                                                                       Opacity="0.8"
                                                                                       Margin="0,0,0,2"/>
                                                                            <ItemsControl ItemsSource="{Binding LocationEntities}">
@@ -1113,13 +1167,13 @@
                                                                                        <Border Padding="4,2"
                                                                                                Margin="0,0,2,2"
                                                                                                CornerRadius="2"
-                                                                                               Background="#4CAF5018"
+                                                                                               Background="{DynamicResource CalyTagGreenBackgroundBrush}"
                                                                                                BorderThickness="0.8"
-                                                                                               BorderBrush="#4CAF5055">
+                                                                                               BorderBrush="{DynamicResource CalyTagGreenBorderBrush}">
                                                                                            <TextBlock Text="{Binding Text}"
-                                                                                                      FontSize="9"
+                                                                                                      FontSize="11"
                                                                                                       FontWeight="Medium"
-                                                                                                      Foreground="#C8E6C9"/>
+                                                                                                      Foreground="{DynamicResource CalyTagGreenForegroundBrush}"/>
                                                                                        </Border>
                                                                                    </DataTemplate>
                                                                                </ItemsControl.ItemTemplate>
@@ -1130,9 +1184,9 @@
                                                                        <StackPanel Spacing="2"
                                                                                    IsVisible="{Binding DateEntities.Count}">
                                                                            <TextBlock Text="时间"
-                                                                                      FontSize="9"
+                                                                                      FontSize="11"
                                                                                       FontWeight="SemiBold"
-                                                                                      Foreground="#FFB74D"
+                                                                                      Foreground="{DynamicResource CalyAccentAmberBrush}"
                                                                                       Opacity="0.8"
                                                                                       Margin="0,0,0,2"/>
                                                                            <ItemsControl ItemsSource="{Binding DateEntities}">
@@ -1146,13 +1200,13 @@
                                                                                        <Border Padding="4,2"
                                                                                                Margin="0,0,2,2"
                                                                                                CornerRadius="2"
-                                                                                               Background="#FF980018"
+                                                                                               Background="{DynamicResource CalyTagAmberBackgroundBrush}"
                                                                                                BorderThickness="0.8"
-                                                                                               BorderBrush="#FF980055">
+                                                                                               BorderBrush="{DynamicResource CalyTagAmberBorderBrush}">
                                                                                            <TextBlock Text="{Binding Text}"
-                                                                                                      FontSize="9"
+                                                                                                      FontSize="11"
                                                                                                       FontWeight="Medium"
-                                                                                                      Foreground="#FFE0B2"/>
+                                                                                                      Foreground="{DynamicResource CalyTagAmberForegroundBrush}"/>
                                                                                        </Border>
                                                                                    </DataTemplate>
                                                                                </ItemsControl.ItemTemplate>
@@ -1163,9 +1217,9 @@
                                                                        <StackPanel Spacing="2"
                                                                                    IsVisible="{Binding PersonEntities.Count}">
                                                                            <TextBlock Text="人物"
-                                                                                      FontSize="9"
+                                                                                      FontSize="11"
                                                                                       FontWeight="SemiBold"
-                                                                                      Foreground="#64B5F6"
+                                                                                      Foreground="{DynamicResource CalyAccentBlueBrush}"
                                                                                       Opacity="0.8"
                                                                                       Margin="0,0,0,2"/>
                                                                            <ItemsControl ItemsSource="{Binding PersonEntities}">
@@ -1179,13 +1233,13 @@
                                                                                        <Border Padding="4,2"
                                                                                                Margin="0,0,2,2"
                                                                                                CornerRadius="2"
-                                                                                               Background="#2196F318"
+                                                                                               Background="{DynamicResource CalyTagBlueBackgroundBrush}"
                                                                                                BorderThickness="0.8"
-                                                                                               BorderBrush="#2196F355">
+                                                                                               BorderBrush="{DynamicResource CalyTagBlueBorderBrush}">
                                                                                            <TextBlock Text="{Binding Text}"
-                                                                                                      FontSize="9"
+                                                                                                      FontSize="11"
                                                                                                       FontWeight="Medium"
-                                                                                                      Foreground="#BBDEFB"/>
+                                                                                                      Foreground="{DynamicResource CalyTagBlueForegroundBrush}"/>
                                                                                        </Border>
                                                                                    </DataTemplate>
                                                                                </ItemsControl.ItemTemplate>
@@ -1196,9 +1250,9 @@
                                                                        <StackPanel Spacing="2"
                                                                                    IsVisible="{Binding NumberEntities.Count}">
                                                                            <TextBlock Text="数值"
-                                                                                      FontSize="9"
+                                                                                      FontSize="11"
                                                                                       FontWeight="SemiBold"
-                                                                                      Foreground="#CE93D8"
+                                                                                      Foreground="{DynamicResource CalyTagVioletForegroundBrush}"
                                                                                       Opacity="0.8"
                                                                                       Margin="0,0,0,2"/>
                                                                            <ItemsControl ItemsSource="{Binding NumberEntities}">
@@ -1212,13 +1266,13 @@
                                                                                        <Border Padding="4,2"
                                                                                                Margin="0,0,2,2"
                                                                                                CornerRadius="2"
-                                                                                               Background="#9C27B018"
+                                                                                               Background="{DynamicResource CalyTagPurpleBackgroundBrush}"
                                                                                                BorderThickness="0.8"
-                                                                                               BorderBrush="#9C27B055">
+                                                                                               BorderBrush="{DynamicResource CalyTagPurpleBorderBrush}">
                                                                                            <TextBlock Text="{Binding Text}"
-                                                                                                      FontSize="9"
+                                                                                                      FontSize="11"
                                                                                                       FontWeight="Medium"
-                                                                                                      Foreground="#E1BEE7"/>
+                                                                                                      Foreground="{DynamicResource CalyTagPurpleForegroundBrush}"/>
                                                                                        </Border>
                                                                                    </DataTemplate>
                                                                                </ItemsControl.ItemTemplate>
@@ -1229,9 +1283,9 @@
                                                                        <StackPanel Spacing="2"
                                                                                    IsVisible="{Binding FacilityEntities.Count}">
                                                                            <TextBlock Text="设施"
-                                                                                      FontSize="9"
+                                                                                      FontSize="11"
                                                                                       FontWeight="SemiBold"
-                                                                                      Foreground="#90A4AE"
+                                                                                      Foreground="{DynamicResource CalyTagSteelForegroundBrush}"
                                                                                       Opacity="0.8"
                                                                                       Margin="0,0,0,2"/>
                                                                            <ItemsControl ItemsSource="{Binding FacilityEntities}">
@@ -1245,13 +1299,13 @@
                                                                                        <Border Padding="4,2"
                                                                                                Margin="0,0,2,2"
                                                                                                CornerRadius="2"
-                                                                                               Background="#607D8B18"
+                                                                                               Background="{DynamicResource CalyTagSlateBackgroundBrush}"
                                                                                                BorderThickness="0.8"
-                                                                                               BorderBrush="#607D8B55">
+                                                                                               BorderBrush="{DynamicResource CalyTagSlateBorderBrush}">
                                                                                            <TextBlock Text="{Binding Text}"
-                                                                                                      FontSize="9"
+                                                                                                      FontSize="11"
                                                                                                       FontWeight="Medium"
-                                                                                                      Foreground="#B0BEC5"/>
+                                                                                                      Foreground="{DynamicResource CalyTagSlateForegroundBrush}"/>
                                                                                        </Border>
                                                                                    </DataTemplate>
                                                                                </ItemsControl.ItemTemplate>
@@ -1262,9 +1316,9 @@
                                                                        <StackPanel Spacing="2"
                                                                                    IsVisible="{Binding OrganizationEntities.Count}">
                                                                            <TextBlock Text="组织"
-                                                                                      FontSize="9"
+                                                                                      FontSize="11"
                                                                                       FontWeight="SemiBold"
-                                                                                      Foreground="#F48FB1"
+                                                                                      Foreground="{DynamicResource CalyAccentPinkBrush}"
                                                                                       Opacity="0.8"
                                                                                       Margin="0,0,0,2"/>
                                                                            <ItemsControl ItemsSource="{Binding OrganizationEntities}">
@@ -1278,13 +1332,13 @@
                                                                                        <Border Padding="4,2"
                                                                                                Margin="0,0,2,2"
                                                                                                CornerRadius="2"
-                                                                                               Background="#E91E6318"
+                                                                                               Background="{DynamicResource CalyTagPinkBackgroundBrush}"
                                                                                                BorderThickness="0.8"
-                                                                                               BorderBrush="#E91E6355">
+                                                                                               BorderBrush="{DynamicResource CalyTagPinkBorderBrush}">
                                                                                            <TextBlock Text="{Binding Text}"
-                                                                                                      FontSize="9"
+                                                                                                      FontSize="11"
                                                                                                       FontWeight="Medium"
-                                                                                                      Foreground="#F8BBD0"
+                                                                                                      Foreground="{DynamicResource CalyTagPinkForegroundBrush}"
                                                                                                       TextTrimming="CharacterEllipsis"
                                                                                                       MaxWidth="200"/>
                                                                                        </Border>
@@ -1297,9 +1351,9 @@
                                                                        <StackPanel Spacing="2"
                                                                                    IsVisible="{Binding OtherEntities.Count}">
                                                                            <TextBlock Text="其他"
-                                                                                      FontSize="9"
+                                                                                      FontSize="11"
                                                                                       FontWeight="SemiBold"
-                                                                                      Foreground="#78909C"
+                                                                                      Foreground="{DynamicResource CalyAccentSlateBrush}"
                                                                                       Opacity="0.7"
                                                                                       Margin="0,0,0,2"/>
                                                                            <ItemsControl ItemsSource="{Binding OtherEntities}">
@@ -1313,14 +1367,14 @@
                                                                                        <Border Padding="4,2"
                                                                                                Margin="0,0,2,2"
                                                                                                CornerRadius="2"
-                                                                                               Background="#546E7A18"
+                                                                                               Background="{DynamicResource CalyTagSteelBackgroundBrush}"
                                                                                                BorderThickness="0.8"
-                                                                                               BorderBrush="#546E7A44"
+                                                                                               BorderBrush="{DynamicResource CalyTagSteelBorderBrush}"
                                                                                                Opacity="0.7">
                                                                                            <TextBlock Text="{Binding Text}"
-                                                                                                      FontSize="9"
+                                                                                                      FontSize="11"
                                                                                                       FontWeight="Medium"
-                                                                                                      Foreground="#90A4AE"/>
+                                                                                                      Foreground="{DynamicResource CalyTagSteelForegroundBrush}"/>
                                                                                        </Border>
                                                                                    </DataTemplate>
                                                                                </ItemsControl.ItemTemplate>
@@ -1331,9 +1385,9 @@
                                                                        <StackPanel Spacing="2"
                                                                                    IsVisible="{Binding HasFormulas}">
                                                                            <TextBlock Text="公式"
-                                                                                      FontSize="9"
+                                                                                      FontSize="11"
                                                                                       FontWeight="SemiBold"
-                                                                                      Foreground="#CE93D8"
+                                                                                      Foreground="{DynamicResource CalyTagVioletForegroundBrush}"
                                                                                       Opacity="0.8"
                                                                                       Margin="0,0,0,2"/>
                                                                            <ItemsControl ItemsSource="{Binding FormulaReferences}">
@@ -1347,13 +1401,13 @@
                                                                                        <Border Padding="4,2"
                                                                                                Margin="0,0,2,2"
                                                                                                CornerRadius="2"
-                                                                                               Background="#9C27B018"
+                                                                                               Background="{DynamicResource CalyTagPurpleBackgroundBrush}"
                                                                                                BorderThickness="0.8"
-                                                                                               BorderBrush="#9C27B055">
+                                                                                               BorderBrush="{DynamicResource CalyTagPurpleBorderBrush}">
                                                                                            <TextBlock Text="{Binding FormulaId}"
-                                                                                                      FontSize="9"
+                                                                                                      FontSize="11"
                                                                                                       FontWeight="Medium"
-                                                                                                      Foreground="#CE93D8">
+                                                                                                      Foreground="{DynamicResource CalyTagVioletForegroundBrush}">
                                                                                                <ToolTip.Tip>
                                                                                                    <TextBlock Text="{Binding Placeholder}"
                                                                                                             TextWrapping="Wrap"
@@ -1373,9 +1427,11 @@
                                                                             HorizontalAlignment="Right"
                                                                             VerticalAlignment="Bottom"
                                                                             Padding="6,2"
-                                                                            FontSize="9"
+                                                                            FontSize="11"
                                                                             Background="Transparent"
                                                                             BorderThickness="0"
+                                                                        AutomationProperties.Name="展开或折叠详情"
+                                                                            ToolTip.Tip="展开或折叠详情"
                                                                             IsVisible="{Binding HasExpandableDetails}">
                                                                         <Button.Content>
                                                                             <StackPanel Orientation="Horizontal" Spacing="2">
@@ -1395,9 +1451,9 @@
                                                                           <StackPanel IsVisible="{Binding Tokens.Count}"
                                                                                       Spacing="2">
                                                                               <TextBlock Text="分词"
-                                                                                         FontSize="9"
+                                                                                         FontSize="11"
                                                                                          FontWeight="SemiBold"
-                                                                                         Foreground="#1565C0"/>
+                                                                                         Foreground="{DynamicResource CalyBlueDeepBrush}"/>
                                                                               <ItemsControl ItemsSource="{Binding Tokens}">
                                                                                   <ItemsControl.ItemsPanel>
                                                                                       <ItemsPanelTemplate>
@@ -1408,15 +1464,15 @@
                                                                                       <DataTemplate x:DataType="models:SemanticToken">
                                                                                           <Border Padding="3,1"
                                                                                                   Margin="1"
-                                                                                                  Background="#1565C018"
+                                                                                                  Background="{DynamicResource CalyTagAzureBackgroundBrush}"
                                                                                                   CornerRadius="2">
                                                                                               <StackPanel Orientation="Horizontal" Spacing="2">
                                                                                                   <TextBlock Text="{Binding Text}"
-                                                                                                             FontSize="9"
-                                                                                                             Foreground="#90CAF9"/>
+                                                                                                             FontSize="11"
+                                                                                                             Foreground="{DynamicResource CalyTagAzureForegroundBrush}"/>
                                                                                                   <TextBlock Text="{Binding Pos}"
-                                                                                                             FontSize="8"
-                                                                                                             Foreground="#64B5F6"/>
+                                                                                                             FontSize="11"
+                                                                                                             Foreground="{DynamicResource CalyAccentBlueBrush}"/>
                                                                                               </StackPanel>
                                                                                           </Border>
                                                                                       </DataTemplate>
@@ -1428,28 +1484,28 @@
                                                                            <StackPanel IsVisible="{Binding LocationEntities.Count}"
                                                                                        Spacing="2">
                                                                                <TextBlock Text="地点句法"
-                                                                                          FontSize="9"
+                                                                                          FontSize="11"
                                                                                           FontWeight="SemiBold"
-                                                                                          Foreground="#4CAF50"/>
+                                                                                          Foreground="{DynamicResource CalySuccessForegroundBrush}"/>
                                                                                <ItemsControl ItemsSource="{Binding LocationEntities}">
                                                                                    <ItemsControl.ItemTemplate>
                                                                                        <DataTemplate x:DataType="models:SemanticEntity">
                                                                                            <Border Padding="4,2"
                                                                                                    Margin="0,1"
-                                                                                                   Background="#4CAF5018"
+                                                                                                   Background="{DynamicResource CalyTagGreenBackgroundBrush}"
                                                                                                    CornerRadius="2">
                                                                                                <StackPanel Orientation="Horizontal" Spacing="4">
                                                                                                    <TextBlock Text="{Binding Text}"
-                                                                                                              FontSize="9"
+                                                                                                              FontSize="11"
                                                                                                               FontWeight="SemiBold"
-                                                                                                              Foreground="#C8E6C9"/>
+                                                                                                              Foreground="{DynamicResource CalyTagGreenForegroundBrush}"/>
                                                                                                     <TextBlock Text="{Binding SyntacticRole}"
-                                                                                                               FontSize="8"
-                                                                                                               Foreground="#81C784"
+                                                                                                               FontSize="11"
+                                                                                                               Foreground="{DynamicResource CalyAccentGreenBrush}"
                                                                                                                Opacity="0.8"/>
                                                                                                    <TextBlock Text="{Binding GoverningVerb}"
-                                                                                                              FontSize="8"
-                                                                                                              Foreground="#A5D6A7"
+                                                                                                              FontSize="11"
+                                                                                                              Foreground="{DynamicResource CalyAccentMintBrush}"
                                                                                                               IsVisible="{Binding GoverningVerb}"/>
                                                                                                </StackPanel>
                                                                                            </Border>
@@ -1463,10 +1519,10 @@
                                                                                         Spacing="4"
                                                                                         Margin="0,4,0,0">
                                                                                 <TextBlock Text="依存句法树"
-                                                                                           FontSize="9"
+                                                                                           FontSize="11"
                                                                                            FontWeight="SemiBold"
-                                                                                           Foreground="#FF9800"/>
-                                                                                <Border Background="#1E1E1E"
+                                                                                           Foreground="{DynamicResource CalyWarningForegroundBrush}"/>
+                                                                                <Border Background="{DynamicResource CalyCodeBackgroundBrush}"
                                                                                         CornerRadius="4"
                                                                                         Padding="8"
                                                                                         MaxHeight="250">
@@ -1482,34 +1538,34 @@
                                                                            <StackPanel IsVisible="{Binding Relations.Count}"
                                                                                       Spacing="2">
                                                                               <TextBlock Text="关系"
-                                                                                         FontSize="9"
+                                                                                         FontSize="11"
                                                                                          FontWeight="SemiBold"
-                                                                                         Foreground="#7B1FA2"/>
+                                                                                         Foreground="{DynamicResource CalyPurpleDeepBrush}"/>
                                                                               <ItemsControl ItemsSource="{Binding Relations}">
                                                                                   <ItemsControl.ItemTemplate>
                                                                                       <DataTemplate x:DataType="models:SemanticRelation">
                                                                                           <Border Padding="4,2"
                                                                                                   Margin="0,1"
-                                                                                                  Background="#7B1FA218"
+                                                                                                  Background="{DynamicResource CalyTagVioletBackgroundBrush}"
                                                                                                   CornerRadius="2">
                                                                                               <StackPanel Orientation="Horizontal" Spacing="2">
                                                                                                   <TextBlock Text="{Binding Subject}"
-                                                                                                             FontSize="9"
+                                                                                                             FontSize="11"
                                                                                                              FontWeight="SemiBold"
-                                                                                                             Foreground="#CE93D8"/>
+                                                                                                             Foreground="{DynamicResource CalyTagVioletForegroundBrush}"/>
                                                                                                   <TextBlock Text="→"
-                                                                                                             FontSize="9"
-                                                                                                             Foreground="#AB47BC"/>
+                                                                                                             FontSize="11"
+                                                                                                             Foreground="{DynamicResource CalyAccentVioletBrush}"/>
                                                                                                   <TextBlock Text="{Binding Predicate}"
-                                                                                                             FontSize="9"
-                                                                                                             Foreground="#AB47BC"/>
+                                                                                                             FontSize="11"
+                                                                                                             Foreground="{DynamicResource CalyAccentVioletBrush}"/>
                                                                                                   <TextBlock Text="→"
-                                                                                                             FontSize="9"
-                                                                                                             Foreground="#AB47BC"/>
+                                                                                                             FontSize="11"
+                                                                                                             Foreground="{DynamicResource CalyAccentVioletBrush}"/>
                                                                                                   <TextBlock Text="{Binding ObjectText}"
-                                                                                                             FontSize="9"
+                                                                                                             FontSize="11"
                                                                                                              FontWeight="SemiBold"
-                                                                                                             Foreground="#CE93D8"/>
+                                                                                                             Foreground="{DynamicResource CalyTagVioletForegroundBrush}"/>
                                                                                               </StackPanel>
                                                                                           </Border>
                                                                                       </DataTemplate>
@@ -1553,11 +1609,11 @@
                                                           FontWeight="Bold"
                                                           FontSize="12"/>
                                                <TextBlock Text="{Binding GeoStatusText}"
-                                                          FontSize="10"
+                                                          FontSize="11"
                                                           Opacity="0.5"
                                                           IsVisible="{Binding !IsGeoProcessing}"/>
                                                <TextBlock Text="{Binding GeocodingTotalCount, StringFormat='({0} locations)'}"
-                                                          FontSize="10"
+                                                          FontSize="11"
                                                           Opacity="0.4"
                                                           IsVisible="{Binding !IsGeoProcessing}"/>
                                            </StackPanel>
@@ -1599,9 +1655,10 @@
                                                           Opacity="0.7"/>
 
                                                <!-- Cancel Button -->
-                                               <Button Content="Cancel"
+                                               <Button Content="取消"
                                                        Command="{Binding CancelGeoProcessCommand}"
                                                        HorizontalAlignment="Center"
+                                                   AutomationProperties.Name="取消地理处理"
                                                        Padding="20,4"/>
                                            </StackPanel>
                                        </Border>
@@ -1616,71 +1673,71 @@
                                                         <Grid ColumnDefinitions="20,80,45,*,60,50,50,50,40,50,35,35,70,70">
                                                             <!-- Expand button placeholder -->
                                                             <TextBlock Text=" "
-                                                                       FontSize="10"
+                                                                       FontSize="11"
                                                                        Margin="0,2,0,2"/>
                                                             <TextBlock Grid.Column="1"
                                                                        Text="地点"
-                                                                       FontSize="10"
+                                                                       FontSize="11"
                                                                        FontWeight="SemiBold"
                                                                        Margin="4,2,0,2"/>
                                                             <TextBlock Grid.Column="2"
                                                                        Text="句法角色"
-                                                                       FontSize="10"
+                                                                       FontSize="11"
                                                                        FontWeight="SemiBold"
                                                                        Margin="0,2,0,2"/>
                                                             <TextBlock Grid.Column="3"
                                                                        Text="标准名"
-                                                                       FontSize="10"
+                                                                       FontSize="11"
                                                                        FontWeight="SemiBold"
                                                                        Margin="0,2,0,2"/>
                                                             <TextBlock Grid.Column="4"
                                                                        Text="状态"
-                                                                       FontSize="10"
+                                                                       FontSize="11"
                                                                        FontWeight="SemiBold"
                                                                        Margin="0,2,0,2"/>
                                                             <TextBlock Grid.Column="5"
                                                                        Text="匹配类型"
-                                                                       FontSize="10"
+                                                                       FontSize="11"
                                                                        FontWeight="SemiBold"
                                                                        Margin="0,2,0,2"/>
                                                             <TextBlock Grid.Column="6"
                                                                        Text="匹配名"
-                                                                       FontSize="10"
+                                                                       FontSize="11"
                                                                        FontWeight="SemiBold"
                                                                        Margin="0,2,0,2"/>
                                                             <TextBlock Grid.Column="7"
                                                                        Text="标签"
-                                                                       FontSize="10"
+                                                                       FontSize="11"
                                                                        FontWeight="SemiBold"
                                                                        Margin="0,2,0,2"/>
                                                             <TextBlock Grid.Column="8"
                                                                        Text="谐音"
-                                                                       FontSize="10"
+                                                                       FontSize="11"
                                                                        FontWeight="SemiBold"
                                                                        Margin="0,2,0,2"/>
                                                             <TextBlock Grid.Column="9"
                                                                        Text="类别"
-                                                                       FontSize="10"
+                                                                       FontSize="11"
                                                                        FontWeight="SemiBold"
                                                                        Margin="0,2,0,2"/>
                                                             <TextBlock Grid.Column="10"
                                                                        Text="层级"
-                                                                       FontSize="10"
+                                                                       FontSize="11"
                                                                        FontWeight="SemiBold"
                                                                        Margin="0,2,0,2"/>
                                                             <TextBlock Grid.Column="11"
                                                                        Text="结果数"
-                                                                       FontSize="10"
+                                                                       FontSize="11"
                                                                        FontWeight="SemiBold"
                                                                        Margin="0,2,0,2"/>
                                                             <TextBlock Grid.Column="12"
                                                                        Text="纬度"
-                                                                       FontSize="10"
+                                                                       FontSize="11"
                                                                        FontWeight="SemiBold"
                                                                        Margin="0,2,0,2"/>
                                                             <TextBlock Grid.Column="13"
                                                                        Text="经度"
-                                                                       FontSize="10"
+                                                                       FontSize="11"
                                                                        FontWeight="SemiBold"
                                                                        Margin="0,2,0,2"/>
                                                         </Grid>
@@ -1694,7 +1751,7 @@
                                                                   <!-- Main row -->
                                                                   <Border Margin="0,1"
                                                                           Padding="4,2"
-                                                                          Background="#33333308">
+                                                                          Background="{DynamicResource CalyFaintBackgroundBrush}">
                                                                        <Grid ColumnDefinitions="20,80,45,*,60,50,50,50,40,50,35,35,70,70">
                                                                            <!-- Expand/Collapse button -->
                                                                            <Button Grid.Column="0"
@@ -1704,9 +1761,11 @@
                                                                                    Background="Transparent"
                                                                                    BorderThickness="0"
                                                                                    Click="ToggleExpanded_Click"
+                                                                               AutomationProperties.Name="展开或折叠"
+                                                                               ToolTip.Tip="展开或折叠候选地址"
                                                                                    IsVisible="{Binding HasMultipleResults}">
                                                                                <TextBlock Text="{Binding ExpandIcon}"
-                                                                                          FontSize="8"
+                                                                                          FontSize="11"
                                                                                           HorizontalAlignment="Center"
                                                                                           VerticalAlignment="Center"/>
                                                                            </Button>
@@ -1718,13 +1777,13 @@
                                                                            <!-- Location name -->
                                                                            <TextBlock Grid.Column="1"
                                                                                       Text="{Binding Name}"
-                                                                                      FontSize="10"
+                                                                                      FontSize="11"
                                                                                       TextTrimming="CharacterEllipsis"/>
 
                                                                            <!-- Syntactic role -->
                                                                            <TextBlock Grid.Column="2"
                                                                                       Text="{Binding SyntacticRoleDisplay}"
-                                                                                      FontSize="9"
+                                                                                      FontSize="11"
                                                                                       FontWeight="SemiBold"
                                                                                       Foreground="{Binding SyntacticRoleColor}"
                                                                                       Margin="0,2,0,2"/>
@@ -1732,88 +1791,88 @@
                                                                            <!-- Display name (standard name) -->
                                                                            <TextBlock Grid.Column="3"
                                                                                       Text="{Binding DisplayName}"
-                                                                                      FontSize="9"
+                                                                                      FontSize="11"
                                                                                       Opacity="0.7"
                                                                                       TextTrimming="CharacterEllipsis"/>
 
                                                                            <!-- Status -->
                                                                            <TextBlock Grid.Column="4"
                                                                                       Text="{Binding StatusLabel}"
-                                                                                      FontSize="9"
+                                                                                      FontSize="11"
                                                                                       FontWeight="SemiBold"
                                                                                       Foreground="{Binding StatusColor}"/>
 
                                                                            <!-- Match Type -->
                                                                            <TextBlock Grid.Column="5"
                                                                                       Text="{Binding MatchType}"
-                                                                                      FontSize="9"
-                                                                                      Foreground="#FF9800"/>
+                                                                                      FontSize="11"
+                                                                                      Foreground="{DynamicResource CalyWarningForegroundBrush}"/>
 
                                                                            <!-- Matched Name -->
                                                                            <TextBlock Grid.Column="6"
                                                                                       Text="{Binding MatchedName}"
-                                                                                      FontSize="9"
-                                                                                      Foreground="#4FC3F7"
+                                                                                      FontSize="11"
+                                                                                      Foreground="{DynamicResource CalyAccentLightBlueBrush}"
                                                                                       TextTrimming="CharacterEllipsis"/>
 
                                                                            <!-- Matched Name Tag -->
                                                                            <TextBlock Grid.Column="7"
                                                                                       Text="{Binding MatchedNameTag}"
-                                                                                      FontSize="9"
-                                                                                      Foreground="#9E9E9E"/>
+                                                                                      FontSize="11"
+                                                                                      Foreground="{DynamicResource CalyMutedForegroundBrush}"/>
 
                                                                            <!-- Homophone indicator -->
                                                                            <TextBlock Grid.Column="8"
                                                                                       Text="✓"
-                                                                                      FontSize="10"
+                                                                                      FontSize="11"
                                                                                       FontWeight="Bold"
-                                                                                      Foreground="#F44336"
+                                                                                      Foreground="{DynamicResource CalyErrorForegroundBrush}"
                                                                                       IsVisible="{Binding MatchByHomophone}"/>
                                                                            <TextBlock Grid.Column="8"
                                                                                       Text="-"
-                                                                                      FontSize="9"
+                                                                                      FontSize="11"
                                                                                       Opacity="0.4"
                                                                                       IsVisible="{Binding !MatchByHomophone}"/>
 
                                                                            <!-- Place Type (Category/Type) -->
                                                                            <TextBlock Grid.Column="9"
                                                                                       Text="{Binding PlaceType}"
-                                                                                      FontSize="9"
-                                                                                      Foreground="#81C784"
+                                                                                      FontSize="11"
+                                                                                      Foreground="{DynamicResource CalyAccentGreenBrush}"
                                                                                       TextTrimming="CharacterEllipsis"/>
 
                                                                            <!-- Place Rank -->
                                                                            <TextBlock Grid.Column="10"
                                                                                       Text="{Binding PlaceRank}"
-                                                                                      FontSize="9"
-                                                                                      Foreground="#FFB74D"
+                                                                                      FontSize="11"
+                                                                                      Foreground="{DynamicResource CalyAccentAmberBrush}"
                                                                                       HorizontalAlignment="Center"/>
 
                                                                            <!-- Result count -->
                                                                            <TextBlock Grid.Column="11"
                                                                                       Text="{Binding ResultCount}"
-                                                                                      FontSize="9"
+                                                                                      FontSize="11"
                                                                                       HorizontalAlignment="Center"/>
 
                                                                            <!-- Latitude -->
                                                                            <TextBlock Grid.Column="12"
                                                                                       Text="{Binding Latitude, StringFormat='{}{0:F4}'}"
-                                                                                      FontSize="9"
+                                                                                      FontSize="11"
                                                                                       IsVisible="{Binding HasCoordinates}"/>
                                                                            <TextBlock Grid.Column="12"
                                                                                       Text="-"
-                                                                                      FontSize="9"
+                                                                                      FontSize="11"
                                                                                       Opacity="0.4"
                                                                                       IsVisible="{Binding !HasCoordinates}"/>
 
                                                                            <!-- Longitude -->
                                                                            <TextBlock Grid.Column="13"
                                                                                       Text="{Binding Longitude, StringFormat='{}{0:F4}'}"
-                                                                                      FontSize="9"
+                                                                                      FontSize="11"
                                                                                       IsVisible="{Binding HasCoordinates}"/>
                                                                            <TextBlock Grid.Column="13"
                                                                                       Text="-"
-                                                                                      FontSize="9"
+                                                                                      FontSize="11"
                                                                                       Opacity="0.4"
                                                                                       IsVisible="{Binding !HasCoordinates}"/>
                                                                        </Grid>
@@ -1826,32 +1885,34 @@
                                                                           <DataTemplate x:DataType="vm:GeocodingResultViewModel">
                                                                               <Border Margin="24,1,0,1"
                                                                                       Padding="4,2"
-                                                                                      Background="#22222222"
-                                                                                      BorderBrush="#44444444"
+                                                                                      Background="{DynamicResource CalySubtleBackgroundBrush}"
+                                                                                      BorderBrush="{DynamicResource CalySubtleBorderBrush}"
                                                                                       BorderThickness="1">
                                                                                   <Grid ColumnDefinitions="20,*,70,70">
                                                                           <!-- Radio button for selection -->
                                                                           <RadioButton Grid.Column="0"
                                                                                       IsChecked="{Binding IsSelected}"
                                                                                       GroupName="{Binding Result.Name}"
+                                                                                      AutomationProperties.Name="选择该候选地址"
+                                                                                      ToolTip.Tip="选择该候选地址"
                                                                                       HorizontalAlignment="Center"
                                                                                       VerticalAlignment="Center"/>
                                                                                       <!-- Display name -->
                                                                                       <TextBlock Grid.Column="1"
                                                                                                  Text="{Binding Result.DisplayName}"
-                                                                                                 FontSize="9"
+                                                                                                 FontSize="11"
                                                                                                  Opacity="0.8"
                                                                                                  TextTrimming="CharacterEllipsis"
                                                                                                  TextWrapping="Wrap"/>
                                                                                       <!-- Latitude -->
                                                                                       <TextBlock Grid.Column="2"
                                                                                                  Text="{Binding Result.Latitude, StringFormat='{}{0:F4}'}"
-                                                                                                 FontSize="9"
+                                                                                                 FontSize="11"
                                                                                                  Opacity="0.6"/>
                                                                                       <!-- Longitude -->
                                                                                       <TextBlock Grid.Column="3"
                                                                                                  Text="{Binding Result.Longitude, StringFormat='{}{0:F4}'}"
-                                                                                                 FontSize="9"
+                                                                                                 FontSize="11"
                                                                                                  Opacity="0.6"/>
                                                                                   </Grid>
                                                                               </Border>
@@ -1871,18 +1932,19 @@
                                               HorizontalAlignment="Stretch"
                                               Padding="12"
                                               Margin="0,8,0,0"
-                                              Background="#FFF2F2"
+                                              Background="{DynamicResource CalyAlertCardBackgroundBrush}"
                                               CornerRadius="4">
                                           <StackPanel Spacing="8"
                                                       HorizontalAlignment="Center">
                                               <TextBlock Text="{Binding GeoStatusText}"
                                                          FontSize="12"
-                                                         Foreground="#FF4444"
+                                                         Foreground="{DynamicResource CalyAlertCardForegroundBrush}"
                                                          TextAlignment="Center"
                                                          TextWrapping="Wrap"/>
-                                              <Button Content="Retry"
+                                              <Button Content="重试"
                                                       Command="{Binding GenerateGeoJsonCommand}"
                                                       HorizontalAlignment="Center"
+                                                  AutomationProperties.Name="重新生成"
                                                       Padding="20,4"/>
                                           </StackPanel>
                                       </Border>
@@ -1901,7 +1963,7 @@
                                                           HorizontalAlignment="Center"
                                                           Opacity="0.7"/>
                                                <TextBlock Text="点击顶部地图图标生成地理数据"
-                                                          FontSize="10"
+                                                          FontSize="11"
                                                           Opacity="0.5"
                                                           TextAlignment="Center"/>
                                            </StackPanel>
@@ -1942,11 +2004,11 @@
                                                          FontWeight="Bold"
                                                          FontSize="12"/>
                                               <TextBlock Text="{Binding EnrichStatusText}"
-                                                         FontSize="10"
+                                                         FontSize="11"
                                                          Opacity="0.5"
                                                          IsVisible="{Binding !IsEnrichProcessing}"/>
                                               <TextBlock Text="{Binding EnrichStatusText}"
-                                                         FontSize="10"
+                                                         FontSize="11"
                                                          Opacity="0.7"
                                                          IsVisible="{Binding IsEnrichProcessing}"/>
                                           </StackPanel>
@@ -1979,20 +2041,20 @@
                                                   <DataTemplate x:DataType="vm:EnrichedBlockViewModel">
                                                       <Border Margin="0,4"
                                                               Padding="8"
-                                                              Background="#33333308"
+                                                              Background="{DynamicResource CalyFaintBackgroundBrush}"
                                                               CornerRadius="4"
                                                               BorderThickness="1"
-                                                              BorderBrush="#44444444">
+                                                              BorderBrush="{DynamicResource CalySubtleBorderBrush}">
                                                           <StackPanel Spacing="6">
                                                               <!-- Block Header -->
                                                               <Grid ColumnDefinitions="Auto,*">
                                                                   <TextBlock Grid.Column="0"
                                                                              Text="{Binding BlockLabel}"
-                                                                             FontSize="10"
+                                                                             FontSize="11"
                                                                              FontWeight="SemiBold"/>
                                                                   <TextBlock Grid.Column="1"
                                                                              Text="{Binding Summary}"
-                                                                             FontSize="9"
+                                                                             FontSize="11"
                                                                              Opacity="0.5"
                                                                              HorizontalAlignment="Right"/>
                                                               </Grid>
@@ -2001,9 +2063,9 @@
                                                               <StackPanel Spacing="3"
                                                                           IsVisible="{Binding LocationCount}">
                                                                   <TextBlock Text="地点"
-                                                                             FontSize="9"
+                                                                             FontSize="11"
                                                                              FontWeight="SemiBold"
-                                                                             Foreground="#81C784"
+                                                                             Foreground="{DynamicResource CalyAccentGreenBrush}"
                                                                              Opacity="0.8"/>
                                                                   <ItemsControl ItemsSource="{Binding LocationEntities}">
                                                                       <ItemsControl.ItemsPanel>
@@ -2021,22 +2083,22 @@
                                                                                       BorderBrush="{Binding CategoryBorder}">
                                                                                   <StackPanel Spacing="2">
                                                                                           <!-- Entity display: uses ArrowDisplayText for "original → enriched" -->
-                                                                                          <TextBlock FontSize="10"
+                                                                                          <TextBlock FontSize="11"
                                                                                                      Foreground="{Binding CategoryTextColor}"
                                                                                                      Text="{Binding ArrowDisplayText}"
                                                                                                      FontWeight="SemiBold"/>
                                                                                           <StackPanel Orientation="Horizontal"
                                                                                                     Spacing="6">
                                                                                               <TextBlock Text="{Binding StatusIcon}"
-                                                                                                         FontSize="8"
+                                                                                                         FontSize="11"
                                                                                                          Foreground="{Binding StatusColor}"/>
                                                                                               <TextBlock Text="{Binding QuickSummary}"
-                                                                                                         FontSize="8"
+                                                                                                         FontSize="11"
                                                                                                          Opacity="0.6"
                                                                                                          IsVisible="{Binding IsEnriched}"/>
                                                                                           </StackPanel>
-                                                                                          <TextBlock FontSize="8"
-                                                                                                     Foreground="#F44336"
+                                                                                          <TextBlock FontSize="11"
+                                                                                                     Foreground="{DynamicResource CalyErrorForegroundBrush}"
                                                                                                      IsVisible="{Binding ValidationStatus, Converter={StaticResource EqualsConverter}, ConverterParameter=invalid}"
                                                                                                      TextWrapping="Wrap"
                                                                                                      Text="{Binding ValidationReason, StringFormat='✗ {0}'}"/>
@@ -2051,9 +2113,9 @@
                                                               <StackPanel Spacing="3"
                                                                           IsVisible="{Binding PersonCount}">
                                                                   <TextBlock Text="人物"
-                                                                             FontSize="9"
+                                                                             FontSize="11"
                                                                              FontWeight="SemiBold"
-                                                                             Foreground="#64B5F6"
+                                                                             Foreground="{DynamicResource CalyAccentBlueBrush}"
                                                                              Opacity="0.8"/>
                                                                   <ItemsControl ItemsSource="{Binding PersonEntities}">
                                                                       <ItemsControl.ItemsPanel>
@@ -2070,22 +2132,22 @@
                                                                                       BorderThickness="1"
                                                                                       BorderBrush="{Binding CategoryBorder}">
                                                                                   <StackPanel Spacing="2">
-                                                                                          <TextBlock FontSize="10"
+                                                                                          <TextBlock FontSize="11"
                                                                                                      Foreground="{Binding CategoryTextColor}"
                                                                                                      Text="{Binding ArrowDisplayText}"
                                                                                                      FontWeight="SemiBold"/>
                                                                                           <StackPanel Orientation="Horizontal"
                                                                                                     Spacing="6">
                                                                                               <TextBlock Text="{Binding StatusIcon}"
-                                                                                                         FontSize="8"
+                                                                                                         FontSize="11"
                                                                                                          Foreground="{Binding StatusColor}"/>
                                                                                               <TextBlock Text="{Binding QuickSummary}"
-                                                                                                         FontSize="8"
+                                                                                                         FontSize="11"
                                                                                                          Opacity="0.6"
                                                                                                          IsVisible="{Binding IsEnriched}"/>
                                                                                           </StackPanel>
-                                                                                          <TextBlock FontSize="8"
-                                                                                                     Foreground="#F44336"
+                                                                                          <TextBlock FontSize="11"
+                                                                                                     Foreground="{DynamicResource CalyErrorForegroundBrush}"
                                                                                                      IsVisible="{Binding ValidationStatus, Converter={StaticResource EqualsConverter}, ConverterParameter=invalid}"
                                                                                                      TextWrapping="Wrap"
                                                                                                      Text="{Binding ValidationReason, StringFormat='✗ {0}'}"/>
@@ -2100,9 +2162,9 @@
                                                               <StackPanel Spacing="3"
                                                                           IsVisible="{Binding OrganizationCount}">
                                                                   <TextBlock Text="组织"
-                                                                             FontSize="9"
+                                                                             FontSize="11"
                                                                              FontWeight="SemiBold"
-                                                                             Foreground="#F48FB1"
+                                                                             Foreground="{DynamicResource CalyAccentPinkBrush}"
                                                                              Opacity="0.8"/>
                                                                   <ItemsControl ItemsSource="{Binding OrganizationEntities}">
                                                                       <ItemsControl.ItemsPanel>
@@ -2119,7 +2181,7 @@
                                                                                       BorderThickness="1"
                                                                                       BorderBrush="{Binding CategoryBorder}">
                                                                                   <StackPanel Spacing="2">
-                                                                                          <TextBlock FontSize="10"
+                                                                                          <TextBlock FontSize="11"
                                                                                                      Foreground="{Binding CategoryTextColor}"
                                                                                                      Text="{Binding ArrowDisplayText}"
                                                                                                      FontWeight="SemiBold"
@@ -2128,15 +2190,15 @@
                                                                                           <StackPanel Orientation="Horizontal"
                                                                                                     Spacing="6">
                                                                                               <TextBlock Text="{Binding StatusIcon}"
-                                                                                                         FontSize="8"
+                                                                                                         FontSize="11"
                                                                                                          Foreground="{Binding StatusColor}"/>
                                                                                               <TextBlock Text="{Binding QuickSummary}"
-                                                                                                         FontSize="8"
+                                                                                                         FontSize="11"
                                                                                                          Opacity="0.6"
                                                                                                          IsVisible="{Binding IsEnriched}"/>
                                                                                           </StackPanel>
-                                                                                          <TextBlock FontSize="8"
-                                                                                                     Foreground="#F44336"
+                                                                                          <TextBlock FontSize="11"
+                                                                                                     Foreground="{DynamicResource CalyErrorForegroundBrush}"
                                                                                                      IsVisible="{Binding ValidationStatus, Converter={StaticResource EqualsConverter}, ConverterParameter=invalid}"
                                                                                                      TextWrapping="Wrap"
                                                                                                      Text="{Binding ValidationReason, StringFormat='✗ {0}'}"/>
@@ -2151,9 +2213,9 @@
                                                               <StackPanel Spacing="3"
                                                                           IsVisible="{Binding DateCount}">
                                                                   <TextBlock Text="时间"
-                                                                             FontSize="9"
+                                                                             FontSize="11"
                                                                              FontWeight="SemiBold"
-                                                                             Foreground="#FFB74D"
+                                                                             Foreground="{DynamicResource CalyAccentAmberBrush}"
                                                                              Opacity="0.8"/>
                                                                   <ItemsControl ItemsSource="{Binding DateEntities}">
                                                                       <ItemsControl.ItemsPanel>
@@ -2170,22 +2232,22 @@
                                                                                       BorderThickness="1"
                                                                                       BorderBrush="{Binding CategoryBorder}">
                                                                                   <StackPanel Spacing="2">
-                                                                                          <TextBlock FontSize="10"
+                                                                                          <TextBlock FontSize="11"
                                                                                                      Foreground="{Binding CategoryTextColor}"
                                                                                                      Text="{Binding ArrowDisplayText}"
                                                                                                      FontWeight="SemiBold"/>
                                                                                           <StackPanel Orientation="Horizontal"
                                                                                                     Spacing="6">
                                                                                               <TextBlock Text="{Binding StatusIcon}"
-                                                                                                         FontSize="8"
+                                                                                                         FontSize="11"
                                                                                                          Foreground="{Binding StatusColor}"/>
                                                                                               <TextBlock Text="{Binding QuickSummary}"
-                                                                                                         FontSize="8"
+                                                                                                         FontSize="11"
                                                                                                          Opacity="0.6"
                                                                                                          IsVisible="{Binding IsEnriched}"/>
                                                                                           </StackPanel>
-                                                                                          <TextBlock FontSize="8"
-                                                                                                     Foreground="#F44336"
+                                                                                          <TextBlock FontSize="11"
+                                                                                                     Foreground="{DynamicResource CalyErrorForegroundBrush}"
                                                                                                      IsVisible="{Binding ValidationStatus, Converter={StaticResource EqualsConverter}, ConverterParameter=invalid}"
                                                                                                      TextWrapping="Wrap"
                                                                                                      Text="{Binding ValidationReason, StringFormat='✗ {0}'}"/>
@@ -2200,9 +2262,9 @@
                                                               <StackPanel Spacing="3"
                                                                           IsVisible="{Binding NumberCount}">
                                                                   <TextBlock Text="数值"
-                                                                             FontSize="9"
+                                                                             FontSize="11"
                                                                              FontWeight="SemiBold"
-                                                                             Foreground="#CE93D8"
+                                                                             Foreground="{DynamicResource CalyTagVioletForegroundBrush}"
                                                                              Opacity="0.8"/>
                                                                   <ItemsControl ItemsSource="{Binding NumberEntities}">
                                                                       <ItemsControl.ItemsPanel>
@@ -2219,22 +2281,22 @@
                                                                                       BorderThickness="1"
                                                                                       BorderBrush="{Binding CategoryBorder}">
                                                                                   <StackPanel Spacing="2">
-                                                                                          <TextBlock FontSize="10"
+                                                                                          <TextBlock FontSize="11"
                                                                                                      Foreground="{Binding CategoryTextColor}"
                                                                                                      Text="{Binding ArrowDisplayText}"
                                                                                                      FontWeight="SemiBold"/>
                                                                                           <StackPanel Orientation="Horizontal"
                                                                                                     Spacing="6">
                                                                                               <TextBlock Text="{Binding StatusIcon}"
-                                                                                                         FontSize="8"
+                                                                                                         FontSize="11"
                                                                                                          Foreground="{Binding StatusColor}"/>
                                                                                               <TextBlock Text="{Binding QuickSummary}"
-                                                                                                         FontSize="8"
+                                                                                                         FontSize="11"
                                                                                                          Opacity="0.6"
                                                                                                          IsVisible="{Binding IsEnriched}"/>
                                                                                           </StackPanel>
-                                                                                          <TextBlock FontSize="8"
-                                                                                                     Foreground="#F44336"
+                                                                                          <TextBlock FontSize="11"
+                                                                                                     Foreground="{DynamicResource CalyErrorForegroundBrush}"
                                                                                                      IsVisible="{Binding ValidationStatus, Converter={StaticResource EqualsConverter}, ConverterParameter=invalid}"
                                                                                                      TextWrapping="Wrap"
                                                                                                      Text="{Binding ValidationReason, StringFormat='✗ {0}'}"/>
@@ -2249,9 +2311,9 @@
                                                               <StackPanel Spacing="3"
                                                                           IsVisible="{Binding FacilityCount}">
                                                                   <TextBlock Text="设施"
-                                                                             FontSize="9"
+                                                                             FontSize="11"
                                                                              FontWeight="SemiBold"
-                                                                             Foreground="#90A4AE"
+                                                                             Foreground="{DynamicResource CalyTagSteelForegroundBrush}"
                                                                              Opacity="0.8"/>
                                                                   <ItemsControl ItemsSource="{Binding FacilityEntities}">
                                                                       <ItemsControl.ItemsPanel>
@@ -2268,22 +2330,22 @@
                                                                                       BorderThickness="1"
                                                                                       BorderBrush="{Binding CategoryBorder}">
                                                                                   <StackPanel Spacing="2">
-                                                                                          <TextBlock FontSize="10"
+                                                                                          <TextBlock FontSize="11"
                                                                                                      Foreground="{Binding CategoryTextColor}"
                                                                                                      Text="{Binding ArrowDisplayText}"
                                                                                                      FontWeight="SemiBold"/>
                                                                                           <StackPanel Orientation="Horizontal"
                                                                                                     Spacing="6">
                                                                                               <TextBlock Text="{Binding StatusIcon}"
-                                                                                                         FontSize="8"
+                                                                                                         FontSize="11"
                                                                                                          Foreground="{Binding StatusColor}"/>
                                                                                               <TextBlock Text="{Binding QuickSummary}"
-                                                                                                         FontSize="8"
+                                                                                                         FontSize="11"
                                                                                                          Opacity="0.6"
                                                                                                          IsVisible="{Binding IsEnriched}"/>
                                                                                           </StackPanel>
-                                                                                          <TextBlock FontSize="8"
-                                                                                                     Foreground="#F44336"
+                                                                                          <TextBlock FontSize="11"
+                                                                                                     Foreground="{DynamicResource CalyErrorForegroundBrush}"
                                                                                                      IsVisible="{Binding ValidationStatus, Converter={StaticResource EqualsConverter}, ConverterParameter=invalid}"
                                                                                                      TextWrapping="Wrap"
                                                                                                      Text="{Binding ValidationReason, StringFormat='✗ {0}'}"/>
@@ -2298,9 +2360,9 @@
                                                               <StackPanel Spacing="3"
                                                                           IsVisible="{Binding OtherCount}">
                                                                   <TextBlock Text="其他"
-                                                                             FontSize="9"
+                                                                             FontSize="11"
                                                                              FontWeight="SemiBold"
-                                                                             Foreground="#78909C"
+                                                                             Foreground="{DynamicResource CalyAccentSlateBrush}"
                                                                              Opacity="0.7"/>
                                                                   <ItemsControl ItemsSource="{Binding OtherEntities}">
                                                                       <ItemsControl.ItemsPanel>
@@ -2313,27 +2375,27 @@
                                                                               <Border Padding="6,4"
                                                                                       Margin="0,0,2,2"
                                                                                       CornerRadius="3"
-                                                                                      Background="#546E7A18"
+                                                                                      Background="{DynamicResource CalyTagSteelBackgroundBrush}"
                                                                                       BorderThickness="1"
-                                                                                      BorderBrush="#546E7A44"
+                                                                                      BorderBrush="{DynamicResource CalyTagSteelBorderBrush}"
                                                                                       Opacity="0.7">
                                                                                   <StackPanel Spacing="2">
-                                                                                          <TextBlock FontSize="10"
-                                                                                                     Foreground="#90A4AE"
+                                                                                          <TextBlock FontSize="11"
+                                                                                                     Foreground="{DynamicResource CalyTagSteelForegroundBrush}"
                                                                                                      Text="{Binding ArrowDisplayText}"
                                                                                                      FontWeight="SemiBold"/>
                                                                                           <StackPanel Orientation="Horizontal"
                                                                                                     Spacing="6">
                                                                                               <TextBlock Text="{Binding StatusIcon}"
-                                                                                                         FontSize="8"
+                                                                                                         FontSize="11"
                                                                                                          Foreground="{Binding StatusColor}"/>
                                                                                               <TextBlock Text="{Binding QuickSummary}"
-                                                                                                         FontSize="8"
+                                                                                                         FontSize="11"
                                                                                                          Opacity="0.6"
                                                                                                          IsVisible="{Binding IsEnriched}"/>
                                                                                           </StackPanel>
-                                                                                          <TextBlock FontSize="8"
-                                                                                                     Foreground="#F44336"
+                                                                                          <TextBlock FontSize="11"
+                                                                                                     Foreground="{DynamicResource CalyErrorForegroundBrush}"
                                                                                                      IsVisible="{Binding ValidationStatus, Converter={StaticResource EqualsConverter}, ConverterParameter=invalid}"
                                                                                                      TextWrapping="Wrap"
                                                                                                      Text="{Binding ValidationReason, StringFormat='✗ {0}'}"/>
@@ -2375,7 +2437,7 @@
                                                          FontWeight="Bold"
                                                          FontSize="12"/>
                                               <TextBlock Text="{Binding TermStatusText}"
-                                                         FontSize="10"
+                                                         FontSize="11"
                                                          Opacity="0.5"/>
                                           </StackPanel>
                                       </Grid>
@@ -2423,10 +2485,10 @@
                                                                   <!-- Category and Score -->
                                                                   <StackPanel Orientation="Horizontal"
                                                                               Spacing="4">
-                                                                      <TextBlock FontSize="9"
+                                                                      <TextBlock FontSize="11"
                                                                                  Foreground="{Binding CategoryColorHex}"
                                                                                  Text="{Binding Category}"/>
-                                                                      <TextBlock FontSize="9"
+                                                                      <TextBlock FontSize="11"
                                                                                  Opacity="0.5"
                                                                                  Text="{Binding ScoreDisplay, StringFormat='s={0}'}"/>
                                                                   </StackPanel>
@@ -2434,25 +2496,25 @@
                                                                   <StackPanel Orientation="Horizontal"
                                                                               Spacing="4"
                                                                               IsVisible="{Binding HasRelationInfo}">
-                                                                      <TextBlock FontSize="8"
-                                                                                 Foreground="#2196F3"
+                                                                      <TextBlock FontSize="11"
+                                                                                 Foreground="{DynamicResource CalyInfoForegroundBrush}"
                                                                                  FontWeight="SemiBold"
                                                                                  Text="{Binding RelationTypeDisplay}"/>
-                                                                      <TextBlock FontSize="8"
-                                                                                 Foreground="#757575"
+                                                                      <TextBlock FontSize="11"
+                                                                                 Foreground="{DynamicResource CalyMutedForegroundBrush}"
                                                                                  Text="{Binding RelationConfidenceDisplay}"/>
                                                                   </StackPanel>
                                                                   <!-- Definition -->
-                                                                  <TextBlock FontSize="8"
+                                                                  <TextBlock FontSize="11"
                                                                              Opacity="0.4"
                                                                              FontStyle="Italic"
                                                                              Text="{Binding Definition}"
                                                                               TextWrapping="Wrap"
                                                                               MaxWidth="240"/>
                                                                   <!-- P2: Relation evidence (only for non-root nodes with evidence) -->
-                                                                  <TextBlock FontSize="7"
+                                                                  <TextBlock FontSize="11"
                                                                              Opacity="0.3"
-                                                                             Foreground="#757575"
+                                                                             Foreground="{DynamicResource CalyMutedForegroundBrush}"
                                                                              Text="{Binding RelationEvidenceDisplay}"
                                                                              TextWrapping="Wrap"
                                                                              MaxWidth="240"
@@ -2478,10 +2540,9 @@
                              <Panel Grid.Column="0"
                                     Grid.ColumnSpan="7"
                                     IsVisible="{Binding ShowFormulaPanel}">
-                                 <Rectangle Fill="Gray"
-                                            Opacity="0.3"/>
-                                 <Border Background="White"
-                                         BorderBrush="Gray"
+                                 <Rectangle Fill="{DynamicResource CalyScrimBrush}"/>
+                                 <Border Background="{DynamicResource CalyCardBackgroundBrush}"
+                                         BorderBrush="{DynamicResource CalyCardBorderBrush}"
                                          BorderThickness="1"
                                          CornerRadius="4"
                                          Padding="16"
@@ -2498,7 +2559,7 @@
                                                  <TextBlock Text="公式索引"
                                                             FontWeight="Bold"
                                                             FontSize="16"
-                                                            Foreground="#333333"
+                                                            Foreground="{DynamicResource CalyStrongForegroundBrush}"
                                                             VerticalAlignment="Center"/>
                                                  <TextBlock Text="{Binding FormulaStatusText}"
                                                             FontSize="12"
@@ -2508,15 +2569,24 @@
                                              <StackPanel Orientation="Horizontal"
                                                          HorizontalAlignment="Right"
                                                          Spacing="8">
-                                                 <ToggleButton Content="📄 当前页"
-                                                               FontSize="11"
+                                                 <ToggleButton FontSize="11"
                                                                Padding="8,4"
                                                                IsChecked="{Binding FilterByVisiblePages}"
                                                                ToolTip.Tip="仅显示当前可见页面上的公式"
-                                                               CornerRadius="4"/>
-                                                 <Button Content="✕"
+                                                               AutomationProperties.Name="仅显示当前可见页面上的公式"
+                                                               CornerRadius="4">
+                                                             <StackPanel Orientation="Horizontal" Spacing="4">
+                                                                 <Path Classes="toolIcon" Width="12" Height="12" Data="{StaticResource glyph_blocks_regular}"/>
+                                                                 <TextBlock Text="当前页" VerticalAlignment="Center"/>
+                                                             </StackPanel>
+                                                         </ToggleButton>
+                                                 <Button 
                                                          Command="{Binding CloseFormulaPanelCommand}"
-                                                         Padding="8,4"/>
+                                                     AutomationProperties.Name="关闭公式面板"
+                                                         ToolTip.Tip="关闭公式面板"
+                                                         Padding="8,4">
+                                                     <Path Classes="toolIcon" Width="14" Height="14" Data="{StaticResource glyph_close_regular}"/>
+                                                 </Button>
                                              </StackPanel>
                                          </Grid>
                                          <!-- Formula list (no expander, direct display) -->
@@ -2527,38 +2597,38 @@
                                                      <DataTemplate x:DataType="vm:FormulaBlockViewModel">
                                                          <Border Padding="10"
                                                                  Margin="0,0,0,8"
-                                                                 BorderBrush="#E0E0E0"
+                                                                 BorderBrush="{DynamicResource CalyChipBorderBrush}"
                                                                  BorderThickness="1"
                                                                  CornerRadius="4"
-                                                                 Background="#FAFAFA">
+                                                                 Background="{DynamicResource CalyChipBackgroundBrush}">
                                                              <StackPanel Spacing="6">
                                                                  <StackPanel Orientation="Horizontal"
                                                                              Spacing="6">
                                                                      <Border Padding="4,2"
                                                                              CornerRadius="2"
-                                                                             Background="#9C27B0">
+                                                                             Background="{DynamicResource CalyPurpleSolidBrush}">
                                                                          <TextBlock Text="{Binding DisplayLabel}"
-                                                                                    FontSize="9"
+                                                                                    FontSize="11"
                                                                                     FontWeight="SemiBold"
-                                                                                    Foreground="White"/>
+                                                                                    Foreground="{DynamicResource CalyOnSolidBrush}"/>
                                                                      </Border>
                                                                      <TextBlock Text="{Binding FormulaCode}"
-                                                                                FontSize="10"
+                                                                                FontSize="11"
                                                                                 Opacity="0.6"/>
                                                                      <TextBlock Text="{Binding Page, StringFormat='(P{0})'}"
-                                                                                FontSize="9"
+                                                                                FontSize="11"
                                                                                 Opacity="0.4"/>
                                                                  </StackPanel>
                                                                   <TextBlock Text="{Binding RenderedContent}"
                                                                   FontSize="14"
-                                                                  Foreground="#1A1A1A"
+                                                                  Foreground="{DynamicResource CalyOnAccentForegroundBrush}"
                                                                   FontWeight="Medium"
                                                                   TextWrapping="Wrap"
                                                                   Margin="0,2,0,0"/>
                                                                  <TextBlock Text="{Binding RawContent}"
-                                                                            FontFamily="Consolas, monospace"
+                                                                            FontFamily="{DynamicResource CalyMonoFontFamily}"
                                                                             FontSize="11"
-                                                                            Foreground="#888888"
+                                                                            Foreground="{DynamicResource CalyMutedForegroundBrush}"
                                                                             TextWrapping="Wrap"/>
                                                              </StackPanel>
                                                          </Border>
@@ -2574,10 +2644,9 @@
                              <Panel Grid.Column="0"
                                     Grid.ColumnSpan="7"
                                     IsVisible="{Binding ShowTocPanel}">
-                                 <Rectangle Fill="Gray"
-                                            Opacity="0.3"/>
-                                 <Border Background="White"
-                                         BorderBrush="Gray"
+                                 <Rectangle Fill="{DynamicResource CalyScrimBrush}"/>
+                                 <Border Background="{DynamicResource CalyCardBackgroundBrush}"
+                                         BorderBrush="{DynamicResource CalyCardBorderBrush}"
                                          BorderThickness="1"
                                          CornerRadius="4"
                                          Padding="16"
@@ -2593,20 +2662,24 @@
                                               <TextBlock Text="目录"
                                                          FontWeight="Bold"
                                                          FontSize="16"
-                                                         Foreground="#333333"
+                                                         Foreground="{DynamicResource CalyStrongForegroundBrush}"
                                                          VerticalAlignment="Center"/>
-                                             <Button Content="✕"
+                                             <Button 
                                                      Command="{Binding CloseTocPanelCommand}"
                                                      Margin="12,0,0,0"
-                                                     Padding="8,4"/>
+                                                 AutomationProperties.Name="关闭目录面板"
+                                                         ToolTip.Tip="关闭目录面板"
+                                                     Padding="8,4">
+                                                 <Path Classes="toolIcon" Width="14" Height="14" Data="{StaticResource glyph_close_regular}"/>
+                                             </Button>
                                          </StackPanel>
                                          <ScrollViewer VerticalScrollBarVisibility="Auto"
                                                        MaxHeight="500">
                                              <TextBlock Text="{Binding TocMarkdownText}"
                                                         TextWrapping="Wrap"
-                                                        FontFamily="Consolas, Menlo, monospace"
+                                                        FontFamily="{DynamicResource CalyMonoFontFamily}"
                                                         FontSize="12"
-                                                        Foreground="#333333"/>
+                                                        Foreground="{DynamicResource CalyStrongForegroundBrush}"/>
                                          </ScrollViewer>
                                      </DockPanel>
                                  </Border>
@@ -2616,10 +2689,9 @@
                              <Panel Grid.Column="0"
                                     Grid.ColumnSpan="6"
                                     IsVisible="{Binding ShowReferencePanel}">
-                                 <Rectangle Fill="Gray"
-                                            Opacity="0.3"/>
-                                 <Border Background="White"
-                                         BorderBrush="Gray"
+                                 <Rectangle Fill="{DynamicResource CalyScrimBrush}"/>
+                                 <Border Background="{DynamicResource CalyCardBackgroundBrush}"
+                                         BorderBrush="{DynamicResource CalyCardBorderBrush}"
                                          BorderThickness="1"
                                          CornerRadius="4"
                                          Padding="16"
@@ -2635,20 +2707,24 @@
                                               <TextBlock Text="参考文献"
                                                          FontWeight="Bold"
                                                          FontSize="16"
-                                                         Foreground="#333333"
+                                                         Foreground="{DynamicResource CalyStrongForegroundBrush}"
                                                          VerticalAlignment="Center"/>
-                                             <Button Content="✕"
+                                             <Button 
                                                      Command="{Binding CloseReferencePanelCommand}"
                                                      Margin="12,0,0,0"
-                                                     Padding="8,4"/>
+                                                 AutomationProperties.Name="关闭参考文献面板"
+                                                         ToolTip.Tip="关闭参考文献面板"
+                                                     Padding="8,4">
+                                                 <Path Classes="toolIcon" Width="14" Height="14" Data="{StaticResource glyph_close_regular}"/>
+                                             </Button>
                                          </StackPanel>
                                          <ScrollViewer VerticalScrollBarVisibility="Auto"
                                                        MaxHeight="500">
                                              <TextBlock Text="{Binding ReferenceMarkdownText}"
                                                         TextWrapping="Wrap"
-                                                        FontFamily="Consolas, Menlo, monospace"
+                                                        FontFamily="{DynamicResource CalyMonoFontFamily}"
                                                         FontSize="12"
-                                                        Foreground="#333333"/>
+                                                        Foreground="{DynamicResource CalyStrongForegroundBrush}"/>
                                          </ScrollViewer>
                                      </DockPanel>
                                  </Border>
@@ -2721,9 +2797,9 @@
                                                                         VerticalAlignment="Top"
                                                                         Padding="3,0"
                                                                         Margin="3"
-                                                                        FontSize="9"
-                                                                        Background="#80000000"
-                                                                        Foreground="White"
+                                                                        FontSize="11"
+                                                                        Background="{DynamicResource CalyScrimBrush}"
+                                                                        Foreground="{DynamicResource CalyOnSolidBrush}"
                                                                         BorderThickness="0"
                                                                         CornerRadius="7"/>
                                                                  <Label Content="{Binding PageNumber}"

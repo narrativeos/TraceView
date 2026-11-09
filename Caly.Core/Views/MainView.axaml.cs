@@ -24,6 +24,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Caly.Core.Services;
+using Caly.Core.ViewModels;
 using CommunityToolkit.Mvvm.Messaging;
 
 namespace Caly.Core.Views;
@@ -45,6 +46,24 @@ public partial class MainView : UserControl
         {
             w.KeyBindings.AddRange(KeyBindings);
         }
+    }
+
+    /// <summary>
+    /// Esc cancels the current transient state: it closes the settings pane first, and
+    /// otherwise lets the focused control handle it (search box, dialogs, ...).
+    /// </summary>
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape
+            && DataContext is MainViewModel vm
+            && vm.IsSettingsPaneOpen)
+        {
+            vm.IsSettingsPaneOpen = false;
+            e.Handled = true;
+            return;
+        }
+
+        base.OnKeyDown(e);
     }
 
     private static async void Drop(object? sender, DragEventArgs e)

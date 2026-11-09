@@ -187,7 +187,7 @@ public sealed partial class PrintDialogViewModel : ViewModelBase, IDisposable
         catch (OperationCanceledException) { }
         catch (Exception ex)
         {
-            StatusMessage = $"Could not load printer capabilities: {ex.Message}";
+            StatusMessage = $"无法读取打印机功能：{ex.Message}";
         }
     }
 
@@ -196,13 +196,13 @@ public sealed partial class PrintDialogViewModel : ViewModelBase, IDisposable
         if (IsOrientationLandscape && !caps.SupportsLandscape)
         {
             IsOrientationAuto = true;
-            StatusMessage = "Landscape not supported by this printer; using Auto.";
+            StatusMessage = "当前打印机不支持横向，已改用自动。";
             HasInfo = true;
         }
         if (!caps.SupportedNumberUp.Contains(PagesPerSheet))
         {
             PagesPerSheet = 1;
-            StatusMessage = "Selected pages-per-sheet not supported by this printer; using 1.";
+            StatusMessage = "当前打印机不支持所选的每页纸数，已改用每页 1 页。";
             HasInfo = true;
         }
     }
@@ -226,7 +226,7 @@ public sealed partial class PrintDialogViewModel : ViewModelBase, IDisposable
 
     [ObservableProperty] private int _printTotalPages;
 
-    public string CurrentPageLabel => $"Current page ({CurrentPageNumber})";
+    public string CurrentPageLabel => $"当前页（{CurrentPageNumber}）";
 
     public PrintDialogViewModel(
         IPrintService printService,
@@ -286,7 +286,7 @@ public sealed partial class PrintDialogViewModel : ViewModelBase, IDisposable
             }
             else
             {
-                StatusMessage = "No printers found.";
+                StatusMessage = "未找到打印机。";
                 HasError = true;
             }
         }
@@ -296,7 +296,7 @@ public sealed partial class PrintDialogViewModel : ViewModelBase, IDisposable
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Could not load printers: {ex.Message}";
+            StatusMessage = $"无法读取打印机列表：{ex.Message}";
             HasError = true;
         }
         finally
@@ -317,7 +317,7 @@ public sealed partial class PrintDialogViewModel : ViewModelBase, IDisposable
         IsPrinting = true;
         PrintPagesProcessed = 0;
         PrintTotalPages = pageNumbers.Count;
-        StatusMessage = "Sending to printer…";
+        StatusMessage = "正在发送到打印机…";
         HasError = false;
 
         var progress = new Progress<int>(pagesProcessed =>
@@ -325,7 +325,7 @@ public sealed partial class PrintDialogViewModel : ViewModelBase, IDisposable
             if (pagesProcessed < PrintTotalPages)
             {
                 PrintPagesProcessed = pagesProcessed;
-                StatusMessage = $"Printing page {pagesProcessed} of {PrintTotalPages}…";
+                StatusMessage = $"正在打印第 {pagesProcessed} / {PrintTotalPages} 页…";
             }
             else
             {
@@ -347,16 +347,16 @@ public sealed partial class PrintDialogViewModel : ViewModelBase, IDisposable
                 },
                 token);
 
-            StatusMessage = "Print job sent.";
+            StatusMessage = "打印任务已发送。";
             PrintCompleted?.Invoke(this, EventArgs.Empty);
         }
         catch (OperationCanceledException)
         {
-            StatusMessage = "Print cancelled.";
+            StatusMessage = "打印已取消。";
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Print failed: {ex.Message}";
+            StatusMessage = $"打印失败：{ex.Message}";
             HasError = true;
         }
         finally

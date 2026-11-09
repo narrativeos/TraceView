@@ -56,7 +56,7 @@ internal sealed class FilesService : IFilesService
         {
             IReadOnlyList<IStorageFile> files = await _storageProvider.OpenFilePickerAsync(new FilePickerOpenOptions()
             {
-                Title = "Open",
+                Title = "打开",
                 AllowMultiple = false,
                 FileTypeFilter = _pdfFileFilter
             });
@@ -78,7 +78,7 @@ internal sealed class FilesService : IFilesService
             
             var file = await _storageProvider.SaveFilePickerAsync(new FilePickerSaveOptions()
             {
-                Title = "Save File",
+                Title = "保存文件",
                 SuggestedFileName = fileName,
                 DefaultExtension = Path.GetExtension(fileName)
             }).ConfigureAwait(false);
