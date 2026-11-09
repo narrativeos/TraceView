@@ -2,21 +2,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": ".NET Core Attach",
-            "type": "coreclr",
-            "request": "attach",
-            "processId": "${command:pickProcess}",
-            "pipeTransport": {
-                "pipeCwd": "${workspaceFolder}",
-                "pipeProgram": "dotnet",
-                "pipeArgs": [
-                    "run"
-                ],
-                "debuggerPath": "/usr/local/share/dotnet/sdk/10.0.301/OpenDebugAD7/bin/OpenDebugAD7",
-                "quoteArgs": true
-            }
-        },
-        {
+            // Keep this configuration first: F5 always starts the first entry of the list.
             "name": "Launch TraceView Desktop",
             "type": "coreclr",
             "request": "launch",
@@ -27,6 +13,15 @@
             "console": "internalConsole",
             "stopAtEntry": false,
             "justMyCode": true
+        },
+        {
+            // Local attach only: pipeTransport is for SSH/remote attach and made VS Code
+            // spawn a pipe program that does not exist here, which failed with rc:1.
+            // debuggerPath is intentionally omitted so the C# extension uses its own vsdbg.
+            "name": ".NET Core Attach",
+            "type": "coreclr",
+            "request": "attach",
+            "processId": "${command:pickProcess}"
         }
     ]
 }

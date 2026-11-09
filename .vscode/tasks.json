@@ -5,6 +5,15 @@
 			"label": "build-debug",
 			"type": "shell",
 			"command": "dotnet",
+			"options": {
+				"env": {
+					// VS Code's resolved PATH can miss the .NET SDK directory (dotnet is
+					// only added to PATH by login shells here), which makes this
+					// preLaunchTask fail with "dotnet: command not found" and aborts F5
+					// before the app is ever started.
+					"PATH": "/usr/local/share/dotnet:${env:PATH}"
+				}
+			},
 			"args": [
 				"build",
 				"${workspaceFolder}/Caly.Desktop/Caly.Desktop.csproj",
