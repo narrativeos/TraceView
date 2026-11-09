@@ -110,6 +110,13 @@
                                                   Margin="0,2"
                                                   Text="{Binding Settings.PopoBaseUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
                                      </Grid>
+
+                                     <!-- EPUB Output -->
+                                     <CheckBox Content="输出 EPUB (output_epub)"
+                                               Margin="0,4,0,0"
+                                               IsChecked="{Binding Settings.PopoOutputEpub, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                         <ToolTip.Tip>让 Popo 服务端在结果中额外渲染 {doc_id}.epub。该参数在提交任务时确定，关闭后只能重新处理才能拿到 EPUB。</ToolTip.Tip>
+                                     </CheckBox>
                                  </StackPanel>
                              </Expander>
 

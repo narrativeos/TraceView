@@ -23,6 +23,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Mime;
@@ -46,7 +47,7 @@ public sealed class PopoService : IDisposable
     /// <summary>
     /// Default Popo API base URL.
     /// </summary>
-    public const string DefaultBaseUrl = "http://localhost:8440";
+    public const string DefaultBaseUrl = "http://192.168.1.100:8412";
 
     /// <summary>
     /// Polling interval for async task status checks.
@@ -77,11 +78,13 @@ public sealed class PopoService : IDisposable
     /// <summary>
     /// Creates a new PopoService instance.
     /// </summary>
-    /// <param name="baseUrl">Popo API base URL (default: http://localhost:8440).</param>
+    /// <param name="baseUrl">Popo API base URL (default: http://192.168.1.100:8412).
+    /// A trailing slash is accepted and normalized away, since endpoints are
+    /// appended to it directly.</param>
     /// <param name="cacheDirectory">Local directory for caching results.</param>
     public PopoService(string? baseUrl = null, string? cacheDirectory = null)
     {
-        _baseUrl = baseUrl ?? DefaultBaseUrl;
+        _baseUrl = (baseUrl ?? DefaultBaseUrl).TrimEnd('/');
         _cacheDirectory = cacheDirectory ?? GetDefaultCacheDirectory();
 
         _httpClient = new HttpClient
@@ -129,8 +132,12 @@ public sealed class PopoService : IDisposable
     /// <param name="docId">Optional document ID. Sent explicitly because MinerU 4.0 ZIPs
     /// are flat (middle_json.json + images/ at the top level), so the Popo server
     /// cannot infer the doc id from a single top-level directory anymore.</param>
+    /// <param name="outputEpub">Also render {doc_id}.epub into the result artifact
+    /// (Popo API "output_epub"). Fixed at submission time: the server answers
+    /// 409 Conflict on GET /tasks/{id}/result?format=epub when this was off.</param>
     /// <param name="ct">Cancellation token.</param>
-    public async Task<string> SubmitTaskAsync(string zipPath, string model, string? docId = null, CancellationToken ct = default)
+    public async Task<string> SubmitTaskAsync(string zipPath, string model, string? docId = null,
+        bool outputEpub = false, CancellationToken ct = default)
     {
         if (!File.Exists(zipPath))
             throw new PopoServiceException($"ZIP file not found: {zipPath}");
@@ -163,6 +170,13 @@ public sealed class PopoService : IDisposable
                              $"{docId}\r\n";
             bodyStream.Write(utf8.GetBytes(docIdBlock));
         }
+
+        // output_epub is decided here and cannot be changed afterwards, so it is always
+        // sent explicitly rather than relying on the server-side default (which is off).
+        var epubBlock = $"--{boundary}\r\n" +
+                        $"Content-Disposition: form-data; name=\"output_epub\"\r\n\r\n" +
+                        $"{(outputEpub ? "true" : "false")}\r\n";
+        bodyStream.Write(utf8.GetBytes(epubBlock));
 
         bodyStream.Write(utf8.GetBytes($"--{boundary}--\r\n"));
 
@@ -594,6 +608,30 @@ public sealed class PopoService : IDisposable
         return minerUDoc;
     }
 
+    #region Epub
+
+    /// <summary>
+    /// Downloads the EPUB rendered for a task via GET /tasks/{task_id}/result?format=epub.
+    /// Returns null when the task was submitted with output_epub off — the server answers
+    /// 409 Conflict in that case, and re-running the pipeline is the only way to get it.
+    /// </summary>
+    public async Task<byte[]?> DownloadEpubAsync(string taskId, CancellationToken ct = default)
+    {
+        using var response = await _httpClient.GetAsync($"{_baseUrl}/tasks/{taskId}/result?format=epub", ct);
+
+        if (response.StatusCode == HttpStatusCode.Conflict)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[Popo] No EPUB available for task {taskId} (submitted with output_epub off).");
+            return null;
+        }
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadAsByteArrayAsync(ct);
+    }
+
+    #endregion
+
     /// <summary>
     /// Full processing flow: submit -> poll -> download result -> build StructureDocument.
     /// </summary>
@@ -604,6 +642,8 @@ public sealed class PopoService : IDisposable
     /// <param name="detailedCallback">Optional callback with progress message details.</param>
     /// <param name="timeout">Maximum polling timeout. Default 600 minutes (10 hours).</param>
     /// <param name="ct">Cancellation token.</param>
+    /// <param name="outputEpub">Also request the EPUB output (Popo API "output_epub").
+    /// When on, the rendered EPUB is downloaded and kept next to popo_result.json.</param>
     public async Task<PopoProcessResult> ProcessAsync(
         string zipPath,
         string sourceDocId,
@@ -612,11 +652,12 @@ public sealed class PopoService : IDisposable
         IPopoProgressCallback? detailedCallback = null,
         TimeSpan? timeout = null,
         CancellationToken ct = default,
-        string? projectPath = null)
+        string? projectPath = null,
+        bool outputEpub = false)
     {
         // Step 1: Submit task (doc_id sent explicitly for MinerU 4.0 flat ZIPs)
         onProgress?.Invoke(PopoProcessStatus.Submitting, 10);
-        var taskId = await SubmitTaskAsync(zipPath, model, sourceDocId, ct);
+        var taskId = await SubmitTaskAsync(zipPath, model, sourceDocId, outputEpub, ct);
 
         // Step 2: Poll until complete (progress from API parsed automatically, with timeout protection)
         onProgress?.Invoke(PopoProcessStatus.Queued, 15);
@@ -702,12 +743,46 @@ public sealed class PopoService : IDisposable
             }
         }
 
+        // Step 6: Fetch the EPUB the server rendered for this task (output_epub=true) and
+        // keep it next to popo_result.json, so the preview/download actions keep working
+        // after the project is reopened. A missing EPUB is never fatal — the tree result
+        // is already on disk.
+        string? epubPath = null;
+        if (outputEpub)
+        {
+            try
+            {
+                var epubBytes = await DownloadEpubAsync(taskId, ct);
+                if (epubBytes is { Length: > 0 })
+                {
+                    var epubDir = !string.IsNullOrEmpty(projectPath)
+                        ? Path.Combine(projectPath, "popo")
+                        : _cacheDirectory;
+                    Directory.CreateDirectory(epubDir);
+                    epubPath = Path.Combine(epubDir, sourceDocId + ".epub");
+                    File.WriteAllBytes(epubPath, epubBytes);
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[Popo] Saved EPUB ({epubBytes.Length} bytes) to {epubPath}");
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[Popo] EPUB requested but not returned for task {taskId}.");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[Popo] Failed to download EPUB: {ex.Message}");
+            }
+        }
+
         onProgress?.Invoke(PopoProcessStatus.Completed, 100);
 
         return new PopoProcessResult
         {
             StructureDocument = minerUDoc,
-            ArtifactsDirectory = artifactsDir
+            ArtifactsDirectory = artifactsDir,
+            EpubPath = epubPath
         };
     }
 
@@ -911,6 +986,12 @@ public class PopoProcessResult
     /// Local path to the extracted artifacts directory (images, etc.).
     /// </summary>
     public string? ArtifactsDirectory { get; init; }
+
+    /// <summary>
+    /// Local path to the downloaded EPUB ({doc_id}.epub), or null when EPUB output was
+    /// not requested or the server did not render one for this task.
+    /// </summary>
+    public string? EpubPath { get; init; }
 }
 
 /// <summary>

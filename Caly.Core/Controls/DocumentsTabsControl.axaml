@@ -752,6 +752,24 @@
                                                      MinWidth="60"
                                                  AutomationProperties.Name="生成参考文献"
                                                      FontSize="11"/>
+                                             <Button Content="EPUB 预览"
+                                                     Command="{Binding PreviewPopoEpubCommand}"
+                                                     IsEnabled="{Binding HasPopoEpub}"
+                                                     IsVisible="{Binding !IsPopoProcessing}"
+                                                     MinWidth="60"
+                                                 AutomationProperties.Name="EPUB 预览"
+                                                     FontSize="11">
+                                                 <ToolTip.Tip>用系统默认阅读器打开本次 Popo 生成的 EPUB</ToolTip.Tip>
+                                             </Button>
+                                             <Button Content="EPUB 下载"
+                                                     Command="{Binding SavePopoEpubCommand}"
+                                                     IsEnabled="{Binding HasPopoEpub}"
+                                                     IsVisible="{Binding !IsPopoProcessing}"
+                                                     MinWidth="60"
+                                                 AutomationProperties.Name="EPUB 下载"
+                                                     FontSize="11">
+                                                 <ToolTip.Tip>将本次 Popo 生成的 EPUB 另存到指定位置</ToolTip.Tip>
+                                             </Button>
                                          </StackPanel>
                                      </Grid>
 

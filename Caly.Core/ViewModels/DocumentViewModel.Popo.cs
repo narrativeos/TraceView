@@ -382,6 +382,9 @@ public sealed partial class DocumentViewModel
         if (ProjectPath is null)
             return;
 
+        // Keep the EPUB actions working for results produced in an earlier session.
+        RefreshPopoEpubPath();
+
         StructureDocument? minerUDoc = null;
 
         // Check project's popo/ directory

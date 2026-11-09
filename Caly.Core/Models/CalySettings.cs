@@ -20,6 +20,7 @@
 
 using System;
 using System.IO;
+using System.Text.Json.Serialization;
 
 namespace Caly.Core.Models;
 
@@ -34,7 +35,8 @@ public sealed class CalySettings
         MinerUBaseUrl = "http://localhost:8401",
         MinerUTier = "standard",
         MinerUEnabled = true,
-        PopoBaseUrl = "http://localhost:8440"
+        PopoBaseUrl = "http://192.168.1.100:8412",
+        PopoOutputEpub = true
     };
 
     // TODO - Add version for compatibility checks
@@ -86,14 +88,28 @@ public sealed class CalySettings
     // ========== Popo Configuration ==========
 
     /// <summary>
-    /// Popo service base URL (e.g., "http://localhost:8440")
+    /// Popo service base URL (e.g., "http://192.168.1.100:8412")
     /// </summary>
-    public string PopoBaseUrl { get; set; } = "http://localhost:8440";
+    public string PopoBaseUrl { get; set; } = "http://192.168.1.100:8412";
 
     /// <summary>
     /// Popo model name (e.g., "mineru", "monkeyocr", "PaddleOCR-VL-1.5", "dolphin", "glm-ocr")
     /// </summary>
     public string PopoModel { get; set; } = "mineru";
+
+    /// <summary>
+    /// Ask the Popo server to also render {doc_id}.epub into the result artifact
+    /// (API parameter "output_epub"). Default on: the format is fixed at submission
+    /// time, so turning it off means the EPUB can only be had by re-running the pipeline.
+    /// </summary>
+    /// <remarks>
+    /// The settings file is written with DefaultIgnoreCondition = WhenWritingDefault, which
+    /// drops any property holding its default value — for a setting that defaults to true that
+    /// would silently flip a user's "off" back to "on" on the next start. Writing it always
+    /// keeps the choice persistent.
+    /// </remarks>
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public bool PopoOutputEpub { get; set; } = true;
 
     // ========== NLP Pipeline Configuration ==========
 

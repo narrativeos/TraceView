@@ -106,6 +106,24 @@ public sealed partial class DocumentViewModel : PopoService.IPopoProgressCallbac
     }
 
     /// <summary>
+    /// Local path of the EPUB rendered by Popo for this document
+    /// ({project}/popo/{docId}.epub), or null when none exists.
+    /// </summary>
+    [ObservableProperty]
+    private string? _popoEpubPath;
+
+    partial void OnPopoEpubPathChanged(string? value)
+    {
+        OnPropertyChanged(nameof(HasPopoEpub));
+    }
+
+    /// <summary>
+    /// Whether an EPUB is available for the current document. Drives the
+    /// "EPUB 预览" / "EPUB 下载" buttons in the Popo column header.
+    /// </summary>
+    public bool HasPopoEpub => !string.IsNullOrEmpty(PopoEpubPath) && File.Exists(PopoEpubPath);
+
+    /// <summary>
     /// Whether Popo-processed results already exist in the project's popo/ directory.
     /// Checks for popo_result.json directly in the popo/ directory.
     /// </summary>
@@ -295,7 +313,8 @@ public sealed partial class DocumentViewModel : PopoService.IPopoProgressCallbac
                 this,
                 null,
                 _popoCts.Token,
-                ProjectPath);
+                ProjectPath,
+                settings.PopoOutputEpub);
 
             if (result.StructureDocument is not null)
             {
@@ -327,6 +346,7 @@ public sealed partial class DocumentViewModel : PopoService.IPopoProgressCallbac
 
                 // Note: popo_result.json is already saved by PopoService.DownloadAndParseResultAsync
                 // in the project's popo/ directory. TryLoadPopoData loads from there.
+                PopoEpubPath = result.EpubPath;
             }
 
             // Auto-generate reference files (reference.json + reference.md) in popo/ directory
@@ -430,7 +450,9 @@ public sealed partial class DocumentViewModel : PopoService.IPopoProgressCallbac
 
             PopoStatus = PopoProcessStatus.Completed;
             PopoProgress = 100;
-            PopoStatusText = $"Popo completed ({PopoBlocks.Count} blocks)";
+            PopoStatusText = HasPopoEpub
+                ? $"Popo completed ({PopoBlocks.Count} blocks) · EPUB 已生成"
+                : $"Popo completed ({PopoBlocks.Count} blocks)";
         }
         catch (OperationCanceledException)
         {
@@ -471,6 +493,104 @@ public sealed partial class DocumentViewModel : PopoService.IPopoProgressCallbac
     private void CancelPopoProcess()
     {
         _popoCts?.Cancel();
+    }
+
+    #endregion
+
+    #region Popo Epub Actions
+
+    /// <summary>
+    /// Locates the EPUB belonging to the current document inside the project's popo/
+    /// directory (preferring {docId}.epub), so the EPUB actions keep working after the
+    /// project is reopened. Assigns null when there is none.
+    /// </summary>
+    private void RefreshPopoEpubPath()
+    {
+        var popoDir = ProjectPath is not null ? Path.Combine(ProjectPath, "popo") : null;
+        if (popoDir is null || !Directory.Exists(popoDir))
+        {
+            PopoEpubPath = null;
+            return;
+        }
+
+        var docId = LocalPath is not null ? Path.GetFileNameWithoutExtension(LocalPath) : null;
+        var preferred = docId is not null ? Path.Combine(popoDir, docId + ".epub") : null;
+
+        PopoEpubPath = preferred is not null && File.Exists(preferred)
+            ? preferred
+            : Directory.GetFiles(popoDir, "*.epub", SearchOption.TopDirectoryOnly).FirstOrDefault();
+    }
+
+    /// <summary>
+    /// Opens the document's EPUB in the system's default reader (Apple Books on macOS,
+    /// the registered handler elsewhere). Same launch pattern as OpenInGeoLibre.
+    /// </summary>
+    [RelayCommand]
+    private void PreviewPopoEpub()
+    {
+        var path = PopoEpubPath;
+        if (string.IsNullOrEmpty(path) || !File.Exists(path))
+        {
+            PopoStatusText = "EPUB 不可用：该结果生成时未开启 output_epub，请重新运行 Popo 处理。";
+            return;
+        }
+
+        try
+        {
+#if MACOS
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "open",
+                Arguments = $"\"{path}\"",
+                UseShellExecute = false
+            });
+#elif LINUX
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "xdg-open",
+                Arguments = path,
+                UseShellExecute = false
+            });
+#else
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = path,
+                UseShellExecute = true
+            });
+#endif
+            PopoStatusText = $"已在系统阅读器中打开 {Path.GetFileName(path)}";
+        }
+        catch (Exception ex)
+        {
+            PopoStatusText = $"打开 EPUB 失败: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Exports the document's EPUB through the system save dialog.
+    /// </summary>
+    [RelayCommand]
+    private async Task SavePopoEpubAsync()
+    {
+        var path = PopoEpubPath;
+        if (string.IsNullOrEmpty(path) || !File.Exists(path))
+        {
+            PopoStatusText = "EPUB 不可用：该结果生成时未开启 output_epub，请重新运行 Popo 处理。";
+            return;
+        }
+
+        try
+        {
+            var bytes = await File.ReadAllBytesAsync(path);
+            var saved = await _filesService.SaveFileAsync(bytes, Path.GetFileName(path));
+            PopoStatusText = saved is not null
+                ? $"EPUB 已导出到 {saved.Path.LocalPath}"
+                : "EPUB 导出已取消";
+        }
+        catch (Exception ex)
+        {
+            PopoStatusText = $"导出 EPUB 失败: {ex.Message}";
+        }
     }
 
     #endregion
