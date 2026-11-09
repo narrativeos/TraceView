@@ -77,6 +77,20 @@ public sealed partial class DocumentsTabsControl : UserControl
     public DocumentsTabsControl()
     {
         InitializeComponent();
+
+        // macOS keeps the native title bar with the traffic-light buttons (see MainWindow),
+        // so the tab strip row is not window chrome there. Tabalonia's macOS defaults
+        // reserve an 80 px left drag thumb (space for traffic lights) and a 300 px right
+        // one, which pushes the + button ~80 px away from the tabs and squeezes the tab
+        // strip in narrow windows. Keep both thumbs minimal on macOS — the native title
+        // bar is the drag surface. On Windows/Linux the tab strip doubles as the title
+        // bar (ExtendClientAreaToDecorationsHint=True), so the defaults stay in place.
+        if (OperatingSystem.IsMacOS())
+        {
+            TabsHost.LeftThumbWidth = 8;
+            TabsHost.RightThumbWidth = 8;
+        }
+
         KeyBindings.Add(new KeyBinding
         {
             Gesture = CalyHotkeyConfiguration.DocumentGoToGesture,

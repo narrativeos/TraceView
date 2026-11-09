@@ -28,7 +28,7 @@
         <vm:MainViewModel />
     </Design.DataContext>
 
-	<tabalonia:TabsControl Background="Transparent"
+	<tabalonia:TabsControl x:Name="TabsHost" Background="Transparent"
                            Padding="0"
                            Margin="0"
                            AddItemCommand="{Binding OpenFileCommand}"
