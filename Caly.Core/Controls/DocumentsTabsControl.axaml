@@ -689,6 +689,14 @@
                                                                   </Grid>
                                                               </Border>
 
+                                                              <!-- Caption text from image_footnote/image_caption sub-elements -->
+                                                              <TextBlock Text="{Binding ImageCaption}"
+                                                                         FontSize="11"
+                                                                         TextWrapping="Wrap"
+                                                                         Opacity="0.8"
+                                                                         Margin="0,2,0,0"
+                                                                         IsVisible="{Binding HasImageCaption}"/>
+
                                                               <!-- Content preview for non-image blocks -->
                                                               <TextBlock Text="{Binding ContentPreview}"
                                                                          FontSize="11"

@@ -249,6 +249,33 @@ public partial class MinerUBlock : ObservableObject
     }
 
     /// <summary>
+    /// Whether this block exists only for the PDF overlay (BlockOverlayControl) and must
+    /// not appear as a row in the MinerU Blocks column. Used for MinerU 4.x sub-elements
+    /// that carry their own block_id and bbox (e.g. image_footnote captions whose text
+    /// is rendered below the image block's bbox). Overlay-only blocks are drawn without
+    /// an index badge so the overlay numbering keeps mirroring the column numbering.
+    /// </summary>
+    private bool _isOverlayOnly;
+    public bool IsOverlayOnly
+    {
+        get => _isOverlayOnly;
+        set => SetProperty(ref _isOverlayOnly, value);
+    }
+
+    /// <summary>
+    /// Caption text carried by this block's sub-elements (e.g. MinerU 4.x image_footnote /
+    /// image_caption / chart_caption sub-elements). Kept separate from Content because for
+    /// image blocks Content holds the image path used to load the bitmap, and appending the
+    /// caption there would break image loading. Displayed below the image in the column.
+    /// </summary>
+    private string _imageCaption = string.Empty;
+    public string ImageCaption
+    {
+        get => _imageCaption;
+        set => SetProperty(ref _imageCaption, value);
+    }
+
+    /// <summary>
     /// Computed property: returns color based on Type.
     /// </summary>
     public Color TypeColor => Type switch

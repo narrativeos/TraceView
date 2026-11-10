@@ -169,6 +169,13 @@ public sealed class BlockOverlayControl : Control
     private bool _geometriesDirty = true;
 
     /// <summary>
+    /// Precomputed 1-based badge number per block (see <see cref="EnsureGeometries"/>).
+    /// Overlay-only shadow blocks get 0 (no badge); other blocks get their position
+    /// among column-visible blocks so badges mirror the MinerU column numbering.
+    /// </summary>
+    private int[]? _badgeNumbers;
+
+    /// <summary>
     /// Spatial grid for fast visibility culling. Each cell holds indices into the blocks array.
     /// Lazily built when Blocks/PageSize/PpiScale change, reused across renders.
     /// </summary>
@@ -355,6 +362,7 @@ public sealed class BlockOverlayControl : Control
         if (blocks is null || blocks.Count == 0)
         {
             _blockGeometries = System.Array.Empty<StreamGeometry>();
+            _badgeNumbers = System.Array.Empty<int>();
             _geometriesDirty = false;
             return _blockGeometries;
         }
@@ -368,8 +376,16 @@ public sealed class BlockOverlayControl : Control
             _blockGeometries = new StreamGeometry[blocks.Count];
         }
 
+        // Badge numbers: 1-based position among column-visible blocks only.
+        // Overlay-only shadow blocks (e.g. image caption regions) do not consume
+        // a number, so the badges keep mirroring the MinerU column numbering.
+        if (_badgeNumbers is null || _badgeNumbers.Length != blocks.Count)
+            _badgeNumbers = new int[blocks.Count];
+        var badgeNumber = 0;
         for (int i = 0; i < blocks.Count; i++)
         {
+            _badgeNumbers[i] = blocks[i].IsOverlayOnly ? 0 : ++badgeNumber;
+
             var block = blocks[i];
             var bbox = block.Bbox;
             // Convert block bbox (may be normalized 0-1 or absolute pixels) to PdfRectangle
@@ -488,7 +504,7 @@ public sealed class BlockOverlayControl : Control
             "title" => TitleFill,
             "text" => TextFill,
             // Image blocks: outline only, no fill (see OutlineOnlyFill)
-            "image" => OutlineOnlyFill,
+            "image" or "chart" or "equation" => OutlineOnlyFill,
             "table" => TableFill,
             "caption" => CaptionFill,
             _ => DefaultFill
@@ -656,7 +672,7 @@ public sealed class BlockOverlayControl : Control
         // related-highlight fill — would tint the underlying picture and make it
         // hard to judge the image content, especially when a whole page is a
         // single full-page image. The colored border still conveys the state.
-        if (block.Type == "image")
+        if (block.Type is "image" or "chart" or "equation")
         {
             fill = OutlineOnlyFill;
         }
@@ -666,11 +682,15 @@ public sealed class BlockOverlayControl : Control
         double zoom = Math.Max(ZoomLevel, 0.01);
         double badgeWidth = 0.0;
 
-        // Index badge: 1-based position of the block within the page's block list,
+        // Index badge: 1-based position of the block among column-visible blocks,
         // drawn in the top-left corner so it matches the MinerU column numbering.
-        if (ShowBlockIndex)
+        // Overlay-only shadow blocks (e.g. image caption regions) draw no badge.
+        if (ShowBlockIndex && !block.IsOverlayOnly)
         {
-            badgeWidth = DrawBlockIndex(context, geometry.Bounds.TopLeft, index + 1, zoom);
+            var badgeNumber = _badgeNumbers is not null && index < _badgeNumbers.Length && _badgeNumbers[index] > 0
+                ? _badgeNumbers[index]
+                : index + 1;
+            badgeWidth = DrawBlockIndex(context, geometry.Bounds.TopLeft, badgeNumber, zoom);
         }
 
         if (ShowLabels && (isHovered || isHighlighted) && !string.IsNullOrEmpty(block.Content))

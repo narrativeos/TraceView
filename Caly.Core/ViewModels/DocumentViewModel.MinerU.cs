@@ -898,7 +898,8 @@ public sealed partial class DocumentViewModel
                 DestinationType = block.DestinationType,
                 RelatedBlockIds = new System.Collections.Generic.List<string>(block.RelatedBlockIds),
                 SourceBlockIds = new System.Collections.Generic.List<string>(block.SourceBlockIds),
-                IsFallbackMatch = block.IsFallbackMatch
+                IsFallbackMatch = block.IsFallbackMatch,
+                ImageCaption = block.ImageCaption
             }, artifactsDirectory);
     }
 

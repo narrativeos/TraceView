@@ -51,6 +51,17 @@ public partial class MinerUBlockViewModel : ObservableObject
     public int Page => _block.Page;
     public string Type => _block.Type;
     public string Content => _block.Content;
+
+    /// <summary>
+    /// Caption text from caption/footnote sub-elements (e.g. MinerU 4.x image_footnote).
+    /// Shown below the image (or content preview) in the MinerU Blocks column.
+    /// </summary>
+    public string ImageCaption => _block.ImageCaption;
+
+    /// <summary>
+    /// Whether this block carries a caption text to display.
+    /// </summary>
+    public bool HasImageCaption => !string.IsNullOrEmpty(_block.ImageCaption);
     public string SourceLabel => _block.SourceLabel;
     public int Contd => _block.Contd;
     public int Level => _block.Level;
@@ -211,7 +222,7 @@ public partial class MinerUBlockViewModel : ObservableObject
             {
                 "text" or "paragraph" => "Blue",
                 "title" or "heading" => "Purple",
-                "image" or "figure" => "Green",
+                "image" or "figure" or "chart" or "equation" => "Green",
                 "table" => "Orange",
                 "caption" => "Gray",
                 _ => "Default"
@@ -222,7 +233,7 @@ public partial class MinerUBlockViewModel : ObservableObject
     /// <summary>
     /// Whether this block represents an image.
     /// </summary>
-    public bool IsImage => Type == "image";
+    public bool IsImage => Type is "image" or "chart" or "equation";
 
     /// <summary>
     /// Bitmap image for display (only for image blocks).
@@ -232,7 +243,7 @@ public partial class MinerUBlockViewModel : ObservableObject
     {
         get
         {
-            if (Type != "image")
+            if (!IsImage)
                 return null;
 
             if (_cachedBitmap is not null)
@@ -298,7 +309,7 @@ public partial class MinerUBlockViewModel : ObservableObject
     {
         get
         {
-            if (Type != "image")
+            if (!IsImage)
                 return string.Empty;
 
             // Strategy 1: Try Content field (may contain image path)

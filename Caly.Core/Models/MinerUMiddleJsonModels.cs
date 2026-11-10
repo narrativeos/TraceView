@@ -69,6 +69,14 @@ public class MinerUMiddlePageBlock
     public string Content { get; set; } = string.Empty;
 
     /// <summary>
+    /// Caption text from caption/footnote sub-elements (MinerU 4.x image_footnote etc.).
+    /// Not part of the middle.json schema — populated by the parser so the column can show
+    /// the caption below the image without polluting Content (which carries the image path).
+    /// </summary>
+    [JsonIgnore]
+    public string ImageCaption { get; set; } = string.Empty;
+
+    /// <summary>
     /// Original model label (e.g., paragraph, paragraph_title, figure, table, etc.).
     /// </summary>
     [JsonPropertyName("source_label")]

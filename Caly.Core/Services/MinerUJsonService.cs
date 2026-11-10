@@ -407,6 +407,9 @@ public static class MinerUJsonService
                 continue;
 
             var blocks = new List<MinerUBlock>();
+            // v4: overlay view of the page — the column blocks interleaved with
+            // overlay-only shadow blocks for sub-element regions (image captions).
+            var overlayBlocks = new List<MinerUBlock>();
             var pageWidth = pageSizeMap.TryGetValue(pageNum, out var size) ? size.width : 0.0;
             var pageHeight = pageSizeMap.TryGetValue(pageNum, out size) ? size.height : 0.0;
 
@@ -444,6 +447,74 @@ public static class MinerUJsonService
                     }
 
                     blocks.Add(block);
+
+                    // MinerU 4.x: sub-elements with their own block_id (e.g. image_footnote
+                    // captions) can be rendered outside the parent block's bbox. Register
+                    // them as overlay-only shadow blocks so the PDF overlay draws a box for
+                    // the caption region without adding a row to the MinerU column (which
+                    // binds to PagesBlocks).
+                    if (isV4Schema)
+                    {
+                        overlayBlocks.Add(block);
+
+                        if (blockElem.TryGetProperty("content", out var contentArr) &&
+                            contentArr.ValueKind == JsonValueKind.Array)
+                        {
+                            foreach (var subElem in contentArr.EnumerateArray())
+                            {
+                                if (subElem.ValueKind != JsonValueKind.Object)
+                                    continue;
+
+                                var subId = GetStringProperty(subElem, "block_id");
+                                if (string.IsNullOrEmpty(subId) || subId == block.BlockId)
+                                    continue;
+
+                                if (!subElem.TryGetProperty("bbox", out var subBboxElem) ||
+                                    subBboxElem.ValueKind != JsonValueKind.Array)
+                                    continue;
+
+                                var (subBbox, subNormalized) = ParseMinerUBbox(subBboxElem, pageWidth, pageHeight, isV4Schema);
+                                if (subBbox.Width <= 0 || subBbox.Height <= 0)
+                                    continue;
+
+                                var shadow = new MinerUBlock
+                                {
+                                    BlockId = subId,
+                                    Page = pageNum,
+                                    Type = "caption",
+                                    SourceLabel = GetStringProperty(subElem, "type") ?? "caption",
+                                    Content = ExtractMinerUContent(subElem),
+                                    BlockSource = MinerUConstants.SourcePara,
+                                    DestinationType = MinerUConstants.DestPara,
+                                    Bbox = subBbox,
+                                    IsBboxNormalized = subNormalized,
+                                    IsOverlayOnly = true
+                                };
+                                if (!string.IsNullOrEmpty(block.BlockId))
+                                {
+                                    shadow.RelatedBlockIds.Add(block.BlockId);
+                                    block.RelatedBlockIds.Add(subId);
+                                }
+                                overlayBlocks.Add(shadow);
+
+                                // Surface the caption text on the parent row: image/chart blocks
+                                // keep Content as the image path (used for bitmap loading), so
+                                // the caption goes to ImageCaption; other block types append it
+                                // to the content preview.
+                                if (!string.IsNullOrEmpty(shadow.Content))
+                                {
+                                    if (block.Type is "image" or "chart")
+                                        block.ImageCaption = string.IsNullOrEmpty(block.ImageCaption)
+                                            ? shadow.Content
+                                            : block.ImageCaption + " " + shadow.Content;
+                                    else
+                                        block.Content = block.Content.Length == 0
+                                            ? shadow.Content
+                                            : block.Content + "\n" + shadow.Content;
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -452,9 +523,10 @@ public static class MinerUJsonService
                 minerUDoc.PagesBlocks[pageNum] = blocks;
                 // MinerU 4.0 has no preproc/para/discarded distinction;
                 // the PDF overlay (BlockOverlayControl) binds to PreprocBlocks,
-                // so populate it with all blocks for v4.
+                // so populate it with all blocks for v4 (plus overlay-only
+                // shadow blocks for sub-element regions such as image captions).
                 if (isV4Schema)
-                    minerUDoc.PreprocBlocks[pageNum] = blocks;
+                    minerUDoc.PreprocBlocks[pageNum] = overlayBlocks.Count > blocks.Count ? overlayBlocks : blocks;
             }
         }
     }
@@ -956,21 +1028,39 @@ public static class MinerUJsonService
 
     static string ExtractMinerUContent(JsonElement elem)
     {
-        if (elem.TryGetProperty("content", out var contentElem) && contentElem.ValueKind == JsonValueKind.String)
-            return contentElem.GetString() ?? string.Empty;
-
-        // MinerU 4.0: content is an array of inline spans ({type, content})
-        if (elem.TryGetProperty("content", out var spansArray) && spansArray.ValueKind == JsonValueKind.Array)
+        if (elem.TryGetProperty("content", out var contentElem))
         {
-            var parts = new List<string>();
-            foreach (var spanElem in spansArray.EnumerateArray())
+            if (contentElem.ValueKind == JsonValueKind.String)
             {
-                var content = GetStringProperty(spanElem, "content");
-                if (!string.IsNullOrEmpty(content))
+                var s = contentElem.GetString();
+                // Non-empty string content wins; an empty string falls through to the
+                // image_path fallback below (MinerU 4.x equation blocks carry content:""
+                // plus a block-level image_path).
+                if (!string.IsNullOrEmpty(s))
+                    return s;
+            }
+            // MinerU 4.0: content is an array of inline spans ({type, content})
+            else if (contentElem.ValueKind == JsonValueKind.Array)
+            {
+                var parts = new List<string>();
+                foreach (var spanElem in contentElem.EnumerateArray())
                 {
-                    parts.Add(content);
-                }
-                else if (spanElem.TryGetProperty("html", out var htmlElem) && htmlElem.ValueKind == JsonValueKind.String)
+                    var content = GetStringProperty(spanElem, "content");
+                    if (!string.IsNullOrEmpty(content))
+                    {
+                        parts.Add(content);
+                    }
+                    // Nested inline span array without its own block_id (e.g. 4.x index
+                    // entries): recurse so the text is not silently dropped.
+                    else if (spanElem.TryGetProperty("content", out var nestedSpans) &&
+                             nestedSpans.ValueKind == JsonValueKind.Array &&
+                             string.IsNullOrEmpty(GetStringProperty(spanElem, "block_id")))
+                    {
+                        var nestedText = ExtractMinerUContent(spanElem);
+                        if (!string.IsNullOrEmpty(nestedText))
+                            parts.Add(nestedText);
+                    }
+                    else if (spanElem.TryGetProperty("html", out var htmlElem) && htmlElem.ValueKind == JsonValueKind.String)
                 {
                     var html = htmlElem.GetString() ?? string.Empty;
                     if (!string.IsNullOrEmpty(html))
@@ -988,7 +1078,8 @@ public static class MinerUJsonService
                     }
                 }
             }
-            return string.Join(string.Empty, parts);
+                return string.Join(string.Empty, parts);
+            }
         }
 
         // Extract table content from table_body HTML and table_caption
@@ -1040,9 +1131,14 @@ public static class MinerUJsonService
             return string.Join("\n", parts);
         }
 
+        // MinerU 4.x blocks may carry empty content plus a block-level image_path
+        // (e.g. equation blocks) — surface the path so the image can still load.
+        var blockImagePath = GetStringProperty(elem, "image_path");
+        if (!string.IsNullOrEmpty(blockImagePath))
+            return blockImagePath;
+
         return string.Empty;
     }
-
     /// <summary>
     /// Extracts structured text from a MinerU table block.
     /// Parses table_body HTML into a readable format: "列名: 值 | 列名: 值" per row.
@@ -1173,10 +1269,11 @@ public static class MinerUJsonService
             "paragraph_title" or "title" or "section_title" => "title",
             "paragraph" or "text" or "plain_text" or "body_text" => "text",
             "figure" or "image" or "picture" or "photo" or "image_body" => "image",
+            "chart" or "chart_body" => "chart",
             "table" or "tabular" or "table_body" => "table",
             "figure_footnote" or "table_footnote" or "caption" or "image_caption" or "table_caption" or "image_footnote" => "caption",
             "header" or "footnote" or "footer" => "text",
-            "equation" or "formula" => "text",
+            "equation" or "formula" => "equation",
             "list" or "list_item" => "text",
             _ => "text"  // Default to text for unknown types
         };
