@@ -32,7 +32,7 @@ public sealed class CalySettings
         Height = 500,
         PaneSize = 350,
         Debug = null,
-        MinerUBaseUrl = "http://localhost:8401",
+        MinerUBaseUrl = "http://192.168.1.100:8401",
         MinerUTier = "standard",
         MinerUEnabled = true,
         PopoBaseUrl = "http://192.168.1.100:8412",
@@ -66,12 +66,12 @@ public sealed class CalySettings
     // ========== MinerU Configuration ==========
 
     /// <summary>
-    /// MinerU service base URL (e.g., "http://localhost:8401")
+    /// MinerU service base URL (e.g., "http://192.168.1.100:8401")
     /// </summary>
-    public string MinerUBaseUrl { get; set; } = "http://localhost:8401";
+    public string MinerUBaseUrl { get; set; } = "http://192.168.1.100:8401";
 
     /// <summary>
-    /// MinerU 4.0 V1 API tier: "standard" (default) or "pro" (requires an API key).
+    /// MinerU 4.1 V1 API tier: "flash", "basic", "standard" (default) or "advanced".
     /// </summary>
     public string MinerUTier { get; set; } = "standard";
 

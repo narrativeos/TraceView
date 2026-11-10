@@ -287,7 +287,7 @@ public class MinerUTaskProgress
 }
 
 /// <summary>
-/// Response from POST /v1/parse/jobs and GET /v1/parse/jobs/{job_id} (MinerU 4.0 V1 API).
+/// Response from POST /v1/parse/jobs and GET /v1/parse/jobs/{job_id} (MinerU 4.1 V1 API).
 /// </summary>
 public class MinerUJobResponse
 {
@@ -314,6 +314,18 @@ public class MinerUJobResponse
 
     [JsonPropertyName("finished_at")]
     public string? FinishedAt { get; set; }
+
+    /// <summary>
+    /// Number of jobs queued ahead of this one, while the job is queued.
+    /// </summary>
+    [JsonPropertyName("queued_ahead")]
+    public int? QueuedAhead { get; set; }
+
+    /// <summary>
+    /// Model warm-up state: "loading" or "ready" (null when unknown).
+    /// </summary>
+    [JsonPropertyName("model_status")]
+    public string? ModelStatus { get; set; }
 
     /// <summary>
     /// File-level progress counters (the V1 API does not report page-level progress).
@@ -398,6 +410,13 @@ public class MinerUJobFileResult
     public string Status { get; set; } = string.Empty;
 
     /// <summary>
+    /// Page-level progress for this file (current_page / total_pages / stage).
+    /// Reported while the job is running and the file has not reached a terminal state.
+    /// </summary>
+    [JsonPropertyName("progress")]
+    public MinerUTaskProgress? Progress { get; set; }
+
+    /// <summary>
     /// Requested output artifacts. Content is downloaded via GET /v1/files/{file_id}/content.
     /// </summary>
     [JsonPropertyName("output_files")]
@@ -415,6 +434,9 @@ public class MinerUOutputFiles
     [JsonPropertyName("markdown")]
     public MinerUOutputFileRef? Markdown { get; set; }
 
+    [JsonPropertyName("markdown_source")]
+    public MinerUOutputFileRef? MarkdownSource { get; set; }
+
     [JsonPropertyName("middle_json")]
     public MinerUOutputFileRef? MiddleJson { get; set; }
 
@@ -423,6 +445,21 @@ public class MinerUOutputFiles
 
     [JsonPropertyName("layout_quality")]
     public MinerUOutputFileRef? LayoutQuality { get; set; }
+
+    [JsonPropertyName("layout_pdf")]
+    public MinerUOutputFileRef? LayoutPdf { get; set; }
+
+    [JsonPropertyName("layout_pdf_translated")]
+    public MinerUOutputFileRef? LayoutPdfTranslated { get; set; }
+
+    [JsonPropertyName("html")]
+    public MinerUOutputFileRef? Html { get; set; }
+
+    [JsonPropertyName("latex")]
+    public MinerUOutputFileRef? Latex { get; set; }
+
+    [JsonPropertyName("docx")]
+    public MinerUOutputFileRef? Docx { get; set; }
 
     [JsonPropertyName("zip")]
     public MinerUOutputFileRef? Zip { get; set; }
@@ -483,27 +520,48 @@ public class MinerUUploadCompleteRequest
 }
 
 /// <summary>
-/// Request body for POST /v1/parse/jobs (MinerU 4.0 V1 API).
+/// Request body for POST /v1/parse/jobs (MinerU 4.1 V1 API).
 /// </summary>
 public class MinerUParseJobRequest
 {
     [JsonPropertyName("files")]
     public List<MinerUParseJobFile> Files { get; set; } = new();
 
+    /// <summary>
+    /// Parse tier: "flash", "basic", "standard" or "advanced".
+    /// </summary>
     [JsonPropertyName("tier")]
     public string? Tier { get; set; }
 
+    /// <summary>
+    /// OCR mode for this parse job: "auto" (default, auto-detect),
+    /// "txt" (native text) or "ocr" (forced OCR).
+    /// </summary>
+    [JsonPropertyName("ocr_mode")]
+    public string? OcrMode { get; set; }
+
+    /// <summary>
+    /// Requested output formats: markdown, middle_json, structured_content,
+    /// layout_quality, layout_pdf, html, latex, docx, zip. Default: ["markdown"].
+    /// </summary>
     [JsonPropertyName("output_formats")]
     public List<string>? OutputFormats { get; set; }
 }
 
 /// <summary>
-/// A single file entry in a MinerU 4.0 V1 parse job request.
+/// A single file entry in a MinerU 4.1 V1 parse job request.
 /// </summary>
 public class MinerUParseJobFile
 {
     [JsonPropertyName("source")]
     public MinerUParseJobFileSource? Source { get; set; }
+
+    /// <summary>
+    /// PDF page selection: 1-based inclusive ranges, e.g. "1-5,8,r3-r1";
+    /// "r1" is the last page and "all" selects every page. Null means all pages.
+    /// </summary>
+    [JsonPropertyName("page_range")]
+    public string? PageRange { get; set; }
 }
 
 /// <summary>

@@ -38,7 +38,7 @@ using Caly.Core.Utilities;
 namespace Caly.Core.Services;
 
 /// <summary>
-/// HTTP client for the MinerU 4.0 external parsing service (V1 API).
+/// HTTP client for the MinerU 4.1 external parsing service (V1 API).
 /// Uses the async "upload → parse job → poll → download" flow:
 /// POST /v1/uploads → PUT {upload_url} → POST /v1/uploads/{id}/complete →
 /// POST /v1/parse/jobs → GET /v1/parse/jobs/{id} (poll) → GET /v1/files/{file_id}/content.
@@ -53,12 +53,30 @@ public sealed class MinerUService : IDisposable
     /// <summary>
     /// Default MinerU API base URL.
     /// </summary>
-    public const string DefaultBaseUrl = "http://localhost:8401";
+    public const string DefaultBaseUrl = "http://192.168.1.100:8401";
 
     /// <summary>
-    /// Default parse tier (MinerU 4.0: flash / basic / standard / advanced).
+    /// Default parse tier (MinerU 4.1: flash / basic / standard / advanced).
     /// </summary>
     public const string DefaultTier = "standard";
+
+    /// <summary>
+    /// Tier ids accepted by the 4.1 V1 jobs API (GET /v1/tiers).
+    /// </summary>
+    private static readonly HashSet<string> ValidTiers = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "flash", "basic", "standard", "advanced"
+    };
+
+    /// <summary>
+    /// Normalizes a configured tier: falls back to <see cref="DefaultTier"/> ("standard")
+    /// when the value is empty or not one of the accepted tier ids
+    /// (e.g. a settings file corrupted by an older UI binding).
+    /// </summary>
+    private static string NormalizeTier(string? tier)
+        => !string.IsNullOrWhiteSpace(tier) && ValidTiers.Contains(tier.Trim())
+            ? tier.Trim()
+            : DefaultTier;
 
     /// <summary>
     /// Polling interval for parse job status checks.
@@ -68,7 +86,7 @@ public sealed class MinerUService : IDisposable
     /// <summary>
     /// Creates a new MinerUService instance.
     /// </summary>
-    /// <param name="baseUrl">MinerU API base URL, i.e. the root address before /v1 (default: http://localhost:8401).</param>
+    /// <param name="baseUrl">MinerU API base URL, i.e. the root address before /v1 (default: http://192.168.1.100:8401).</param>
     /// <param name="cacheDirectory">Local directory for caching parse results. If null, uses project's mineru/ dir or default cache.</param>
     /// <param name="apiKey">Optional API key. Required when the service is started with --api-key.</param>
     public MinerUService(string? baseUrl = null, string? cacheDirectory = null, string? apiKey = null)
@@ -376,7 +394,7 @@ public sealed class MinerUService : IDisposable
                     Source = new MinerUParseJobFileSource { Type = "file_id", FileId = fileId }
                 }
             },
-            Tier = tier,
+            Tier = NormalizeTier(tier),
             OutputFormats = new[] { "markdown", "middle_json", "zip" }.ToList()
         };
 
@@ -474,9 +492,9 @@ public sealed class MinerUService : IDisposable
 
     /// <summary>
     /// Polls the parse job status until it reaches a terminal state, with detailed progress info.
-    /// The MinerU 4.0 V1 API does not report page-level progress, so the
-    /// MinerUTaskProgress detail is always null and the UI falls back to the
-    /// coarse status text.
+    /// The MinerU 4.1 V1 jobs API reports page-level progress per file
+    /// (current_page / total_pages / stage) while the job is running; it is passed
+    /// through via MinerUTaskProgress. When absent, the UI falls back to the coarse status text.
     /// </summary>
     public async Task PollUntilCompleteAsync(
         string jobId,
@@ -509,10 +527,14 @@ public sealed class MinerUService : IDisposable
 
                 var progress = minerUStatus == MinerUParseStatus.Queued ? 20 : 50;
 
-                if (progress != lastProgress)
+                // Page-level progress from the running file's per-file progress info.
+                var pageProgress = status.Files
+                    .FirstOrDefault(f => f.Progress is not null && f.Progress.TotalPages > 0)?.Progress;
+
+                if (progress != lastProgress || pageProgress is not null)
                 {
                     lastProgress = progress;
-                    onProgress?.Invoke(minerUStatus, progress, null);
+                    onProgress?.Invoke(minerUStatus, progress, pageProgress);
                 }
             }
             else if (status.IsCompleted || status.IsPartial)
