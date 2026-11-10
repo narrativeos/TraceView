@@ -590,11 +590,11 @@
                                                         HorizontalAlignment="Center"
                                                         Opacity="0.7"/>
 
-                                             <!-- Cancel Button -->
-                                             <Button Content="取消"
+                                             <!-- Stop Button: aborts the running job (not a dialog cancel) -->
+                                             <Button Content="停止"
                                                      Command="{Binding CancelMinerUParseCommand}"
                                                      HorizontalAlignment="Center"
-                                                 AutomationProperties.Name="取消 MinerU 解析"
+                                                 AutomationProperties.Name="停止 MinerU 解析"
                                                      Padding="20,4"/>
                                          </StackPanel>
                                      </Border>
@@ -816,11 +816,11 @@
                                                          MaxWidth="250"
                                                          IsVisible="{Binding PopoProgressMessage, Converter={StaticResource IsNotNullConverter}}"/>
 
-                                             <!-- Cancel Button -->
-                                             <Button Content="取消"
+                                             <!-- Stop Button: aborts the running job (not a dialog cancel) -->
+                                             <Button Content="停止"
                                                      Command="{Binding CancelPopoProcessCommand}"
                                                      HorizontalAlignment="Center"
-                                                 AutomationProperties.Name="取消 Popo 处理"
+                                                 AutomationProperties.Name="停止 Popo 处理"
                                                      Padding="20,4"/>
                                          </StackPanel>
                                      </Border>
@@ -1061,10 +1061,10 @@
                                                        FontSize="11"
                                                        HorizontalAlignment="Center"
                                                        Opacity="0.7"/>
-                                            <Button Content="取消"
+                                            <Button Content="停止"
                                                     Command="{Binding CancelSemanticProcessCommand}"
                                                     HorizontalAlignment="Center"
-                                                AutomationProperties.Name="取消语义分析"
+                                                AutomationProperties.Name="停止语义分析"
                                                     Padding="20,4"/>
                                         </StackPanel>
                                     </Border>
@@ -1672,11 +1672,11 @@
                                                           HorizontalAlignment="Center"
                                                           Opacity="0.7"/>
 
-                                               <!-- Cancel Button -->
-                                               <Button Content="取消"
+                                               <!-- Stop Button: aborts the running job (not a dialog cancel) -->
+                                               <Button Content="停止"
                                                        Command="{Binding CancelGeoProcessCommand}"
                                                        HorizontalAlignment="Center"
-                                                   AutomationProperties.Name="取消地理处理"
+                                                   AutomationProperties.Name="停止地理处理"
                                                        Padding="20,4"/>
                                            </StackPanel>
                                        </Border>

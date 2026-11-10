@@ -32,7 +32,16 @@ public sealed partial class MessageWindow : Window
     }
 
     /// <summary>
+    /// Closes the window (Enter, since the button is the default one).
+    /// </summary>
+    private void OnOkClick(object? sender, RoutedEventArgs e)
+    {
+        Close();
+    }
+
+    /// <summary>
     /// Esc dismisses the window (platform convention for cancelling / closing a dialog).
+    /// Handled here so it also works while the focus sits in the stack trace box.
     /// </summary>
     protected override void OnKeyDown(KeyEventArgs e)
     {

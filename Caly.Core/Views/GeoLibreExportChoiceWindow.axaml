@@ -13,11 +13,13 @@
     <Grid RowDefinitions="Auto,*,Auto" Margin="16">
         <TextBlock x:Name="TitleText" Grid.Row="0" FontSize="14" FontWeight="Bold" Margin="0,0,0,8"/>
         <TextBlock x:Name="MessageText" Grid.Row="1" FontSize="13" TextWrapping="Wrap" Margin="0,0,0,12"/>
+        <!-- 取消 left, default action rightmost (same order as every other dialog);
+             the debug button stays left of the default one so the default never moves. -->
         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
-            <Button x:Name="SaveFileButton" Content="下载保存文件" Click="OnSaveFileClick" Width="120"/>
-            <Button x:Name="OpenInAppButton" Content="用正式版打开" Click="OnOpenInAppClick" Width="120" IsDefault="True"/>
-            <Button x:Name="OpenInDebugButton" Content="用调试版打开" Click="OnOpenInDebugClick" Width="120" IsVisible="False"/>
             <Button Content="取消" Click="OnCancelClick" IsCancel="True" Width="80"/>
+            <Button x:Name="SaveFileButton" Content="下载保存文件" Click="OnSaveFileClick" Width="120"/>
+            <Button x:Name="OpenInDebugButton" Content="用调试版打开" Click="OnOpenInDebugClick" Width="120" IsVisible="False"/>
+            <Button x:Name="OpenInAppButton" Content="用正式版打开" Click="OnOpenInAppClick" Width="120" IsDefault="True"/>
         </StackPanel>
     </Grid>
 </Window>

@@ -71,8 +71,8 @@
 							           VerticalAlignment="Center"
 							           Opacity="0.7"/>
 
-							<!-- Cancel Button -->
-							<Button Content="取消"
+							<!-- Stop Button: aborts the running job (not a dialog cancel) -->
+							<Button Content="停止"
 							        Command="{Binding CancelMinerUParseCommand}"
 							        HorizontalAlignment="Right"
 							        Padding="12,2"

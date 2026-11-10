@@ -11,12 +11,17 @@
         WindowStartupLocation="CenterOwner"
         ShowActivated="True"
         Width="450" MinWidth="450"
-        Height="150" MinHeight="150">
-    <Grid RowDefinitions="Auto, Auto, *" x:DataType="vm:ExceptionViewModel">
+        Height="180" MinHeight="180">
+    <Grid RowDefinitions="Auto, Auto, *, Auto" x:DataType="vm:ExceptionViewModel">
         <TextBlock Margin="5" FontSize="18" FontWeight="Bold">Error</TextBlock>
         <TextBlock Grid.Row="1" Margin="5" FontSize="13" FontStyle="Italic" TextWrapping="Wrap" Text="{Binding Message, Mode=OneTime}"/>
         <ScrollViewer Grid.Row="2" Margin="5">
             <TextBox TextWrapping="Wrap" FontSize="12" IsReadOnly="True" Text="{Binding StackTrace, Mode=OneTime}"/>
         </ScrollViewer>
+        <!-- Action: 确定 rightmost = default (same order as every other dialog).
+             Esc also closes the window (OnKeyDown below / IsCancel). -->
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="5">
+            <Button Content="确定" Click="OnOkClick" IsDefault="True" IsCancel="True" Width="80"/>
+        </StackPanel>
     </Grid>
 </Window>

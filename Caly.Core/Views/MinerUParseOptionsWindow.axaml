@@ -77,10 +77,10 @@
                    Foreground="{DynamicResource SystemControlPageTextChromeDisabledBrush}"
                    Text="auto 逐页选分支 / txt 整本用文字层 / ocr 整本强制 OCR"/>
 
-        <!-- Actions -->
+        <!-- Actions: 取消 left, default action rightmost (same order as every other dialog) -->
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,8,0,0">
-            <Button Content="确定" Click="OnOkClick" IsDefault="True" Width="90"/>
             <Button Content="取消" Click="OnCancelClick" IsCancel="True" Width="90"/>
+            <Button Content="确定" Click="OnOkClick" IsDefault="True" Width="90"/>
         </StackPanel>
     </StackPanel>
 </Window>
