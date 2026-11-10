@@ -60,14 +60,18 @@
                                                    Grid.Row="0"
                                                    VerticalAlignment="Center"
                                                    Text="服务档位"/>
+                                        <!-- String items + SelectedItem: in Avalonia 12 SelectedValuePath no
+                                             longer exists (SelectedValueBinding resolves against the outer
+                                             DataContext under compiled bindings), and ComboBoxItem items
+                                             would write their ToString() back into the setting. -->
                                         <ComboBox Grid.Column="2"
                                                   Grid.Row="0"
                                                   Margin="0,2"
-                                                  SelectedValue="{Binding Settings.MinerUTier, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
-                                            <ComboBoxItem Content="flash"/>
-                                            <ComboBoxItem Content="basic"/>
-                                            <ComboBoxItem Content="standard"/>
-                                            <ComboBoxItem Content="advanced"/>
+                                                  SelectedItem="{Binding Settings.MinerUTier, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                            <x:String>flash</x:String>
+                                            <x:String>basic</x:String>
+                                            <x:String>standard</x:String>
+                                            <x:String>advanced</x:String>
                                         </ComboBox>
                                     </Grid>
 
