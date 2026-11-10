@@ -62,7 +62,7 @@ public class PopoEpubOutputTests
 
         try
         {
-            using var listener = StartListener(out var baseUrl);
+            using var listener = LoopbackListener.Start(out var baseUrl);
             string? body = null;
 
             var serve = Task.Run(async () =>
@@ -101,7 +101,7 @@ public class PopoEpubOutputTests
     [Fact]
     public async Task DownloadEpubAsync_ReturnsNull_WhenServerNeverGeneratedAnEpub()
     {
-        using var listener = StartListener(out var baseUrl);
+        using var listener = LoopbackListener.Start(out var baseUrl);
         string? requestedFormat = null;
 
         var serve = Task.Run(async () =>
@@ -124,7 +124,7 @@ public class PopoEpubOutputTests
     [Fact]
     public async Task DownloadEpubAsync_ReturnsTheEpubBytes()
     {
-        using var listener = StartListener(out var baseUrl);
+        using var listener = LoopbackListener.Start(out var baseUrl);
         var payload = new byte[] { 0x50, 0x4b, 0x03, 0x04, 0x6d, 0x69, 0x6d };
 
         var serve = Task.Run(async () =>
@@ -141,36 +141,6 @@ public class PopoEpubOutputTests
         await serve;
 
         Assert.Equal(payload, epub);
-    }
-
-    #endregion
-
-    #region Helpers
-
-    /// <summary>
-    /// Starts an HttpListener on a free loopback port and reports its base URL (no trailing slash).
-    /// </summary>
-    private static HttpListener StartListener(out string baseUrl)
-    {
-        for (var attempt = 0; attempt < 20; attempt++)
-        {
-            var port = 17800 + Random.Shared.Next(2000);
-            var prefix = $"http://127.0.0.1:{port}/";
-            var listener = new HttpListener();
-            listener.Prefixes.Add(prefix);
-            try
-            {
-                listener.Start();
-                baseUrl = prefix.TrimEnd('/');
-                return listener;
-            }
-            catch (HttpListenerException)
-            {
-                listener.Close();
-            }
-        }
-
-        throw new InvalidOperationException("Could not bind a loopback port for the Popo EPUB tests.");
     }
 
     #endregion

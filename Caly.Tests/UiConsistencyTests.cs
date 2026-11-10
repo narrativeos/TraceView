@@ -26,7 +26,8 @@ namespace Caly.Tests;
 /// <summary>
 /// Guards the visual/voice consistency of the UI layer: neutral surfaces must come from theme tokens so
 /// that Dark mode keeps working, icon-only buttons must stay accessible, glyphs must be drawn (not emoji),
-/// and the dialog chrome must speak the same language as the rest of the app.
+/// and the dialog chrome must speak the same language as the rest of the app — including one button
+/// order across every dialog.
 /// </summary>
 public class UiConsistencyTests
 {
@@ -196,6 +197,53 @@ public class UiConsistencyTests
             var end = app.IndexOf("</ResourceDictionary>", start, StringComparison.Ordinal);
             Assert.Contains($"x:Key=\"{key}\"", app[start..end]);
         }
+    }
+
+    [Fact]
+    public void DialogButtonRows_PutTheDefaultActionRightmost()
+    {
+        // 取消 sits left of the default action, and the default action stays last, so it
+        // never jumps position when a dialog gains or loses an extra action button.
+        var offenders = new List<string>();
+
+        foreach (var file in XamlFiles().Where(f =>
+                     Path.GetFileName(f).EndsWith("Window.axaml", StringComparison.Ordinal)))
+        {
+            var buttons = Regex.Matches(File.ReadAllText(file), @"<Button\b[^>]*>");
+
+            var cancel = -1;
+            var isDefault = -1;
+
+            foreach (Match button in buttons)
+            {
+                if (cancel < 0 && button.Value.Contains("IsCancel=\"True\"", StringComparison.Ordinal))
+                {
+                    cancel = button.Index;
+                }
+
+                if (isDefault < 0 && button.Value.Contains("IsDefault=\"True\"", StringComparison.Ordinal))
+                {
+                    isDefault = button.Index;
+                }
+            }
+
+            if (cancel < 0 || isDefault < 0)
+            {
+                continue; // no cancel / default pair to order
+            }
+
+            if (cancel > isDefault)
+            {
+                offenders.Add($"{Path.GetFileName(file)}: 「取消」出现在默认动作的右侧");
+            }
+
+            if (isDefault != buttons[buttons.Count - 1].Index)
+            {
+                offenders.Add($"{Path.GetFileName(file)}: 默认动作不是按钮行的最后一项");
+            }
+        }
+
+        Assert.True(offenders.Count == 0, string.Join(Environment.NewLine, offenders));
     }
 
     private static string LocateFile(string project, string file) => Path.Combine(LocateDirectory(project), file);

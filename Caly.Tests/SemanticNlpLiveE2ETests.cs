@@ -29,6 +29,8 @@ namespace Caly.Tests;
 /// running NLP at http://localhost:8000 and verifies keep/filter/noun_signals
 /// flow through to the <see cref="SemanticBlockResult"/>. Skips when the NLP is
 /// not reachable (CI-safe, mirrors the fixture-based integration tests).
+/// Only structural invariants are asserted — the NLP is non-deterministic, so a
+/// specific surface form or span would make this flaky (see the note in the test).
 /// </summary>
 public class SemanticNlpLiveE2ETests
 {
@@ -68,10 +70,13 @@ public class SemanticNlpLiveE2ETests
 
         var result = await service.AnalyzeAsync(node);
 
-        // Noun signals (Step A + B) should be populated and carry a syntactic role.
+        // Noun signals (Step A + B) must be populated and carry a syntactic role.
+        // Deliberately no exact-string assertion (such as "测量" being present): the NLP
+        // answers the same request differently — 5 identical POSTs gave 3 different
+        // noun_signal sets, some of them merging it into "介损测量". Assert what the
+        // pipeline guarantees, not the model's per-run choice.
         Assert.NotEmpty(result.NounSignals);
         Assert.All(result.NounSignals, s => Assert.False(string.IsNullOrEmpty(s.SyntacticRole)));
-        Assert.Contains(result.NounSignals, s => s.Text == "测量");
 
         // Every demoted entity must carry a filter tag (soft demotion, auditable).
         Assert.All(result.Entities, e =>
