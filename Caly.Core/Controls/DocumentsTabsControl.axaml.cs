@@ -434,16 +434,18 @@ public sealed partial class DocumentsTabsControl : UserControl
         if (DataContext is not MainViewModel mainVm || mainVm.SelectedDocument is not DocumentViewModel docVm)
             return;
 
-        // Ask the user for the page range (all / start-end, default 1-15) and the
-        // parse tier (default: the last tier chosen, persisted in settings) before
-        // starting the parse.
+        // Ask the user for the page range (all / start-end, default 1-15), the parse
+        // tier and the parse engine (ocr_mode: auto / txt / ocr) before starting the
+        // parse; both default to the last value chosen, persisted in settings.
         var optionsDialog = DialogService;
         if (optionsDialog is not null)
         {
             var settingsService = App.Current?.Services?.GetService<ISettingsService>();
+            var settings = settingsService?.GetSettings();
 
             var parseOptions = await optionsDialog.ShowMinerUParseOptionsDialogAsync(
-                settingsService?.GetSettings().MinerUTier);
+                settings?.MinerUTier,
+                settings?.MinerUOcrMode);
             if (parseOptions is null)
             {
                 // User cancelled the options dialog.
@@ -451,15 +453,25 @@ public sealed partial class DocumentsTabsControl : UserControl
                 return;
             }
 
-            // Remember the selected tier so the next dialog preselects it.
-            if (settingsService is not null)
+            // Remember the selected tier and engine so the next dialog preselects them.
+            if (settings is not null)
             {
-                var settings = settingsService.GetSettings();
+                var dirty = false;
+
                 if (!string.Equals(settings.MinerUTier, parseOptions.Tier, System.StringComparison.OrdinalIgnoreCase))
                 {
                     settings.MinerUTier = parseOptions.Tier;
-                    settingsService.Save();
+                    dirty = true;
                 }
+
+                if (!string.Equals(settings.MinerUOcrMode, parseOptions.OcrMode, System.StringComparison.OrdinalIgnoreCase))
+                {
+                    settings.MinerUOcrMode = parseOptions.OcrMode;
+                    dirty = true;
+                }
+
+                if (dirty)
+                    settingsService?.Save();
             }
 
             docVm.SetMinerUParseOptions(parseOptions);

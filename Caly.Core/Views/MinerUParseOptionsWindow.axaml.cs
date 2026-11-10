@@ -7,8 +7,9 @@ namespace Caly.Core.Views;
 /// <summary>
 /// Dialog shown when the user clicks the MinerU parse button.
 /// Lets the user choose the page range (all pages, or a start/end page range,
-/// defaulting to pages 1-15) and the parse tier (default: the last tier the
-/// user selected, persisted in settings; "standard" initially).
+/// defaulting to pages 1-15), the parse tier (default: the last tier the
+/// user selected, persisted in settings; "standard" initially) and the parse
+/// engine (<c>ocr_mode</c>: auto / txt / ocr, default "auto").
 /// Closing with Cancel returns <c>null</c>.
 /// </summary>
 public partial class MinerUParseOptionsWindow : Window
@@ -19,28 +20,38 @@ public partial class MinerUParseOptionsWindow : Window
     }
 
     /// <summary>
-    /// Creates the dialog with the tier combo box pre-selected to
-    /// <paramref name="initialTier"/> (typically the last tier the user
-    /// chose, persisted in settings). Falls back to "standard" when null
-    /// or not a known tier.
+    /// Creates the dialog with the tier and engine combo boxes pre-selected to
+    /// <paramref name="initialTier"/> and <paramref name="initialOcrMode"/>
+    /// (typically the last values the user chose, persisted in settings). Each falls
+    /// back to its XAML default ("standard" / "auto") when null or not a known value.
     /// </summary>
-    public MinerUParseOptionsWindow(string? initialTier)
+    public MinerUParseOptionsWindow(string? initialTier, string? initialOcrMode)
         : this()
     {
-        if (string.IsNullOrWhiteSpace(initialTier))
+        Preselect("TierCombo", initialTier);
+        Preselect("EngineCombo", initialOcrMode);
+    }
+
+    /// <summary>
+    /// Selects <paramref name="value"/> in the named string combo box, ignoring
+    /// unknown or empty values so the XAML default stays selected.
+    /// </summary>
+    private void Preselect(string comboName, string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
             return;
 
-        var tierCombo = this.FindControl<ComboBox>("TierCombo");
-        if (tierCombo is null)
+        var combo = this.FindControl<ComboBox>(comboName);
+        if (combo is null)
             return;
 
-        var index = tierCombo.Items
+        var index = combo.Items
             ?.OfType<object>()
             .ToList()
-            .FindIndex(item => string.Equals(item as string, initialTier.Trim(), System.StringComparison.OrdinalIgnoreCase));
+            .FindIndex(item => string.Equals(item as string, value.Trim(), System.StringComparison.OrdinalIgnoreCase));
 
         if (index is not null && index >= 0)
-            tierCombo.SelectedIndex = index.Value;
+            combo.SelectedIndex = index.Value;
     }
 
     private void OnOkClick(object? sender, RoutedEventArgs e)
@@ -49,6 +60,7 @@ public partial class MinerUParseOptionsWindow : Window
         var startBox = this.FindControl<NumericUpDown>("StartPageBox");
         var endBox = this.FindControl<NumericUpDown>("EndPageBox");
         var tierCombo = this.FindControl<ComboBox>("TierCombo");
+        var engineCombo = this.FindControl<ComboBox>("EngineCombo");
 
         string? pageRange = null;
         if (rangeRadio?.IsChecked == true)
@@ -63,11 +75,13 @@ public partial class MinerUParseOptionsWindow : Window
         }
 
         var tier = tierCombo?.SelectedItem as string ?? Services.MinerUService.DefaultTier;
+        var ocrMode = engineCombo?.SelectedItem as string ?? Services.MinerUService.DefaultOcrMode;
 
         Close(new MinerUParseOptions
         {
             PageRange = pageRange,
-            Tier = tier
+            Tier = tier,
+            OcrMode = ocrMode
         });
     }
 
@@ -92,4 +106,11 @@ public sealed class MinerUParseOptions
     /// Parse tier: "flash", "basic", "standard" or "advanced".
     /// </summary>
     public string Tier { get; init; } = Services.MinerUService.DefaultTier;
+
+    /// <summary>
+    /// Parse engine (MinerU <c>ocr_mode</c>): "auto" (pick the parsing branch per page,
+    /// the default), "txt" (native text layer for the whole document) or
+    /// "ocr" (forced OCR for the whole document).
+    /// </summary>
+    public string OcrMode { get; init; } = Services.MinerUService.DefaultOcrMode;
 }

@@ -75,6 +75,31 @@
                                         </ComboBox>
                                     </Grid>
 
+                                    <!-- Parse Engine (ocr_mode) -->
+                                    <Grid ColumnDefinitions="Auto,12,*" RowDefinitions="Auto">
+                                        <TextBlock Grid.Column="0"
+                                                   Grid.Row="0"
+                                                   VerticalAlignment="Center"
+                                                   Text="解析引擎"/>
+                                        <!-- Same string-items + SelectedItem pattern as the tier above.
+                                             Maps to the MinerU ocr_mode parameter: auto picks the parsing
+                                             branch per page, txt uses the native text layer for the whole
+                                             document, ocr forces OCR for the whole document. -->
+                                        <ComboBox Grid.Column="2"
+                                                  Grid.Row="0"
+                                                  Margin="0,2"
+                                                  SelectedItem="{Binding Settings.MinerUOcrMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                            <x:String>auto</x:String>
+                                            <x:String>txt</x:String>
+                                            <x:String>ocr</x:String>
+                                        </ComboBox>
+                                    </Grid>
+
+                                    <TextBlock Margin="0,0,0,0"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource SystemControlPageTextChromeDisabledBrush}"
+                                               Text="引擎即 MinerU 的 ocr_mode：auto 逐页选分支（默认）、txt 整本用文字层、ocr 整本强制 OCR。这里设置的是默认值，点“加工”时的弹框可临时改，并会记住最后一次选择。"/>
+
                                     <!-- API Key -->
                                     <Grid ColumnDefinitions="Auto,12,*" RowDefinitions="Auto">
                                         <TextBlock Grid.Column="0"

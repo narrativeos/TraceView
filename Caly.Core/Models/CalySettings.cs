@@ -34,6 +34,7 @@ public sealed class CalySettings
         Debug = null,
         MinerUBaseUrl = "http://192.168.1.100:8401",
         MinerUTier = "standard",
+        MinerUOcrMode = "auto",
         MinerUEnabled = true,
         PopoBaseUrl = "http://192.168.1.100:8412",
         PopoOutputEpub = true
@@ -74,6 +75,13 @@ public sealed class CalySettings
     /// MinerU 4.1 V1 API tier: "flash", "basic", "standard" (default) or "advanced".
     /// </summary>
     public string MinerUTier { get; set; } = "standard";
+
+    /// <summary>
+    /// MinerU 4.1 V1 API parse engine (<c>ocr_mode</c>): "auto" (default, picks the
+    /// parsing branch per page), "txt" (native text layer for the whole document) or
+    /// "ocr" (forced OCR for the whole document).
+    /// </summary>
+    public string MinerUOcrMode { get; set; } = "auto";
 
     /// <summary>
     /// API key for the MinerU "pro" tier (sent as a Bearer token).

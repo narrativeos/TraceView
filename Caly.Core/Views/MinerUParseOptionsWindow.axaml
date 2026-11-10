@@ -2,7 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="460" d:DesignHeight="240"
+        mc:Ignorable="d" d:DesignWidth="460" d:DesignHeight="320"
         x:Class="Caly.Core.Views.MinerUParseOptionsWindow"
         CanResize="False"
         ShowInTaskbar="False"
@@ -10,7 +10,7 @@
         ShowActivated="True"
         Title="MinerU 加工选项"
         Width="460" MinWidth="460"
-        Height="240" MinHeight="240">
+        Height="320" MinHeight="320">
     <StackPanel Margin="16" Spacing="12">
         <!-- Page range -->
         <TextBlock Text="页面范围" FontSize="14" FontWeight="Bold"/>
@@ -58,6 +58,24 @@
             <x:String>standard</x:String>
             <x:String>advanced</x:String>
         </ComboBox>
+
+        <!-- Parse engine (MinerU ocr_mode) -->
+        <TextBlock Text="引擎" FontSize="14" FontWeight="Bold"/>
+        <!-- String items + SelectedIndex: same pattern as the tier combo (default: auto) -->
+        <ComboBox x:Name="EngineCombo"
+                  HorizontalAlignment="Left"
+                  Width="160"
+                  SelectedIndex="0">
+            <x:String>auto</x:String>
+            <x:String>txt</x:String>
+            <x:String>ocr</x:String>
+        </ComboBox>
+        <!-- Own line: a horizontal panel would push the hint past the 460px window width and clip it -->
+        <TextBlock FontSize="11"
+                   Margin="0,-6,0,0"
+                   TextWrapping="Wrap"
+                   Foreground="{DynamicResource SystemControlPageTextChromeDisabledBrush}"
+                   Text="auto 逐页选分支 / txt 整本用文字层 / ocr 整本强制 OCR"/>
 
         <!-- Actions -->
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,8,0,0">

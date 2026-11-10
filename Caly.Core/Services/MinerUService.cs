@@ -79,6 +79,31 @@ public sealed class MinerUService : IDisposable
             : DefaultTier;
 
     /// <summary>
+    /// Default parse engine (<c>ocr_mode</c>): the server picks the parsing branch per page.
+    /// </summary>
+    public const string DefaultOcrMode = "auto";
+
+    /// <summary>
+    /// Parse engine ids accepted by the 4.1 V1 API (<c>ocr_mode</c>):
+    /// "auto" picks the branch per page, "txt" uses the native text layer for the
+    /// whole document, "ocr" forces OCR for the whole document.
+    /// </summary>
+    private static readonly HashSet<string> ValidOcrModes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "auto", "txt", "ocr"
+    };
+
+    /// <summary>
+    /// Normalizes a configured parse engine: falls back to <see cref="DefaultOcrMode"/>
+    /// ("auto") when the value is empty or not one of the accepted engine ids, so an
+    /// unknown value never reaches the API (which would reject it with HTTP 400).
+    /// </summary>
+    private static string NormalizeOcrMode(string? ocrMode)
+        => !string.IsNullOrWhiteSpace(ocrMode) && ValidOcrModes.Contains(ocrMode.Trim())
+            ? ocrMode.Trim().ToLowerInvariant()
+            : DefaultOcrMode;
+
+    /// <summary>
     /// Polling interval for parse job status checks.
     /// </summary>
     public static readonly TimeSpan DefaultPollInterval = TimeSpan.FromSeconds(2);
@@ -350,6 +375,12 @@ public sealed class MinerUService : IDisposable
     /// Uploads the file, submits a parse job, polls for completion,
     /// downloads the result zip, and builds the MinerUDocument.
     /// </summary>
+    /// <remarks>
+    /// Always submits with the default parse engine (<c>ocr_mode</c> "auto"). The app
+    /// path goes through <see cref="SubmitTaskAsync"/> and <see cref="PollUntilCompleteAsync"/>
+    /// instead, because it carries the per-document page range and engine chosen in the
+    /// parse options dialog.
+    /// </remarks>
     public async Task<MinerUParseResult> ParseAsync(
         string pdfPath,
         string tier = DefaultTier,
@@ -358,7 +389,7 @@ public sealed class MinerUService : IDisposable
     {
         // Step 1: Submit the parse job (includes the file upload)
         onProgress?.Invoke(MinerUParseStatus.Submitting, 10);
-        var jobId = await SubmitTaskAsync(pdfPath, tier, null, ct);
+        var jobId = await SubmitTaskAsync(pdfPath, tier, null, ct: ct);
 
         // Step 2: Poll until complete
         onProgress?.Invoke(MinerUParseStatus.Queued, 15);
@@ -379,7 +410,10 @@ public sealed class MinerUService : IDisposable
     /// Uploads a PDF and submits it for async parsing via POST /v1/parse/jobs.
     /// Returns the job ID for status polling.
     /// </summary>
-    public async Task<string> SubmitTaskAsync(string pdfPath, string tier = DefaultTier, string? pageRange = null, CancellationToken ct = default)
+    /// <param name="ocrMode">Parse engine (<c>ocr_mode</c>): "auto", "txt" or "ocr";
+    /// anything else falls back to <see cref="DefaultOcrMode"/>, since the API rejects
+    /// unknown values with HTTP 400.</param>
+    public async Task<string> SubmitTaskAsync(string pdfPath, string tier = DefaultTier, string? pageRange = null, string ocrMode = DefaultOcrMode, CancellationToken ct = default)
     {
         // Upload the file first to obtain a file_id
         var fileId = await UploadFileAsync(pdfPath, ct);
@@ -397,6 +431,7 @@ public sealed class MinerUService : IDisposable
                 }
             },
             Tier = NormalizeTier(tier),
+            OcrMode = NormalizeOcrMode(ocrMode),
             OutputFormats = new[] { "markdown", "middle_json", "zip" }.ToList()
         };
 

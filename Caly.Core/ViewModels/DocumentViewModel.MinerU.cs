@@ -144,7 +144,7 @@ public sealed partial class DocumentViewModel
     }
 
     /// <summary>
-    /// Parse options (page range + tier) selected by the user in the MinerU
+    /// Parse options (page range + tier + engine) selected by the user in the MinerU
     /// parse options dialog. Consumed once by <see cref="ParseWithMinerUAsync"/>.
     /// </summary>
     private MinerUParseOptions? _pendingMinerUParseOptions;
@@ -608,6 +608,7 @@ public sealed partial class DocumentViewModel
                 LocalPath,
                 parseOptions?.Tier ?? settings.MinerUTier,
                 parseOptions?.PageRange,
+                parseOptions?.OcrMode ?? settings.MinerUOcrMode,
                 _minerUCts.Token);
 
             // Save task ID so it can be recovered if the app closes

@@ -366,7 +366,7 @@ internal sealed class DialogService : IDialogService
         }, DispatcherPriority.Loaded);
     }
 
-    public async Task<MinerUParseOptions?> ShowMinerUParseOptionsDialogAsync(string? initialTier = null)
+    public async Task<MinerUParseOptions?> ShowMinerUParseOptionsDialogAsync(string? initialTier = null, string? initialOcrMode = null)
     {
         return await Dispatcher.UIThread.InvokeAsync(async () =>
         {
@@ -377,7 +377,7 @@ internal sealed class DialogService : IDialogService
                 return null;
             }
 
-            var dialog = new MinerUParseOptionsWindow(initialTier);
+            var dialog = new MinerUParseOptionsWindow(initialTier, initialOcrMode);
             return await dialog.ShowDialog<MinerUParseOptions?>(w);
         }, DispatcherPriority.Loaded);
     }

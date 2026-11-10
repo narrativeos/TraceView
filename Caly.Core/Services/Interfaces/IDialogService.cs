@@ -120,11 +120,12 @@ namespace Caly.Core.Services.Interfaces
 
         /// <summary>
         /// Shows the MinerU parse options dialog, allowing the user to choose the
-        /// page range (all pages or a start/end range, default 1-15) and the parse
-        /// tier (default: the last tier the user selected, persisted in settings).
+        /// page range (all pages or a start/end range, default 1-15), the parse
+        /// tier and the parse engine (<c>ocr_mode</c>: auto / txt / ocr, default auto).
+        /// Both default to the last value the user selected, persisted in settings.
         /// Returns the selected options, or <c>null</c> if the user cancelled.
         /// </summary>
-        Task<MinerUParseOptions?> ShowMinerUParseOptionsDialogAsync(string? initialTier = null);
+        Task<MinerUParseOptions?> ShowMinerUParseOptionsDialogAsync(string? initialTier = null, string? initialOcrMode = null);
 
     }
 }
