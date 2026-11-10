@@ -222,7 +222,11 @@ public class MinerUFileObject
     [JsonPropertyName("bytes")]
     public long Bytes { get; set; }
 
-    [JsonPropertyName("filename")]
+    /// <summary>
+    /// Original file name. The V1 file object schema names this field
+    /// <c>file_name</c> (snake_case), unlike the upload object's <c>filename</c>.
+    /// </summary>
+    [JsonPropertyName("file_name")]
     public string? Filename { get; set; }
 
     [JsonPropertyName("purpose")]
@@ -238,13 +242,8 @@ public class MinerUFileObject
 public class MinerUTaskProgress
 {
     /// <summary>
-    /// Progress percentage (0-100).
-    /// </summary>
-    [JsonPropertyName("percent")]
-    public int Percent { get; set; }
-
-    /// <summary>
     /// Current page being processed (1-based).
+    /// The V1 file-level progress object reports only current_page / total_pages / stage.
     /// </summary>
     [JsonPropertyName("current_page")]
     public int CurrentPage { get; set; }
