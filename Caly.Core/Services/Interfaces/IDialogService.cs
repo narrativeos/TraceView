@@ -118,5 +118,13 @@ namespace Caly.Core.Services.Interfaces
         /// </summary>
         Task<TermProcessChoice> ShowTermProcessChoiceDialogAsync(string title, string message);
 
+        /// <summary>
+        /// Shows the MinerU parse options dialog, allowing the user to choose the
+        /// page range (all pages or a start/end range, default 1-15) and the parse
+        /// tier (default: the last tier the user selected, persisted in settings).
+        /// Returns the selected options, or <c>null</c> if the user cancelled.
+        /// </summary>
+        Task<MinerUParseOptions?> ShowMinerUParseOptionsDialogAsync(string? initialTier = null);
+
     }
 }

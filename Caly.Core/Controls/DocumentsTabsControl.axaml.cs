@@ -434,6 +434,37 @@ public sealed partial class DocumentsTabsControl : UserControl
         if (DataContext is not MainViewModel mainVm || mainVm.SelectedDocument is not DocumentViewModel docVm)
             return;
 
+        // Ask the user for the page range (all / start-end, default 1-15) and the
+        // parse tier (default: the last tier chosen, persisted in settings) before
+        // starting the parse.
+        var optionsDialog = DialogService;
+        if (optionsDialog is not null)
+        {
+            var settingsService = App.Current?.Services?.GetService<ISettingsService>();
+
+            var parseOptions = await optionsDialog.ShowMinerUParseOptionsDialogAsync(
+                settingsService?.GetSettings().MinerUTier);
+            if (parseOptions is null)
+            {
+                // User cancelled the options dialog.
+                e.Handled = true;
+                return;
+            }
+
+            // Remember the selected tier so the next dialog preselects it.
+            if (settingsService is not null)
+            {
+                var settings = settingsService.GetSettings();
+                if (!string.Equals(settings.MinerUTier, parseOptions.Tier, System.StringComparison.OrdinalIgnoreCase))
+                {
+                    settings.MinerUTier = parseOptions.Tier;
+                    settingsService.Save();
+                }
+            }
+
+            docVm.SetMinerUParseOptions(parseOptions);
+        }
+
         if (docVm.IsMinerUCompleted)
         {
             var dialogService = DialogService;

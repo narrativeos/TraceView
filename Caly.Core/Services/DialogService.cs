@@ -365,4 +365,20 @@ internal sealed class DialogService : IDialogService
             return result ?? TermProcessChoice.Cancel;
         }, DispatcherPriority.Loaded);
     }
+
+    public async Task<MinerUParseOptions?> ShowMinerUParseOptionsDialogAsync(string? initialTier = null)
+    {
+        return await Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            Debug.ThrowNotOnUiThread();
+
+            if (_target is not Window w)
+            {
+                return null;
+            }
+
+            var dialog = new MinerUParseOptionsWindow(initialTier);
+            return await dialog.ShowDialog<MinerUParseOptions?>(w);
+        }, DispatcherPriority.Loaded);
+    }
 }

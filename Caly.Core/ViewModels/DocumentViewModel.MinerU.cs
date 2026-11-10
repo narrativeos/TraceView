@@ -21,6 +21,7 @@
 using Avalonia.Threading;
 using Caly.Core.Models;
 using Caly.Core.Services;
+using Caly.Core.Views;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System;
@@ -140,6 +141,21 @@ public sealed partial class DocumentViewModel
     public void MarkMinerUForReparse()
     {
         _forceMinerUReparse = true;
+    }
+
+    /// <summary>
+    /// Parse options (page range + tier) selected by the user in the MinerU
+    /// parse options dialog. Consumed once by <see cref="ParseWithMinerUAsync"/>.
+    /// </summary>
+    private MinerUParseOptions? _pendingMinerUParseOptions;
+
+    /// <summary>
+    /// Sets the parse options for the next MinerU parse.
+    /// Called from the UI click handler after the user confirms the options dialog.
+    /// </summary>
+    public void SetMinerUParseOptions(MinerUParseOptions options)
+    {
+        _pendingMinerUParseOptions = options;
     }
 
     /// <summary>
@@ -455,11 +471,16 @@ public sealed partial class DocumentViewModel
             return;
         }
 
+        // Consume the parse options (page range + tier) chosen in the options dialog.
+        var parseOptions = _pendingMinerUParseOptions;
+        _pendingMinerUParseOptions = null;
+
         var service = GetMinerUService();
 
         // Step 1: Try to load from cache first (avoids unnecessary network requests).
-        // Skipped when the user explicitly requested a re-parse.
-        if (!_forceMinerUReparse)
+        // Skipped when the user explicitly requested a re-parse, or when a specific
+        // page range was requested (cached results cover the whole document).
+        if (!_forceMinerUReparse && parseOptions?.PageRange is null)
         {
             var cachedResult = service.TryLoadFromCache(LocalPath);
             if (cachedResult?.StructureDocument is not null)
@@ -585,7 +606,8 @@ public sealed partial class DocumentViewModel
             // Submit the task and immediately persist the task ID
             var taskId = await service.SubmitTaskAsync(
                 LocalPath,
-                settings.MinerUTier,
+                parseOptions?.Tier ?? settings.MinerUTier,
+                parseOptions?.PageRange,
                 _minerUCts.Token);
 
             // Save task ID so it can be recovered if the app closes

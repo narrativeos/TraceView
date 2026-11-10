@@ -358,7 +358,7 @@ public sealed class MinerUService : IDisposable
     {
         // Step 1: Submit the parse job (includes the file upload)
         onProgress?.Invoke(MinerUParseStatus.Submitting, 10);
-        var jobId = await SubmitTaskAsync(pdfPath, tier, ct);
+        var jobId = await SubmitTaskAsync(pdfPath, tier, null, ct);
 
         // Step 2: Poll until complete
         onProgress?.Invoke(MinerUParseStatus.Queued, 15);
@@ -379,7 +379,7 @@ public sealed class MinerUService : IDisposable
     /// Uploads a PDF and submits it for async parsing via POST /v1/parse/jobs.
     /// Returns the job ID for status polling.
     /// </summary>
-    public async Task<string> SubmitTaskAsync(string pdfPath, string tier = DefaultTier, CancellationToken ct = default)
+    public async Task<string> SubmitTaskAsync(string pdfPath, string tier = DefaultTier, string? pageRange = null, CancellationToken ct = default)
     {
         // Upload the file first to obtain a file_id
         var fileId = await UploadFileAsync(pdfPath, ct);
@@ -391,7 +391,9 @@ public sealed class MinerUService : IDisposable
             {
                 new MinerUParseJobFile
                 {
-                    Source = new MinerUParseJobFileSource { Type = "file_id", FileId = fileId }
+                    Source = new MinerUParseJobFileSource { Type = "file_id", FileId = fileId },
+                    // Null means all pages; otherwise a 1-based inclusive range, e.g. "1-15".
+                    PageRange = pageRange
                 }
             },
             Tier = NormalizeTier(tier),
