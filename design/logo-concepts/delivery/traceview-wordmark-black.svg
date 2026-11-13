@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 508 72" width="508" height="72" role="img" aria-labelledby="title">
+  <title id="title">TraceView wordmark</title>
+  <g id="wordmark" fill="none" stroke="#000000" stroke-width="12" stroke-linecap="round" stroke-linejoin="round">
+    <path id="T" d="M12 10 H48 M30 10 V58"/>
+    <path id="r" d="M74 30 V58 M74 42 A14 14 0 0 1 88 28 H100"/>
+    <path id="a" d="M138 30 A14 14 0 1 1 138 58 A14 14 0 1 1 138 30 Z M152 30 V58"/>
+    <path id="c" d="M202 34 A14 14 0 1 0 202 54"/>
+    <path id="e1" d="M232 44 H260 M260 44 A14 14 0 1 0 256 54"/>
+    <path id="V" d="M294 10 L312 58 L330 10"/>
+    <path id="i" d="M356 15 V15.01 M356 30 V58"/>
+    <path id="e2" d="M382 44 H410 M410 44 A14 14 0 1 0 406 54"/>
+    <path id="w" d="M444 10 L457 58 L470 35.5 L483 58 L496 10"/>
+  </g>
+</svg>

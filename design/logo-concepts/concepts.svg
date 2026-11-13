@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1600" height="840" viewBox="0 0 1600 840"><rect width="1600" height="840" fill="#f7f7f4"/><text x="60" y="78" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="40" font-weight="700" fill="#161616">TraceView — 图标重设计概念</text><text x="60" y="116" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="20" fill="#6b6b6b">Concepts for review — pick a direction (or tell me what you like in each).</text><rect x="60" y="150" width="474.667" height="630" rx="18" fill="#fff" stroke="#e4e4e0" stroke-width="1"/><g><svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title" viewBox="0 0 256 256" x="90" y="190" width="414.667" height="300" preserveAspectRatio="xMidYMid meet">
+  <title id="c0-title">TraceView concept A - Trace line</title>
+  <g id="c0-symbol">
+    <path fill="#123A5C" d="M72 40 H152 L200 88 V200 a16 16 0 0 1 -16 16 H72 a16 16 0 0 1 -16 -16 V56 a16 16 0 0 1 16 -16 Z"/>
+    <path fill="#2EC3F5" d="M152 40 V80 a8 8 0 0 0 8 8 H200 Z"/>
+    <rect x="40" y="124" width="176" height="24" rx="12" fill="#2EC3F5"/>
+  </g>
+</svg>
+</g><g><svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title" viewBox="0 0 256 256" x="90" y="516" width="64" height="64" preserveAspectRatio="xMidYMid meet">
+  <title id="s064-title">TraceView concept A - Trace line</title>
+  <g id="s064-symbol">
+    <path fill="#123A5C" d="M72 40 H152 L200 88 V200 a16 16 0 0 1 -16 16 H72 a16 16 0 0 1 -16 -16 V56 a16 16 0 0 1 16 -16 Z"/>
+    <path fill="#2EC3F5" d="M152 40 V80 a8 8 0 0 0 8 8 H200 Z"/>
+    <rect x="40" y="124" width="176" height="24" rx="12" fill="#2EC3F5"/>
+  </g>
+</svg>
+</g><text x="122" y="600" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#8a8a8a" text-anchor="middle">64px</text><g><svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title" viewBox="0 0 256 256" x="180" y="548" width="32" height="32" preserveAspectRatio="xMidYMid meet">
+  <title id="s032-title">TraceView concept A - Trace line</title>
+  <g id="s032-symbol">
+    <path fill="#123A5C" d="M72 40 H152 L200 88 V200 a16 16 0 0 1 -16 16 H72 a16 16 0 0 1 -16 -16 V56 a16 16 0 0 1 16 -16 Z"/>
+    <path fill="#2EC3F5" d="M152 40 V80 a8 8 0 0 0 8 8 H200 Z"/>
+    <rect x="40" y="124" width="176" height="24" rx="12" fill="#2EC3F5"/>
+  </g>
+</svg>
+</g><text x="196" y="600" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#8a8a8a" text-anchor="middle">32px</text><g><svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title" viewBox="0 0 256 256" x="238" y="564" width="16" height="16" preserveAspectRatio="xMidYMid meet">
+  <title id="s016-title">TraceView concept A - Trace line</title>
+  <g id="s016-symbol">
+    <path fill="#123A5C" d="M72 40 H152 L200 88 V200 a16 16 0 0 1 -16 16 H72 a16 16 0 0 1 -16 -16 V56 a16 16 0 0 1 16 -16 Z"/>
+    <path fill="#2EC3F5" d="M152 40 V80 a8 8 0 0 0 8 8 H200 Z"/>
+    <rect x="40" y="124" width="176" height="24" rx="12" fill="#2EC3F5"/>
+  </g>
+</svg>
+</g><text x="246" y="600" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#8a8a8a" text-anchor="middle">16px</text><text x="90.0" y="636" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="26" font-weight="700" fill="#161616">A · Trace Line</text><text x="90.0" y="670" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="19" fill="#555">文档页上一道贯穿并伸出页缘的阅读轨迹线——划过文本的那道光。</text><rect x="562.667" y="150" width="474.667" height="630" rx="18" fill="#fff" stroke="#161616" stroke-width="2"/><g><svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title" viewBox="0 0 256 256" x="592.667" y="190" width="414.667" height="300" preserveAspectRatio="xMidYMid meet">
+  <title id="c1-title">TraceView concept B - Hex T</title>
+  <path id="c1-symbol" fill="#1478D2" fill-rule="evenodd" d="M120 28.6 A16 16 0 0 1 136 28.6 L210 71.4 A16 16 0 0 1 218 85.2 V170.8 A16 16 0 0 1 210 184.6 L136 227.4 A16 16 0 0 1 120 227.4 L46 184.6 A16 16 0 0 1 38 170.8 V85.2 A16 16 0 0 1 46 71.4 Z M76 84 H176 L184 92 V108 H144 V172 a8 8 0 0 1 -8 8 H120 a8 8 0 0 1 -8 -8 V108 H76 Z"/>
+</svg>
+</g><g><svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title" viewBox="0 0 256 256" x="592.667" y="516" width="64" height="64" preserveAspectRatio="xMidYMid meet">
+  <title id="s164-title">TraceView concept B - Hex T</title>
+  <path id="s164-symbol" fill="#1478D2" fill-rule="evenodd" d="M120 28.6 A16 16 0 0 1 136 28.6 L210 71.4 A16 16 0 0 1 218 85.2 V170.8 A16 16 0 0 1 210 184.6 L136 227.4 A16 16 0 0 1 120 227.4 L46 184.6 A16 16 0 0 1 38 170.8 V85.2 A16 16 0 0 1 46 71.4 Z M76 84 H176 L184 92 V108 H144 V172 a8 8 0 0 1 -8 8 H120 a8 8 0 0 1 -8 -8 V108 H76 Z"/>
+</svg>
+</g><text x="624.667" y="600" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#8a8a8a" text-anchor="middle">64px</text><g><svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title" viewBox="0 0 256 256" x="682.667" y="548" width="32" height="32" preserveAspectRatio="xMidYMid meet">
+  <title id="s132-title">TraceView concept B - Hex T</title>
+  <path id="s132-symbol" fill="#1478D2" fill-rule="evenodd" d="M120 28.6 A16 16 0 0 1 136 28.6 L210 71.4 A16 16 0 0 1 218 85.2 V170.8 A16 16 0 0 1 210 184.6 L136 227.4 A16 16 0 0 1 120 227.4 L46 184.6 A16 16 0 0 1 38 170.8 V85.2 A16 16 0 0 1 46 71.4 Z M76 84 H176 L184 92 V108 H144 V172 a8 8 0 0 1 -8 8 H120 a8 8 0 0 1 -8 -8 V108 H76 Z"/>
+</svg>
+</g><text x="698.667" y="600" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#8a8a8a" text-anchor="middle">32px</text><g><svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title" viewBox="0 0 256 256" x="740.667" y="564" width="16" height="16" preserveAspectRatio="xMidYMid meet">
+  <title id="s116-title">TraceView concept B - Hex T</title>
+  <path id="s116-symbol" fill="#1478D2" fill-rule="evenodd" d="M120 28.6 A16 16 0 0 1 136 28.6 L210 71.4 A16 16 0 0 1 218 85.2 V170.8 A16 16 0 0 1 210 184.6 L136 227.4 A16 16 0 0 1 120 227.4 L46 184.6 A16 16 0 0 1 38 170.8 V85.2 A16 16 0 0 1 46 71.4 Z M76 84 H176 L184 92 V108 H144 V172 a8 8 0 0 1 -8 8 H120 a8 8 0 0 1 -8 -8 V108 H76 Z"/>
+</svg>
+</g><text x="748.667" y="600" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#8a8a8a" text-anchor="middle">16px</text><text x="592.6666666666667" y="636" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="26" font-weight="700" fill="#161616">B · Hex T</text><text x="592.6666666666667" y="664" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="15" font-weight="700" fill="#161616" letter-spacing="1.5">RECOMMENDED</text><text x="592.6666666666667" y="698" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="19" fill="#555">旧 logo 的六边形改为实心填充，负空间 T 右上角折角呼应 PDF 页。</text><rect x="1065.33" y="150" width="474.667" height="630" rx="18" fill="#fff" stroke="#e4e4e0" stroke-width="1"/><g><svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title" viewBox="0 0 256 256" x="1095.33" y="190" width="414.667" height="300" preserveAspectRatio="xMidYMid meet">
+  <title id="c2-title">TraceView concept C - Momentum</title>
+  <g id="c2-symbol">
+    <rect x="56" y="40" width="96" height="128" rx="14" fill="#C9E9FA"/>
+    <rect x="80" y="60" width="96" height="128" rx="14" fill="#7FD0F2"/>
+    <path fill="#1478D2" fill-rule="evenodd" d="M118 80 H176 L200 104 V194 a14 14 0 0 1 -14 14 H118 a14 14 0 0 1 -14 -14 V94 a14 14 0 0 1 14 -14 Z M124 128 H180 a7 7 0 0 1 0 14 H124 a7 7 0 0 1 0 -14 Z M124 156 H164 a7 7 0 0 1 0 14 H124 a7 7 0 0 1 0 -14 Z"/>
+    <path fill="#2EC3F5" d="M176 80 L200 104 H184 a8 8 0 0 1 -8 -8 Z"/>
+  </g>
+</svg>
+</g><g><svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title" viewBox="0 0 256 256" x="1095.33" y="516" width="64" height="64" preserveAspectRatio="xMidYMid meet">
+  <title id="s264-title">TraceView concept C - Momentum</title>
+  <g id="s264-symbol">
+    <rect x="56" y="40" width="96" height="128" rx="14" fill="#C9E9FA"/>
+    <rect x="80" y="60" width="96" height="128" rx="14" fill="#7FD0F2"/>
+    <path fill="#1478D2" fill-rule="evenodd" d="M118 80 H176 L200 104 V194 a14 14 0 0 1 -14 14 H118 a14 14 0 0 1 -14 -14 V94 a14 14 0 0 1 14 -14 Z M124 128 H180 a7 7 0 0 1 0 14 H124 a7 7 0 0 1 0 -14 Z M124 156 H164 a7 7 0 0 1 0 14 H124 a7 7 0 0 1 0 -14 Z"/>
+    <path fill="#2EC3F5" d="M176 80 L200 104 H184 a8 8 0 0 1 -8 -8 Z"/>
+  </g>
+</svg>
+</g><text x="1127.33" y="600" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#8a8a8a" text-anchor="middle">64px</text><g><svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title" viewBox="0 0 256 256" x="1185.33" y="548" width="32" height="32" preserveAspectRatio="xMidYMid meet">
+  <title id="s232-title">TraceView concept C - Momentum</title>
+  <g id="s232-symbol">
+    <rect x="56" y="40" width="96" height="128" rx="14" fill="#C9E9FA"/>
+    <rect x="80" y="60" width="96" height="128" rx="14" fill="#7FD0F2"/>
+    <path fill="#1478D2" fill-rule="evenodd" d="M118 80 H176 L200 104 V194 a14 14 0 0 1 -14 14 H118 a14 14 0 0 1 -14 -14 V94 a14 14 0 0 1 14 -14 Z M124 128 H180 a7 7 0 0 1 0 14 H124 a7 7 0 0 1 0 -14 Z M124 156 H164 a7 7 0 0 1 0 14 H124 a7 7 0 0 1 0 -14 Z"/>
+    <path fill="#2EC3F5" d="M176 80 L200 104 H184 a8 8 0 0 1 -8 -8 Z"/>
+  </g>
+</svg>
+</g><text x="1201.33" y="600" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#8a8a8a" text-anchor="middle">32px</text><g><svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title" viewBox="0 0 256 256" x="1243.33" y="564" width="16" height="16" preserveAspectRatio="xMidYMid meet">
+  <title id="s216-title">TraceView concept C - Momentum</title>
+  <g id="s216-symbol">
+    <rect x="56" y="40" width="96" height="128" rx="14" fill="#C9E9FA"/>
+    <rect x="80" y="60" width="96" height="128" rx="14" fill="#7FD0F2"/>
+    <path fill="#1478D2" fill-rule="evenodd" d="M118 80 H176 L200 104 V194 a14 14 0 0 1 -14 14 H118 a14 14 0 0 1 -14 -14 V94 a14 14 0 0 1 14 -14 Z M124 128 H180 a7 7 0 0 1 0 14 H124 a7 7 0 0 1 0 -14 Z M124 156 H164 a7 7 0 0 1 0 14 H124 a7 7 0 0 1 0 -14 Z"/>
+    <path fill="#2EC3F5" d="M176 80 L200 104 H184 a8 8 0 0 1 -8 -8 Z"/>
+  </g>
+</svg>
+</g><text x="1251.33" y="600" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#8a8a8a" text-anchor="middle">16px</text><text x="1095.3333333333335" y="636" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="26" font-weight="700" fill="#161616">C · Momentum</text><text x="1095.3333333333335" y="670" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="19" fill="#555">三张页面层叠向前位移——翻页的速度感与多标签页。</text></svg>

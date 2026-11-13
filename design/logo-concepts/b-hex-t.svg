@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-labelledby="title">
+  <title id="title">TraceView concept B - Hex T</title>
+  <path id="symbol" fill="#1478D2" fill-rule="evenodd" d="M120 28.6 A16 16 0 0 1 136 28.6 L210 71.4 A16 16 0 0 1 218 85.2 V170.8 A16 16 0 0 1 210 184.6 L136 227.4 A16 16 0 0 1 120 227.4 L46 184.6 A16 16 0 0 1 38 170.8 V85.2 A16 16 0 0 1 46 71.4 Z M76 84 H176 L184 92 V108 H144 V172 a8 8 0 0 1 -8 8 H120 a8 8 0 0 1 -8 -8 V108 H76 Z"/>
+</svg>

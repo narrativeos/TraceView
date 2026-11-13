@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1600" height="810" viewBox="0 0 1600 810"><rect width="1600" height="810" fill="#f7f7f4"/><text x="60" y="78" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="40" font-weight="700" fill="#161616">TraceView - v2 folded page</text><text x="60" y="116" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="20" fill="#6b6b6b">Concepts for review — pick a direction (or tell me what you like in each).</text><rect x="60" y="150" width="474.667" height="600" rx="18" fill="#fff" stroke="#e4e4e0" stroke-width="1"/><g><svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title" viewBox="0 0 256 256" x="90" y="190" width="414.667" height="300" preserveAspectRatio="xMidYMid meet">
+  <title id="c0-title">TraceView symbol</title>
+  <path id="c0-symbol" fill="#1478D2" fill-rule="evenodd" d="M64 40 H160 L216 96 V192 a24 24 0 0 1 -24 24 H64 a24 24 0 0 1 -24 -24 V64 a24 24 0 0 1 24 -24 Z M76 84 H180 V108 H144 V172 a8 8 0 0 1 -8 8 H120 a8 8 0 0 1 -8 -8 V108 H76 Z"/>
+</svg>
+</g><g><svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title" viewBox="0 0 256 256" x="90" y="516" width="64" height="64" preserveAspectRatio="xMidYMid meet">
+  <title id="s064-title">TraceView symbol</title>
+  <path id="s064-symbol" fill="#1478D2" fill-rule="evenodd" d="M64 40 H160 L216 96 V192 a24 24 0 0 1 -24 24 H64 a24 24 0 0 1 -24 -24 V64 a24 24 0 0 1 24 -24 Z M76 84 H180 V108 H144 V172 a8 8 0 0 1 -8 8 H120 a8 8 0 0 1 -8 -8 V108 H76 Z"/>
+</svg>
+</g><text x="122" y="600" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#8a8a8a" text-anchor="middle">64px</text><g><svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title" viewBox="0 0 256 256" x="180" y="548" width="32" height="32" preserveAspectRatio="xMidYMid meet">
+  <title id="s032-title">TraceView symbol</title>
+  <path id="s032-symbol" fill="#1478D2" fill-rule="evenodd" d="M64 40 H160 L216 96 V192 a24 24 0 0 1 -24 24 H64 a24 24 0 0 1 -24 -24 V64 a24 24 0 0 1 24 -24 Z M76 84 H180 V108 H144 V172 a8 8 0 0 1 -8 8 H120 a8 8 0 0 1 -8 -8 V108 H76 Z"/>
+</svg>
+</g><text x="196" y="600" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#8a8a8a" text-anchor="middle">32px</text><g><svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title" viewBox="0 0 256 256" x="238" y="564" width="16" height="16" preserveAspectRatio="xMidYMid meet">
+  <title id="s016-title">TraceView symbol</title>
+  <path id="s016-symbol" fill="#1478D2" fill-rule="evenodd" d="M64 40 H160 L216 96 V192 a24 24 0 0 1 -24 24 H64 a24 24 0 0 1 -24 -24 V64 a24 24 0 0 1 24 -24 Z M76 84 H180 V108 H144 V172 a8 8 0 0 1 -8 8 H120 a8 8 0 0 1 -8 -8 V108 H76 Z"/>
+</svg>
+</g><text x="246" y="600" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#8a8a8a" text-anchor="middle">16px</text><text x="90.0" y="636" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="26" font-weight="700" fill="#161616">A · Symbol</text><text x="90.0" y="670" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="19" fill="#555">折角矩形 + 负空间 T。</text><rect x="562.667" y="150" width="474.667" height="600" rx="18" fill="#fff" stroke="#e4e4e0" stroke-width="1"/><g><svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title" viewBox="0 0 512 512" x="592.667" y="190" width="414.667" height="300" preserveAspectRatio="xMidYMid meet">
+  <title id="c1-title">TraceView app icon</title>
+  <g id="c1-app-icon">
+    <rect x="32" y="32" width="448" height="448" rx="104" fill="#1478D2"/>
+    <path fill="#FFFFFF" fill-rule="evenodd" transform="translate(256,256) scale(1.5) translate(-128,-128)" d="M64 40 H160 L216 96 V192 a24 24 0 0 1 -24 24 H64 a24 24 0 0 1 -24 -24 V64 a24 24 0 0 1 24 -24 Z M76 84 H180 V108 H144 V172 a8 8 0 0 1 -8 8 H120 a8 8 0 0 1 -8 -8 V108 H76 Z"/>
+  </g>
+</svg>
+</g><g><svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title" viewBox="0 0 512 512" x="592.667" y="516" width="64" height="64" preserveAspectRatio="xMidYMid meet">
+  <title id="s164-title">TraceView app icon</title>
+  <g id="s164-app-icon">
+    <rect x="32" y="32" width="448" height="448" rx="104" fill="#1478D2"/>
+    <path fill="#FFFFFF" fill-rule="evenodd" transform="translate(256,256) scale(1.5) translate(-128,-128)" d="M64 40 H160 L216 96 V192 a24 24 0 0 1 -24 24 H64 a24 24 0 0 1 -24 -24 V64 a24 24 0 0 1 24 -24 Z M76 84 H180 V108 H144 V172 a8 8 0 0 1 -8 8 H120 a8 8 0 0 1 -8 -8 V108 H76 Z"/>
+  </g>
+</svg>
+</g><text x="624.667" y="600" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#8a8a8a" text-anchor="middle">64px</text><g><svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title" viewBox="0 0 512 512" x="682.667" y="548" width="32" height="32" preserveAspectRatio="xMidYMid meet">
+  <title id="s132-title">TraceView app icon</title>
+  <g id="s132-app-icon">
+    <rect x="32" y="32" width="448" height="448" rx="104" fill="#1478D2"/>
+    <path fill="#FFFFFF" fill-rule="evenodd" transform="translate(256,256) scale(1.5) translate(-128,-128)" d="M64 40 H160 L216 96 V192 a24 24 0 0 1 -24 24 H64 a24 24 0 0 1 -24 -24 V64 a24 24 0 0 1 24 -24 Z M76 84 H180 V108 H144 V172 a8 8 0 0 1 -8 8 H120 a8 8 0 0 1 -8 -8 V108 H76 Z"/>
+  </g>
+</svg>
+</g><text x="698.667" y="600" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#8a8a8a" text-anchor="middle">32px</text><g><svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title" viewBox="0 0 512 512" x="740.667" y="564" width="16" height="16" preserveAspectRatio="xMidYMid meet">
+  <title id="s116-title">TraceView app icon</title>
+  <g id="s116-app-icon">
+    <rect x="32" y="32" width="448" height="448" rx="104" fill="#1478D2"/>
+    <path fill="#FFFFFF" fill-rule="evenodd" transform="translate(256,256) scale(1.5) translate(-128,-128)" d="M64 40 H160 L216 96 V192 a24 24 0 0 1 -24 24 H64 a24 24 0 0 1 -24 -24 V64 a24 24 0 0 1 24 -24 Z M76 84 H180 V108 H144 V172 a8 8 0 0 1 -8 8 H120 a8 8 0 0 1 -8 -8 V108 H76 Z"/>
+  </g>
+</svg>
+</g><text x="748.667" y="600" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#8a8a8a" text-anchor="middle">16px</text><text x="592.6666666666667" y="636" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="26" font-weight="700" fill="#161616">B · App Icon</text><text x="592.6666666666667" y="670" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="19" fill="#555">圆角方块 + 白色镂空页面 T。</text><rect x="1065.33" y="150" width="474.667" height="600" rx="18" fill="#fff" stroke="#e4e4e0" stroke-width="1"/><g><svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title" viewBox="0 0 914 256" x="1095.33" y="190" width="414.667" height="300" preserveAspectRatio="xMidYMid meet">
+  <title id="c2-title">TraceView logo - horizontal</title>
+  <g id="c2-symbol">
+    <path fill="#1478D2" fill-rule="evenodd" d="M64 40 H160 L216 96 V192 a24 24 0 0 1 -24 24 H64 a24 24 0 0 1 -24 -24 V64 a24 24 0 0 1 24 -24 Z M76 84 H180 V108 H144 V172 a8 8 0 0 1 -8 8 H120 a8 8 0 0 1 -8 -8 V108 H76 Z"/>
+  </g>
+  <g id="c2-wordmark" transform="translate(304,87.2) scale(1.2)" fill="none" stroke="#123A5C" stroke-width="12" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 10 H48 M30 10 V58"/>
+    <path d="M74 30 V58 M74 42 A14 14 0 0 1 88 28 H100"/>
+    <path d="M138 30 A14 14 0 1 1 138 58 A14 14 0 1 1 138 30 Z M152 30 V58"/>
+    <path d="M202 34 A14 14 0 1 0 202 54"/>
+    <path d="M232 44 H260 M260 44 A14 14 0 1 0 256 54"/>
+    <path d="M294 10 L312 58 L330 10"/>
+    <path d="M356 15 V15.01 M356 30 V58"/>
+    <path d="M382 44 H410 M410 44 A14 14 0 1 0 406 54"/>
+    <path d="M444 10 L457 58 L470 35.5 L483 58 L496 10"/>
+  </g>
+</svg>
+</g><g><svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title" viewBox="0 0 914 256" x="1095.33" y="516" width="64" height="64" preserveAspectRatio="xMidYMid meet">
+  <title id="s264-title">TraceView logo - horizontal</title>
+  <g id="s264-symbol">
+    <path fill="#1478D2" fill-rule="evenodd" d="M64 40 H160 L216 96 V192 a24 24 0 0 1 -24 24 H64 a24 24 0 0 1 -24 -24 V64 a24 24 0 0 1 24 -24 Z M76 84 H180 V108 H144 V172 a8 8 0 0 1 -8 8 H120 a8 8 0 0 1 -8 -8 V108 H76 Z"/>
+  </g>
+  <g id="s264-wordmark" transform="translate(304,87.2) scale(1.2)" fill="none" stroke="#123A5C" stroke-width="12" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 10 H48 M30 10 V58"/>
+    <path d="M74 30 V58 M74 42 A14 14 0 0 1 88 28 H100"/>
+    <path d="M138 30 A14 14 0 1 1 138 58 A14 14 0 1 1 138 30 Z M152 30 V58"/>
+    <path d="M202 34 A14 14 0 1 0 202 54"/>
+    <path d="M232 44 H260 M260 44 A14 14 0 1 0 256 54"/>
+    <path d="M294 10 L312 58 L330 10"/>
+    <path d="M356 15 V15.01 M356 30 V58"/>
+    <path d="M382 44 H410 M410 44 A14 14 0 1 0 406 54"/>
+    <path d="M444 10 L457 58 L470 35.5 L483 58 L496 10"/>
+  </g>
+</svg>
+</g><text x="1127.33" y="600" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#8a8a8a" text-anchor="middle">64px</text><g><svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title" viewBox="0 0 914 256" x="1185.33" y="548" width="32" height="32" preserveAspectRatio="xMidYMid meet">
+  <title id="s232-title">TraceView logo - horizontal</title>
+  <g id="s232-symbol">
+    <path fill="#1478D2" fill-rule="evenodd" d="M64 40 H160 L216 96 V192 a24 24 0 0 1 -24 24 H64 a24 24 0 0 1 -24 -24 V64 a24 24 0 0 1 24 -24 Z M76 84 H180 V108 H144 V172 a8 8 0 0 1 -8 8 H120 a8 8 0 0 1 -8 -8 V108 H76 Z"/>
+  </g>
+  <g id="s232-wordmark" transform="translate(304,87.2) scale(1.2)" fill="none" stroke="#123A5C" stroke-width="12" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 10 H48 M30 10 V58"/>
+    <path d="M74 30 V58 M74 42 A14 14 0 0 1 88 28 H100"/>
+    <path d="M138 30 A14 14 0 1 1 138 58 A14 14 0 1 1 138 30 Z M152 30 V58"/>
+    <path d="M202 34 A14 14 0 1 0 202 54"/>
+    <path d="M232 44 H260 M260 44 A14 14 0 1 0 256 54"/>
+    <path d="M294 10 L312 58 L330 10"/>
+    <path d="M356 15 V15.01 M356 30 V58"/>
+    <path d="M382 44 H410 M410 44 A14 14 0 1 0 406 54"/>
+    <path d="M444 10 L457 58 L470 35.5 L483 58 L496 10"/>
+  </g>
+</svg>
+</g><text x="1201.33" y="600" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#8a8a8a" text-anchor="middle">32px</text><g><svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title" viewBox="0 0 914 256" x="1243.33" y="564" width="16" height="16" preserveAspectRatio="xMidYMid meet">
+  <title id="s216-title">TraceView logo - horizontal</title>
+  <g id="s216-symbol">
+    <path fill="#1478D2" fill-rule="evenodd" d="M64 40 H160 L216 96 V192 a24 24 0 0 1 -24 24 H64 a24 24 0 0 1 -24 -24 V64 a24 24 0 0 1 24 -24 Z M76 84 H180 V108 H144 V172 a8 8 0 0 1 -8 8 H120 a8 8 0 0 1 -8 -8 V108 H76 Z"/>
+  </g>
+  <g id="s216-wordmark" transform="translate(304,87.2) scale(1.2)" fill="none" stroke="#123A5C" stroke-width="12" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 10 H48 M30 10 V58"/>
+    <path d="M74 30 V58 M74 42 A14 14 0 0 1 88 28 H100"/>
+    <path d="M138 30 A14 14 0 1 1 138 58 A14 14 0 1 1 138 30 Z M152 30 V58"/>
+    <path d="M202 34 A14 14 0 1 0 202 54"/>
+    <path d="M232 44 H260 M260 44 A14 14 0 1 0 256 54"/>
+    <path d="M294 10 L312 58 L330 10"/>
+    <path d="M356 15 V15.01 M356 30 V58"/>
+    <path d="M382 44 H410 M410 44 A14 14 0 1 0 406 54"/>
+    <path d="M444 10 L457 58 L470 35.5 L483 58 L496 10"/>
+  </g>
+</svg>
+</g><text x="1251.33" y="600" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#8a8a8a" text-anchor="middle">16px</text><text x="1095.3333333333335" y="636" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="26" font-weight="700" fill="#161616">C · Horizontal</text><text x="1095.3333333333335" y="670" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="19" fill="#555">符号 + 字标横排。</text></svg>

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-labelledby="title">
+  <title id="title">TraceView concept A - Trace line</title>
+  <g id="symbol">
+    <path fill="#123A5C" d="M72 40 H152 L200 88 V200 a16 16 0 0 1 -16 16 H72 a16 16 0 0 1 -16 -16 V56 a16 16 0 0 1 16 -16 Z"/>
+    <path fill="#2EC3F5" d="M152 40 V80 a8 8 0 0 0 8 8 H200 Z"/>
+    <rect x="40" y="124" width="176" height="24" rx="12" fill="#2EC3F5"/>
+  </g>
+</svg>

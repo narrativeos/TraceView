@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-labelledby="title">
+  <title id="title">TraceView concept C - Momentum</title>
+  <g id="symbol">
+    <rect x="56" y="40" width="96" height="128" rx="14" fill="#C9E9FA"/>
+    <rect x="80" y="60" width="96" height="128" rx="14" fill="#7FD0F2"/>
+    <path fill="#1478D2" fill-rule="evenodd" d="M118 80 H176 L200 104 V194 a14 14 0 0 1 -14 14 H118 a14 14 0 0 1 -14 -14 V94 a14 14 0 0 1 14 -14 Z M124 128 H180 a7 7 0 0 1 0 14 H124 a7 7 0 0 1 0 -14 Z M124 156 H164 a7 7 0 0 1 0 14 H124 a7 7 0 0 1 0 -14 Z"/>
+    <path fill="#2EC3F5" d="M176 80 L200 104 H184 a8 8 0 0 1 -8 -8 Z"/>
+  </g>
+</svg>
