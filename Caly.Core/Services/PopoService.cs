@@ -28,6 +28,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Mime;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Caly.Core.Services.Store;
 using System.Threading;
 using System.Threading.Tasks;
@@ -912,6 +913,160 @@ public sealed class PopoService : IDisposable
 
     #endregion
 
+    #region TOC Lineage
+
+    /// <summary>
+    /// Reads a task's TOC revision lineage via GET /tasks/{task_id}/toc/revisions
+    /// (M4-C consumption side). Returns null when the document has no lineage yet
+    /// (server 409: task predates sidecars or its work dir expired; 404: unknown task).
+    /// Throws <see cref="PopoServiceException"/> on transport failure or a corrupt ledger.
+    /// </summary>
+    public async Task<PopoTocLineage?> FetchTocLineageAsync(string taskId, CancellationToken ct = default)
+    {
+        using var response = await _httpClient
+            .GetAsync($"{_baseUrl}/tasks/{Uri.EscapeDataString(taskId)}/toc/revisions", ct);
+        if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Conflict)
+        {
+            return null;
+        }
+
+        var json = await response.Content.ReadAsStringAsync(ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new PopoServiceException(
+                $"Popo /tasks/{{id}}/toc/revisions failed ({(int)response.StatusCode}): {ServerDetail(json)}");
+        }
+
+        try
+        {
+            return ParseTocLineage(json);
+        }
+        catch (JsonException ex)
+        {
+            throw new PopoServiceException($"Invalid JSON from /tasks/{{id}}/toc/revisions: {ex.Message}", ex);
+        }
+    }
+
+    /// <summary>
+    /// Replays the TOC stage of a completed task via POST /tasks/{task_id}/retoc
+    /// (the panel's "replay at this rev"; the agent flow keeps its own session client).
+    /// <paramref name="overrides"/> is the nested override tree. The response carries
+    /// the appended <c>revision</c> in <c>artifacts</c>; the full tree/toc stays in the
+    /// task result (contract: narrative-operator-MinerU-Popo docs/toc-metadata-schema.md).
+    /// </summary>
+    public async Task<JsonNode> RetocTaskAsync(string taskId, JsonObject? overrides, CancellationToken ct = default)
+    {
+        var body = new JsonObject { ["overrides"] = overrides ?? new JsonObject() };
+        using var content = new StringContent(body.ToJsonString(), System.Text.Encoding.UTF8, "application/json");
+        using var response = await _httpClient
+            .PostAsync($"{_baseUrl}/tasks/{Uri.EscapeDataString(taskId)}/retoc", content, ct);
+        var json = await response.Content.ReadAsStringAsync(ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new PopoServiceException(
+                $"Popo /tasks/{{id}}/retoc failed ({(int)response.StatusCode}): {ServerDetail(json)}");
+        }
+
+        return JsonNode.Parse(json)
+            ?? throw new PopoServiceException("Popo /tasks/{id}/retoc returned an empty body");
+    }
+
+    /// <summary>
+    /// Pure parser for the <c>popo.revisions</c> sidecar document, kept apart from HTTP
+    /// so it stays deterministic and testable. The ledger's head is derived from the
+    /// highest revision number (the revisions document itself carries no head field).
+    /// </summary>
+    public static PopoTocLineage ParseTocLineage(string json)
+    {
+        var root = JsonNode.Parse(json)?.AsObject()
+            ?? throw new JsonException("revisions document is not a JSON object");
+
+        var lineage = new PopoTocLineage
+        {
+            DocId = GetString(root["doc_id"]),
+        };
+        if (root["revisions"] is not JsonArray revisions)
+        {
+            return lineage;
+        }
+
+        foreach (var item in revisions.OfType<JsonObject>())
+        {
+            var metrics = item["metrics"] as JsonObject;
+            var numbering = metrics?["numbering"] as JsonObject;
+            var entry = new PopoTocRevision
+            {
+                Rev = GetInt(item["rev"]),
+                At = GetString(item["at"]),
+                Source = GetString(item["source"]),
+                Fingerprint = GetString((item["rule_pack"] as JsonObject)?["fingerprint"]),
+                LevelDiffCount = (item["level_diff"] as JsonArray)?.Count ?? 0,
+                LevelJumpViolations = GetInt(metrics?["level_jump_violations"]),
+                MaxDepth = GetInt(metrics?["max_depth"]),
+                NumberingViolationCount = (numbering?["violations"] as JsonArray)?.Count ?? 0,
+                Overrides = item["overrides"] is JsonObject flat && flat.Count > 0
+                    ? NestRuleOverrides(flat)
+                    : null,
+            };
+            lineage.Revisions.Add(entry);
+            lineage.HeadRevision = Math.Max(lineage.HeadRevision, entry.Rev);
+        }
+
+        return lineage;
+    }
+
+    /// <summary>
+    /// Expands a flat dotted override ledger entry into the nested tree the retoc
+    /// endpoint merges into the pack (port of the service's nest_overrides: a dotted
+    /// key must live inside its group, not beside it).
+    /// </summary>
+    public static JsonObject NestRuleOverrides(JsonObject flat)
+    {
+        var nested = new JsonObject();
+        foreach (var (key, value) in flat)
+        {
+            var parts = key.Split('.');
+            var node = nested;
+            for (var i = 0; i < parts.Length - 1; i++)
+            {
+                if (node[parts[i]] is not JsonObject child)
+                {
+                    child = new JsonObject();
+                    node[parts[i]] = child;
+                }
+                node = child;
+            }
+            node[parts[^1]] = value?.DeepClone();
+        }
+        return nested;
+    }
+
+    private static int GetInt(JsonNode? node) =>
+        node is JsonValue value && value.TryGetValue(out int result) ? result : 0;
+
+    private static string GetString(JsonNode? node) =>
+        node is JsonValue value && value.TryGetValue(out string? text) ? text : string.Empty;
+
+    /// <summary>FastAPI error bodies carry the concrete reason in "detail".</summary>
+    private static string ServerDetail(string json)
+    {
+        try
+        {
+            if (JsonNode.Parse(json)?["detail"] is JsonValue value && value.TryGetValue(out string? text))
+            {
+                return text;
+            }
+        }
+        catch (JsonException)
+        {
+            // Not structured JSON — the raw body is the best available explanation.
+        }
+
+        return json.Length > 200 ? json[..200] + "..." : json;
+    }
+
+    #endregion
+
     #region IDisposable
 
     public void Dispose()
@@ -1165,4 +1320,54 @@ public class PopoProgressRecord
     /// Error message if the task failed or timed out.
     /// </summary>
     public string? ErrorMessage { get; set; }
+}
+
+/// <summary>
+/// Parsed GET /tasks/{task_id}/toc/revisions sidecar document (M4-C consumption).
+/// The document spine's revision ledger: one entry per replay in append-only order.
+/// </summary>
+public sealed class PopoTocLineage
+{
+    public string DocId { get; set; } = string.Empty;
+
+    /// <summary>Highest revision number in the ledger (derived; the sidecar has no head field).</summary>
+    public int HeadRevision { get; set; }
+
+    public List<PopoTocRevision> Revisions { get; } = new();
+}
+
+/// <summary>
+/// One revision of a document's TOC lineage, plus the quality metrics that revision was
+/// recorded with. <see cref="Overrides"/> is the nested override tree (expanded from the
+/// ledger's flat dotted form at parse time), ready for a "replay at this rev" retoc call.
+/// </summary>
+public sealed class PopoTocRevision
+{
+    public int Rev { get; set; }
+
+    /// <summary>Raw ISO timestamp as recorded by the service.</summary>
+    public string At { get; set; } = string.Empty;
+
+    /// <summary>"user" | "agent" attribution of the replay that appended this revision.</summary>
+    public string Source { get; set; } = string.Empty;
+
+    /// <summary>Rule-pack fingerprint this revision was replayed under.</summary>
+    public string Fingerprint { get; set; } = string.Empty;
+
+    /// <summary>Node-id-aligned level changes this replay recorded.</summary>
+    public int LevelDiffCount { get; set; }
+
+    public int LevelJumpViolations { get; set; }
+
+    public int MaxDepth { get; set; }
+
+    /// <summary>Monotonic numbering violations (REPORT-level, not gate thresholds).</summary>
+    public int NumberingViolationCount { get; set; }
+
+    /// <summary>Nested override tree for replaying at this revision; null when the
+    /// revision was recorded with no overrides (a plain or default-pack replay).</summary>
+    public JsonObject? Overrides { get; set; }
+
+    /// <summary>Badge signal: any quality metric that deserves a look.</summary>
+    public bool NeedsAttention => LevelJumpViolations > 0 || NumberingViolationCount > 0;
 }

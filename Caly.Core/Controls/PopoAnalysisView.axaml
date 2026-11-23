@@ -156,7 +156,7 @@
                                    FontWeight="Bold"
                                    FontSize="16"
                                    VerticalAlignment="Center"/>
-                        <Button 
+                        <Button
                                 Command="{Binding CloseTocPanelCommand}"
                                 AutomationProperties.Name="关闭目录面板"
                                 ToolTip.Tip="关闭目录面板"
@@ -165,6 +165,70 @@
                             <Path Classes="toolIcon" Width="14" Height="14" Data="{StaticResource glyph_close_regular}"/>
                         </Button>
                     </StackPanel>
+                    <!-- TOC revision lineage (M4-C): head badge + append-only replay history -->
+                    <StackPanel Orientation="Horizontal"
+                                DockPanel.Dock="Top"
+                                Spacing="6"
+                                Margin="0,0,0,4">
+                        <TextBlock Text="!"
+                                   FontWeight="Bold"
+                                   IsVisible="{Binding TocLineageWarning}"
+                                   Foreground="{DynamicResource CalyWarningForegroundBrush}"
+                                   VerticalAlignment="Center"
+                                   ToolTip.Tip="head 版本存在跳变或编号违规，建议调规则重放"/>
+                        <TextBlock Text="{Binding TocLineageBadgeText}"
+                                   FontSize="11"
+                                   Opacity="0.75"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <ScrollViewer DockPanel.Dock="Top"
+                                  MaxHeight="180"
+                                  VerticalScrollBarVisibility="Auto"
+                                  IsVisible="{Binding HasTocLineage}">
+                        <ItemsControl ItemsSource="{Binding TocRevisions}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:TocRevisionEntryViewModel">
+                                    <StackPanel Orientation="Horizontal"
+                                                Spacing="8"
+                                                Margin="0,2">
+                                        <TextBlock Text="{Binding Rev, StringFormat='rev {0}'}"
+                                                   FontWeight="Bold"
+                                                   MinWidth="52"
+                                                   VerticalAlignment="Center"/>
+                                        <TextBlock Text="{Binding Source}"
+                                                   MinWidth="40"
+                                                   Opacity="0.7"
+                                                   VerticalAlignment="Center"/>
+                                        <TextBlock Text="{Binding Fingerprint}"
+                                                   FontFamily="{DynamicResource CalyMonoFontFamily}"
+                                                   FontSize="11"
+                                                   Opacity="0.7"
+                                                   VerticalAlignment="Center"/>
+                                        <TextBlock Text="{Binding AtText}"
+                                                   FontSize="11"
+                                                   Opacity="0.6"
+                                                   VerticalAlignment="Center"/>
+                                        <TextBlock Text="{Binding SummaryText}"
+                                                   FontSize="11"
+                                                   VerticalAlignment="Center"/>
+                                        <TextBlock Text="!"
+                                                   FontWeight="Bold"
+                                                   IsVisible="{Binding Warning}"
+                                                   Foreground="{DynamicResource CalyWarningForegroundBrush}"
+                                                   VerticalAlignment="Center"/>
+                                        <Button Content="按此 rev 重放"
+                                                FontSize="11"
+                                                Padding="8,2"
+                                                Margin="8,0,0,0"
+                                                ToolTip.Tip="以该 rev 记录的规则包与覆盖重放目录层，作为新的 rev 记入谱系（页内树保持当前显示）"
+                                                IsEnabled="{Binding !$parent[UserControl].((vm:AnalysisViewModel)DataContext).IsTocLineageBusy}"
+                                                Command="{Binding $parent[UserControl].((vm:AnalysisViewModel)DataContext).ReplayAtRevisionCommand}"
+                                                CommandParameter="{Binding}"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
                     <ScrollViewer VerticalScrollBarVisibility="Auto"
                                   MaxHeight="500">
                         <TextBlock Text="{Binding TocMarkdownText}"

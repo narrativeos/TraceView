@@ -491,6 +491,7 @@ public partial class AnalysisViewModel : ViewModelBase
             var entries = PopoJsonService.BuildTableOfContents(_structureDocument.TreeRoot, _structureDocument);
             TocMarkdownText = PopoJsonService.GenerateTocMarkdown(entries);
             ShowTocPanel = true;
+            _ = LoadTocLineageAsync();
         }
         finally
         {
@@ -503,6 +504,135 @@ public partial class AnalysisViewModel : ViewModelBase
     {
         ShowTocPanel = false;
     }
+
+    #region TOC lineage (M4-C)
+
+    /// <summary>Head badge of the document's revision lineage: "rev N · pack · 跳变 · 编号",
+    /// or a short explanation when no ledger exists yet.</summary>
+    [ObservableProperty]
+    private string _tocLineageBadgeText = string.Empty;
+
+    [ObservableProperty]
+    private bool _tocLineageWarning;
+
+    [ObservableProperty]
+    private bool _hasTocLineage;
+
+    [ObservableProperty]
+    private bool _isTocLineageBusy;
+
+    /// <summary>Revision history, newest first.</summary>
+    public ObservableCollection<TocRevisionEntryViewModel> TocRevisions { get; } = new();
+
+    /// <summary>
+    /// Loads the document's revision lineage sidecar from the Popo service (the ledger is
+    /// a document property, not a product of TOC assembly — it loads whenever the TOC
+    /// panel opens). Best effort: "谱系未开账" says the server has no ledger for this task.
+    /// </summary>
+    private async System.Threading.Tasks.Task LoadTocLineageAsync()
+    {
+        TocRevisions.Clear();
+        HasTocLineage = false;
+
+        var taskId = PopoJsonService.TryReadTaskId(_projectPath);
+        if (string.IsNullOrWhiteSpace(taskId))
+        {
+            TocLineageBadgeText = "谱系未开账（无任务号）";
+            TocLineageWarning = false;
+            return;
+        }
+
+        try
+        {
+            var settingsService = App.Current?.Services?.GetRequiredService<ISettingsService>();
+            using var service = new PopoService(settingsService?.GetSettings().PopoBaseUrl);
+            var lineage = await service.FetchTocLineageAsync(taskId);
+            if (lineage is null)
+            {
+                TocLineageBadgeText = "谱系未开账";
+                TocLineageWarning = false;
+                return;
+            }
+
+            foreach (var revision in lineage.Revisions.OrderByDescending(r => r.Rev))
+            {
+                TocRevisions.Add(new TocRevisionEntryViewModel(revision));
+            }
+            HasTocLineage = TocRevisions.Count > 0;
+
+            var head = TocRevisions.FirstOrDefault();
+            TocLineageBadgeText = head is null
+                ? "谱系已开账（尚无重放）"
+                : $"rev {head.Rev} · {head.Fingerprint} · 跳变 {head.Revision.LevelJumpViolations} · " +
+                  $"编号 {head.Revision.NumberingViolationCount} · 共 {lineage.Revisions.Count} 次重放";
+            TocLineageWarning = head?.Warning ?? false;
+        }
+        catch (System.Exception ex)
+        {
+            TocLineageBadgeText = $"谱系读取失败：{ex.Message}";
+            TocLineageWarning = true;
+        }
+    }
+
+    /// <summary>
+    /// "按此 rev 重放": replays the TOC stage through /retoc with the revision's recorded
+    /// override tree (source: user). The ledger is append-only — the replay itself becomes
+    /// the new head revision. The in-memory tree stays as displayed (same contract as the
+    /// agent's retoc_document: the full tree/toc stays in the task result; reopening the
+    /// document shows the new structure).
+    /// </summary>
+    [RelayCommand]
+    private async System.Threading.Tasks.Task ReplayAtRevisionAsync(TocRevisionEntryViewModel? entry)
+    {
+        if (entry is null || IsTocLineageBusy)
+            return;
+
+        var taskId = PopoJsonService.TryReadTaskId(_projectPath);
+        if (string.IsNullOrWhiteSpace(taskId))
+        {
+            TocLineageBadgeText = "无法重放：无任务号";
+            TocLineageWarning = true;
+            return;
+        }
+
+        var dialogService = App.Current?.Services?.GetRequiredService<IDialogService>();
+        if (dialogService is not null &&
+            !await dialogService.ShowConfirmationDialogAsync(
+                "按此 rev 重放",
+                $"将以 rev {entry.Rev} 记录的规则包（指纹 {entry.Fingerprint}）与覆盖重写服务端目录，\n" +
+                "并作为新的一条 rev 记入谱系。页内树保持当前显示。"))
+            return;
+
+        IsTocLineageBusy = true;
+        try
+        {
+            var settingsService = App.Current?.Services?.GetRequiredService<ISettingsService>();
+            using var service = new PopoService(settingsService?.GetSettings().PopoBaseUrl);
+            var result = await service.RetocTaskAsync(taskId, entry.NestedOverrides);
+            var levelChanges = (result?["level_diff"] as System.Text.Json.Nodes.JsonArray)?.Count ?? 0;
+            var newRev = 0;
+            if (result?["artifacts"]?["revision"]?["rev"] is System.Text.Json.Nodes.JsonValue revValue)
+            {
+                revValue.TryGetValue(out newRev);
+            }
+
+            var outcome = $"已按 rev {entry.Rev} 重放：层级变更 {levelChanges}，新 rev {newRev}";
+            App.Messenger.Send(new ShowNotificationMessage(
+                Avalonia.Controls.Notifications.NotificationType.Success, "目录谱系", outcome));
+            await LoadTocLineageAsync();
+        }
+        catch (System.Exception ex)
+        {
+            App.Messenger.Send(new ShowNotificationMessage(
+                Avalonia.Controls.Notifications.NotificationType.Error, "目录谱系重放失败", ex.Message));
+        }
+        finally
+        {
+            IsTocLineageBusy = false;
+        }
+    }
+
+    #endregion
 
     #endregion
 

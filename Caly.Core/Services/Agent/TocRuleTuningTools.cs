@@ -400,6 +400,9 @@ internal sealed class TocRuleTuningSession
     /// <summary>Cap on candidate rows echoed back by distill_rule_candidates.</summary>
     private const int CandidateCap = 20;
 
+    /// <summary>Cap on revision rows echoed back by get_toc_quality (newest first).</summary>
+    private const int LineageRecentCap = 5;
+
     /// <summary>
     /// Gold-set replay and tree re-derivation are server-side batch jobs; give them a
     /// generous but bounded deadline (PopoService keeps its client-wide timeout huge
@@ -504,6 +507,15 @@ internal sealed class TocRuleTuningSession
                 ["hasToc"] = node?["result"] is JsonObject root2 && root2.ContainsKey("toc"),
                 ["hasVlmDecisions"] = node?["result"] is JsonObject root3 && root3.ContainsKey("vlm_decisions"),
             };
+
+            // Revision ledger (M4-C consumption): the document's replay history with the
+            // quality metrics each revision was recorded with. 404/409 simply mean the
+            // document has no ledger yet, which is reported as available:false.
+            var (lineageNode, lineageError) = await GetAsync(
+                $"/tasks/{Uri.EscapeDataString(_taskId)}/toc/revisions").ConfigureAwait(false);
+            result["lineage"] = lineageError is not null
+                ? new JsonObject { ["available"] = false, ["error"] = (JsonObject)lineageError.DeepClone() }
+                : RenderLineageSummary(lineageNode);
         }
 
         return result.ToJsonString();
@@ -856,12 +868,69 @@ internal sealed class TocRuleTuningSession
 
         return slice;
     }
+
+    /// <summary>
+    /// Compact view of the revisions sidecar for get_toc_quality: total count, head, and
+    /// the newest <see cref="LineageRecentCap"/> replays. Only scalar metrics are cloned —
+    /// never the numbering violations array, which is large on report-mode books and is
+    /// already counted by violations_count.
+    /// </summary>
+    internal static JsonObject RenderLineageSummary(JsonNode? revisionsDoc)
+    {
+        if (revisionsDoc?["revisions"] is not JsonArray revisions)
+        {
+            return new JsonObject { ["available"] = false };
+        }
+
+        var entries = revisions.OfType<JsonObject>().ToList();
+        var rows = new JsonArray();
+        foreach (var entry in entries.OrderByDescending(r => IntValue(r["rev"])).Take(LineageRecentCap))
+        {
+            var metrics = entry["metrics"] as JsonObject;
+            var numbering = metrics?["numbering"] as JsonObject;
+            rows.Add(new JsonObject
+            {
+                ["rev"] = entry["rev"]?.DeepClone(),
+                ["at"] = entry["at"]?.DeepClone(),
+                ["source"] = entry["source"]?.DeepClone(),
+                ["fingerprint"] = (entry["rule_pack"] as JsonObject)?["fingerprint"]?.DeepClone(),
+                ["level_diff"] = (entry["level_diff"] as JsonArray)?.Count ?? 0,
+                ["metrics"] = new JsonObject
+                {
+                    ["level_jump_violations"] = metrics?["level_jump_violations"]?.DeepClone(),
+                    ["l1_share"] = metrics?["l1_share"]?.DeepClone(),
+                    ["max_depth"] = metrics?["max_depth"]?.DeepClone(),
+                    ["numbering"] = numbering is null
+                        ? null
+                        : new JsonObject
+                        {
+                            ["mode"] = numbering["mode"]?.DeepClone(),
+                            ["checked"] = numbering["checked"]?.DeepClone(),
+                            ["violations_count"] = (numbering["violations"] as JsonArray)?.Count ?? 0,
+                        },
+                },
+            });
+        }
+
+        return new JsonObject
+        {
+            ["available"] = true,
+            ["docId"] = revisionsDoc["doc_id"]?.DeepClone(),
+            ["revisions_total"] = entries.Count,
+            ["head"] = entries.Count == 0 ? 0 : entries.Max(r => IntValue(r["rev"])),
+            ["recent"] = rows,
+        };
+    }
+
+    private static int IntValue(JsonNode? node) =>
+        node is JsonValue value && value.TryGetValue(out int result) ? result : 0;
 }
 
 /// <summary>
 /// Builds the popo.toc-tune tool surface for one run
 /// (contract: narrative-operator-MinerU-Popo docs/toc-self-learning-loop.md §2.5):
-/// get_toc_quality reads the run's StructureDocument (+ the stored task result, best effort),
+/// get_toc_quality reads the run's StructureDocument (+ the stored task result and the
+/// revision ledger, best effort),
 /// propose_rule_override validates overrides against the whitelist deterministically, and
 /// evaluate_rules / retoc_document call the Popo service's gate and write endpoints.
 /// retoc_document is the only write and is approval-gated by the call site definition.
@@ -909,8 +978,9 @@ internal static class TocRuleTuningTools
                 name: "get_toc_quality",
                 description: "Quality summary of the current document's TOC: level jumps, low-confidence " +
                              "entries (heuristic: no numbering and no table provenance), per-level and " +
-                             "per-source decision summary, plus the stored task result status when the task " +
-                             "id is known. Read-only. Call first."),
+                             "per-source decision summary, the stored task result status, and the " +
+                             "revision lineage (head rev, recent replays with their pack fingerprint and " +
+                             "quality metrics) when the task id is known. Read-only. Call first."),
             AIFunctionFactory.Create(session.ProposeRuleOverride,
                 name: "propose_rule_override",
                 description: "Validate a rule override offline: a JSON object mapping dotted rule ids to " +

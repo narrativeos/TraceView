@@ -383,4 +383,76 @@ public class TocRuleTuningTests
         Assert.False(candidate["gate"]!["passed"]!.GetValue<bool>());
         Assert.Single(candidate["gate"]!["regressions"]!.AsArray());
     }
+
+    [Fact]
+    public void RenderLineageSummary_CapsRecentRowsAndDropsViolationArrays()
+    {
+        // Seven revisions; get_toc_quality must echo at most the newest five, newest first,
+        // and must never clone the numbering violations array (report-mode books carry
+        // dozens of entries per revision).
+        var revisions = new JsonArray();
+        for (var rev = 1; rev <= 7; rev++)
+        {
+            revisions.Add(new JsonObject
+            {
+                ["rev"] = rev,
+                ["at"] = $"2026-11-{rev:D2}T00:00:00+00:00",
+                ["source"] = rev % 2 == 0 ? "agent" : "user",
+                ["rule_pack"] = new JsonObject { ["fingerprint"] = $"fp{rev:D40}" },
+                ["level_diff"] = new JsonArray(),
+                ["metrics"] = new JsonObject
+                {
+                    ["level_jump_violations"] = rev,
+                    ["l1_share"] = 0.3,
+                    ["max_depth"] = 4,
+                    ["numbering"] = new JsonObject
+                    {
+                        ["mode"] = "report",
+                        ["checked"] = 100,
+                        ["violations"] = new JsonArray
+                        {
+                            new JsonObject { ["node_id"] = "n1" },
+                            new JsonObject { ["node_id"] = "n2" },
+                        },
+                    },
+                },
+            });
+        }
+
+        var summary = TocRuleTuningSession.RenderLineageSummary(new JsonObject
+        {
+            ["schema"] = "popo.revisions",
+            ["doc_id"] = "doc-9",
+            ["revisions"] = revisions,
+        });
+
+        Assert.True(summary["available"]!.GetValue<bool>());
+        Assert.Equal("doc-9", summary["docId"]!.GetValue<string>());
+        Assert.Equal(7, summary["revisions_total"]!.GetValue<int>());
+        Assert.Equal(7, summary["head"]!.GetValue<int>());
+
+        var rows = summary["recent"]!.AsArray();
+        Assert.Equal(5, rows.Count);
+        Assert.Equal(7, rows[0]!["rev"]!.GetValue<int>());
+        Assert.Equal(3, rows[4]!["rev"]!.GetValue<int>());
+
+        var metrics = rows[0]!["metrics"]!.AsObject();
+        Assert.Equal(7, metrics["level_jump_violations"]!.GetValue<int>());
+        Assert.Equal(2, metrics["numbering"]!["violations_count"]!.GetValue<int>());
+        Assert.DoesNotContain("violations", metrics["numbering"]!.AsObject().Select(p => p.Key));
+    }
+
+    [Fact]
+    public void RenderLineageSummary_MissingLedgerReportsUnavailable()
+    {
+        var summary = TocRuleTuningSession.RenderLineageSummary(null);
+        Assert.False(summary["available"]!.GetValue<bool>());
+
+        var empty = TocRuleTuningSession.RenderLineageSummary(new JsonObject
+        {
+            ["schema"] = "popo.revisions",
+            ["doc_id"] = "d",
+        });
+        Assert.False(empty["available"]!.GetValue<bool>());
+    }
 }
