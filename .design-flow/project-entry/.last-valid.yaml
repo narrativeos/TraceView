@@ -1,0 +1,210 @@
+version: 1
+title: TraceView 项目入口 · 近期项目 · 队列看板
+subtitle: macOS 桌面端 — 现状审计与目标流程
+viewport: { width: 1100, height: 700 }
+style: |
+  <style>
+    body { margin: 0; font: 14px -apple-system, "PingFang SC", sans-serif; color: #1d1d1f; background: #ececee; }
+    .win { display: flex; flex-direction: column; height: 100vh; background: #f5f5f7; }
+    .titlebar { height: 36px; background: #e8e8ea; border-bottom: 1px solid #d6d6d8; display: flex; align-items: center; padding: 0 12px; gap: 8px; flex: none; }
+    .dot { width: 11px; height: 11px; border-radius: 50%; }
+    .dot.r { background: #ff5f57; } .dot.y { background: #febc2e; } .dot.g { background: #28c840; }
+    .titlebar .title { margin-left: 8px; font-size: 12px; color: #6e6e73; }
+    .body { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    .blank { color: #a0a0a5; font-size: 13px; }
+    .toolbar { display: flex; gap: 6px; padding: 8px 12px; background: #ececee; border-bottom: 1px solid #d6d6d8; flex: none; }
+    .btn { padding: 8px 14px; border-radius: 8px; border: 1px solid #c8c8cc; background: #fff; font: inherit; cursor: pointer; }
+    .btn.main { background: #0a66d6; color: #fff; border: 0; }
+    .statusbar { height: 22px; border-top: 1px solid #d6d6d8; font-size: 11px; color: #86868b; display: flex; align-items: center; padding: 0 8px; gap: 10px; flex: none; }
+    .menuhint { font-size: 12px; color: #86868b; margin-top: 14px; }
+    .alert { margin: 12px 16px; padding: 10px 12px; border-radius: 8px; background: #ffe5e5; border: 1px solid #f0b4b4; color: #9c1f1f; font-size: 13px; flex: none; }
+    .home { width: 720px; padding: 28px 32px; background: #fff; border-radius: 14px; border: 1px solid #d6d6d8; }
+    .home h2 { margin: 0 0 4px; font-size: 17px; }
+    .home .sub { color: #86868b; font-size: 12px; margin-bottom: 16px; }
+    .proj { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid #e2e2e5; border-radius: 10px; margin-bottom: 8px; cursor: pointer; }
+    .proj:hover { background: #f2f6fc; }
+    .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: #eaf3ff; color: #0a66d6; }
+    .badge.done { background: #e8f6ec; color: #1a7f37; }
+    .home .row { display: flex; gap: 10px; margin-top: 18px; }
+    .dialog { width: 500px; height: 400px; background: #f5f5f7; border-radius: 12px; border: 1px solid #c8c8cc; padding: 20px; display: flex; flex-direction: column; }
+    .dialog h3 { margin: 0 0 6px; font-size: 14px; }
+    .dialog .hint { font-size: 12px; color: #86868b; margin: 0 0 12px; }
+    .list { border: 1px solid #c8c8cc; border-radius: 6px; background: #fff; min-height: 120px; max-height: 200px; overflow: auto; padding: 4px; }
+    .list .item { padding: 9px 10px; border-radius: 5px; cursor: pointer; }
+    .list .item:hover { background: #e8e8ea; }
+    .emptylist { display: flex; align-items: center; justify-content: center; height: 120px; color: #b0b0b5; font-size: 12px; }
+    .dialog .btn { margin-top: 14px; width: 100%; }
+    .board { display: flex; gap: 14px; padding: 18px; width: 100%; height: 100%; box-sizing: border-box; }
+    .col { flex: 1; background: #f0f0f2; border-radius: 12px; padding: 12px; }
+    .col h4 { margin: 0 0 10px; font-size: 12px; color: #515154; display: flex; justify-content: space-between; }
+    .card { background: #fff; border: 1px solid #e2e2e5; border-radius: 9px; padding: 8px 10px; margin-bottom: 8px; }
+    .card .t { font-size: 12.5px; font-weight: 600; }
+    .card .s { font-size: 11px; color: #86868b; margin-top: 3px; }
+    .picker { width: 620px; height: 420px; background: #fff; border-radius: 12px; border: 1px solid #c8c8cc; display: flex; flex-direction: column; }
+    .picker .pathbar { padding: 10px 14px; border-bottom: 1px solid #e2e2e5; font-size: 12px; color: #515154; }
+    .picker .files { flex: 1; padding: 12px 14px; font-size: 13px; color: #1d1d1f; }
+    .picker .files div { padding: 6px 8px; border-radius: 6px; }
+    .picker .files div:hover { background: #eaf3ff; }
+    .picker .actions { padding: 12px 14px; border-top: 1px solid #e2e2e5; display: flex; justify-content: flex-end; gap: 8px; }
+    .back { position: absolute; top: 44px; left: 14px; color: #0a66d6; font-size: 13px; cursor: pointer; }
+    .tabs { display: flex; gap: 2px; padding: 6px 10px 0; background: #e8e8ea; flex: none; }
+    .tab { padding: 5px 14px; font-size: 12px; border-radius: 7px 7px 0 0; background: #d8d8da; }
+    .tab.active { background: #fff; }
+    .pagearea { flex: 1; display: flex; align-items: center; justify-content: center; color: #a0a0a5; }
+  </style>
+lanes:
+  - id: now
+    title: 现状审计 — 你看到的三个问题
+    tone: danger
+    note: 每条都是当前代码的真实状态，不是设想
+  - id: entry
+    title: 启动与打开（目标）
+    tone: info
+    enter: any
+    note: 空态主窗变成项目主页：近期项目 + 打开 PDF + 看板入口全部进窗口
+  - id: project
+    title: 项目选择
+    tone: info
+    note: ProjectExistsWindow 现状弹窗的修复形态
+  - id: doc
+    title: 文档视图
+    tone: neutral
+  - id: board
+    title: 队列看板
+    tone: success
+    note: 现状入口只在 macOS 原生菜单栏「文件 → 队列看板」，窗口不可见时等于没有入口
+screens:
+  - id: H00
+    title: 启动
+    note: 单实例：第二个实例把文件参数转发给已运行实例后退出
+    html: |
+      <h1>TraceView 启动</h1>
+      <p>无参数启动 → 主窗（空态）<br/>带文件启动 → 主窗 + 打开该 PDF</p>
+      <button class="btn main" data-to="C00">现状</button>
+      <button class="btn" data-to="E01" style="margin-top:8px">目标</button>
+  - id: C00
+    lane: now
+    title: 空态主窗 = 纯空白
+    note: MainView 无任何项目/看板/打开入口；唯一打开方式是菜单栏 Cmd+O
+    html: |
+      <div class="win">
+        <div class="titlebar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">TraceView</span></div>
+        <div class="body"><span class="blank">（空白 —— DocumentsTabsControl 空态，没有任何按钮）</span></div>
+        <div class="statusbar"><span>设置</span><span>·</span><span>菜单外零入口</span></div>
+      </div>
+      <p class="menuhint" style="padding:0 16px">唯一入口藏在系统菜单栏：文件 → 打开… (⌘O)、文件 → 队列看板 (⌘⇧B)。窗口不在前台时菜单栏属于别的 app → 看起来「什么都没有」。</p>
+  - id: C01
+    lane: now
+    title: 「选择项目」弹窗列表为空
+    note: 目录重排后 FindAllProjects 查不到已有项目 → 弹窗文案说「发现已有项目」但列表空，只剩新增按钮
+    html: |
+      <div class="dialog" style="margin:100px auto 0; position:relative;">
+        <h3>发现已有项目，请选择：</h3>
+        <p class="hint">点击项目名直接打开，或创建新项目。</p>
+        <div class="hint">现有项目（点击打开）：</div>
+        <div class="list"><div class="emptylist">（空 —— 项目其实存在，但索引没找到它们）</div></div>
+        <button class="btn main" data-id="create" data-to="C02">+ 创建新项目</button>
+      </div>
+  - id: C02
+    lane: now
+    title: 点「创建新项目」→ 无反应
+    note: Click→Close(null)→调用方 CreateProject；异常被吞进 ExceptionViewModel / 或新窗在离屏空间，用户看到的就是「没反应」
+    html: |
+      <div class="win">
+        <div class="alert" data-id="stuck">点了 + 创建新项目：弹窗关了，什么也没发生。文档没打开，也没有错误提示。</div>
+        <div class="body"><span class="blank">（主窗仍是空白）</span></div>
+      </div>
+      <p class="menuhint" style="padding:0 16px">候选根因：CreateProject / 打开文档的异常被 catch 后写入 ExceptionViewModel，而空态主窗根本不渲染它；窗口位于离屏显示器时新建的弹窗同样看不见。</p>
+  - id: E01
+    lane: entry
+    title: 项目主页（新的空态）
+    note: 近期项目 = StoreIndex 按最近打开排序；看板按钮进窗口；新建项目也走打开 PDF 流程
+    html: |
+      <div class="win">
+        <div class="titlebar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">TraceView</span></div>
+        <div class="body"><div class="home">
+          <h2>项目</h2>
+          <p class="sub">近期打开的项目（来自 ~/.TraceView 索引）</p>
+          <div class="proj" data-id="recent1" data-to="D01"><b>urban-planning-report</b><span class="badge done">完成</span><span class="sub">3 小时前</span></div>
+          <div class="proj" data-id="recent2" data-to="D01"><b>policy-archive-2026</b><span class="badge">解析中 3/8</span><span class="sub">昨天</span></div>
+          <div class="proj" data-id="recent3" data-to="D01"><b>geo-survey-atlas</b><span class="badge done">完成</span><span class="sub">上周</span></div>
+          <div class="row">
+            <button class="btn main" data-id="openpdf" data-to="E02">打开 PDF…</button>
+            <button class="btn" data-id="board" data-to="B01">队列看板 ⌘⇧B</button>
+          </div>
+        </div></div>
+      </div>
+  - id: E02
+    lane: entry
+    title: 选择 PDF
+    note: 系统文件选择器；选中后按 PDF 路径查已有项目 → 命中进 P01，未命中静默新建并直接打开
+    html: |
+      <a class="back" data-back>‹ 返回</a>
+      <div class="picker" style="margin:110px auto 0;">
+        <div class="pathbar">~/Downloads</div>
+        <div class="files"><div data-id="pdf1" data-to="P01"><b>urban-planning-report.pdf</b></div><div data-to="P01">policy-archive.pdf</div></div>
+        <div class="actions"><button class="btn" data-back>取消</button><button class="btn main" data-id="pick" data-to="P01">打开</button></div>
+      </div>
+      <p class="menuhint" style="padding:0 16px;text-align:center">macOS 提示：后台窗口调用系统面板不会显示 → 打开前先把主窗带到前台（或接受一次系统级弹窗）。</p>
+  - id: P01
+    lane: project
+    title: 选择已有项目（修复后）
+    note: 列表不再为空；文案不再误导；列表为空时根本不显示这个弹窗，直接新建并打开
+    html: |
+      <a class="back" data-back>‹ 取消</a>
+      <div class="dialog" style="margin:100px auto 0;">
+        <h3>这个 PDF 已有 2 个项目</h3>
+        <p class="hint">点击项目名直接打开，或创建新项目。</p>
+        <div class="list">
+          <div class="item" data-id="p1" data-to="D01">urban-planning-report <span style="color:#86868b;font-size:11px">· 3 小时前</span></div>
+          <div class="item" data-id="p2" data-to="D01">urban-planning-report-v2 <span style="color:#86868b;font-size:11px">· 上周</span></div>
+        </div>
+        <button class="btn main" data-id="create2" data-to="D01">+ 创建新项目</button>
+      </div>
+  - id: D01
+    lane: doc
+    title: 文档视图
+    note: 顶栏加「队列看板」按钮 —— 第二个窗口内入口
+    html: |
+      <div class="win">
+        <div class="titlebar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">urban-planning-report.pdf</span></div>
+        <div class="tabs"><div class="tab active">urban-planning-report.pdf</div></div>
+        <div class="toolbar"><button class="btn" data-id="board2" data-to="B01">队列看板</button><span class="sub" style="font-size:12px;color:#86868b;align-self:center">项目 urban-planning-report</span></div>
+        <div class="pagearea">（PDF 页面区）</div>
+        <div class="statusbar"><span>1 / 42</span></div>
+      </div>
+      <a class="back" data-back style="top:8px;left:auto;right:14px">关闭文档 ›</a>
+  - id: B01
+    lane: board
+    title: 队列看板
+    note: 现状：仅菜单栏 ⌘⇧B 打开 QueueBoardWindow；目标：窗口内两处按钮同样可达，行为不变
+    html: |
+      <a class="back" data-back>‹ 返回</a>
+      <div class="win">
+        <div class="toolbar"><b style="font-size:13px">队列看板 · MinerU 解析 → Popo 分析</b><span class="sub" style="font-size:11px;color:#86868b;margin-left:8px">~/.TraceView/projects</span><button class="btn" style="margin-left:auto" data-id="refresh">刷新</button></div>
+        <div class="board">
+          <div class="col"><h4>排队中 <span>12</span></h4><div class="card"><div class="t">policy-archive.pdf</div><div class="s">等待队列</div></div></div>
+          <div class="col"><h4>解析中 <span>3</span></h4><div class="card"><div class="t">geo-survey-atlas.pdf</div><div class="s">MinerU 5/8</div></div></div>
+          <div class="col"><h4>完成 <span>47</span></h4><div class="card"><div class="t">urban-planning-report.pdf</div><div class="s">Popo ✓</div></div></div>
+        </div>
+      </div>
+edges:
+  - { from: H00, to: C00, label: 现状 · 空态启动 }
+  - { from: H00, to: E01, label: 目标 · 项目主页 }
+  - { from: C00, to: C01, label: 打开 PDF（仅 ⌘O 菜单）, kind: error }
+  - { from: C01, to: C02, label: 点「+ 创建新项目」, kind: error }
+  - { from: E01, to: E02, label: 打开 PDF… }
+  - { from: E01, to: B01, label: 队列看板 }
+  - { from: E01, to: D01, label: 点近期项目 }
+  - { from: E02, to: P01, label: 选中 PDF · 发现已有项目 }
+  - { from: P01, to: D01, label: 选项目 / 创建新项目 }
+  - { from: D01, to: B01, label: 顶栏看板按钮 }
+  - { from: E02, to: E01, kind: back }
+  - { from: P01, to: E02, kind: back }
+  - { from: D01, to: E01, kind: back, label: 关闭文档 }
+  - { from: B01, to: E01, kind: back, label: 返回 }
+notes:
+  - 现状代码位置：空态入口缺失 = MainView.axaml（69 行，无项目 UI）；看板入口 = MainWindow.axaml NativeMenu「文件→队列看板」(⌘⇧B)；弹窗 = ProjectExistsWindow（点新建仅 Close(null)）；项目发现 = PdfDocumentsManagerService 第 246 行 FindAllProjects。
+  - 近期项目数据源 = StoreIndex（Store/StoreIndex.cs），按项目 metadata 的最近打开时间排序，上限 8 条；空索引时项目主页显示「打开 PDF…」引导。
+  - 单实例：任何「打开/新建」动作若发生在第二实例，会把参数转发给已运行实例——目标流程保证所有入口都作用于已运行实例的主窗。
+  - macOS 后台陷阱：窗口不在前台时原生菜单栏与系统文件面板都不可达——这是「点了没反应」类投诉的共同根因；关键路径必须落在窗口内部。

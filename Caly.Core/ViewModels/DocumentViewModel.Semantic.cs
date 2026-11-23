@@ -30,6 +30,7 @@ using Caly.Core.Services.EntityProcessors.Numeric;
 using Caly.Core.Services.EntityProcessors.Facility;
 using Caly.Core.Services.EntityProcessors.Unknown;
 using Caly.Core.Services.EntityProcessors.Term;
+using Caly.Core.Services.Store;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System;
@@ -1754,8 +1755,7 @@ public sealed partial class DocumentViewModel
         // No project path available - cannot determine a safe output directory
         // Return a path that won't exist, so TryLoadSemanticResultFromFile will return null
         System.Diagnostics.Debug.WriteLine("[Semantic] GetSemanticOutputDir: no ProjectPath available");
-        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".TraceView", "__no_project__", "semantic");
+        return Path.Combine(StorePaths.NoProjectDir(StorePaths.ResolveRoot()), "semantic");
     }
 
     /// <summary>

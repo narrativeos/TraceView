@@ -489,11 +489,24 @@
 						    AutomationProperties.Name="打印"
 								Command="{Binding PrintCommand}">
 							<Path Classes="toolIcon" Width="20"
-									  Height="20"
-									  Data="{StaticResource glyph_print_regular}">
+								  Height="20"
+								  Data="{StaticResource glyph_print_regular}">
 								<ToolTip.Tip>打印</ToolTip.Tip>
 							</Path>
 						</Button>
+
+						<!-- 队列看板: second in-window entry alongside the native 文件 menu (docs .design-flow/project-entry D01) -->
+						<Button DockPanel.Dock="Right"
+						        Margin="0,0,5,0"
+								HorizontalAlignment="Center"
+								Width="76"
+								Height="26"
+								Padding="8,2"
+								FontSize="12"
+								Content="队列看板"
+								AutomationProperties.Name="队列看板"
+								ToolTip.Tip="队列看板 (Cmd+Shift+B)"
+								Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).ShowQueueBoardCommand}"/>
 
 						<Grid/>
 

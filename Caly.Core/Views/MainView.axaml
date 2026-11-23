@@ -44,7 +44,10 @@
 			</SplitView.Pane>
 
 			<SplitView.Content>
-				<controls:DocumentsTabsControl/>
+				<Panel>
+					<controls:DocumentsTabsControl IsVisible="{Binding !IsHomeVisible}"/>
+					<controls:ProjectHomeControl IsVisible="{Binding IsHomeVisible}"/>
+				</Panel>
 			</SplitView.Content>
 
 		</SplitView>

@@ -34,6 +34,7 @@ using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Caly.Core.Services;
+using Caly.Core.Services.Agent;
 using Caly.Core.Services.Interfaces;
 using Caly.Core.Utilities;
 using Caly.Core.ViewModels;
@@ -175,6 +176,10 @@ public partial class App : Application
         services.AddSingleton<IDialogService, DialogService>();
         services.AddSingleton<IClipboardService, ClipboardService>();
         services.AddSingleton<IPdfDocumentsManagerService, PdfDocumentsManagerService>();
+        services.AddSingleton<ISecretStore, OsSecretStore>();
+        services.AddSingleton<IMcpRegistryService, McpRegistryService>();
+        services.AddSingleton<JiuluPublisher>();
+        services.AddSingleton<IAgentService, AgentService>();
 
         services.AddScoped<IPdfDocumentService, PdfPigDocumentService>();
         services.AddScoped<PdfPageService>();

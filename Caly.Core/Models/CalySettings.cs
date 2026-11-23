@@ -19,6 +19,7 @@
 // SOFTWARE.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json.Serialization;
 
@@ -135,13 +136,43 @@ public sealed class CalySettings
     /// </summary>
     public string GeoLibreBaseUrl { get; set; } = "https://web.geolibre.app";
 
+    // ========== MCP Configuration ==========
+
+    /// <summary>
+    /// Registry of user-configured MCP servers. Each entry describes one connection;
+    /// agents/column features bind to individual tools from these servers via
+    /// call-site definitions (see AgentCallSiteDefinition). Credentials are never
+    /// stored here — only secret references (see McpServerConfig.CredentialRef).
+    /// </summary>
+    public List<McpServerConfig> McpServers { get; set; } = [];
+
+    // ========== Agent / LLM Configuration ==========
+
+    /// <summary>
+    /// OpenAI-compatible chat completions base URL for built-in agents
+    /// (e.g. "https://api.openai.com/v1" or an internal gateway).
+    /// Empty: the OpenAI SDK default endpoint is used.
+    /// </summary>
+    public string AiBaseUrl { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Model id used by built-in agents (e.g. "gpt-4o-mini").
+    /// </summary>
+    public string AiModel { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Secret reference for the LLM API key (see ISecretStore — "keychain:svc/acct" or
+    /// "env:VAR"). The key itself is never stored in this file.
+    /// </summary>
+    public string AiCredentialRef { get; set; } = string.Empty;
+
     // ========== Project Configuration ==========
 
     /// <summary>
     /// Root directory for all TraceView projects. Each PDF creates a project folder here.
     /// Default: ~/.TraceView
     /// </summary>
-    public string ProjectHome { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".TraceView");
+    public string ProjectHome { get; set; } = Services.Store.StorePaths.DefaultRoot;
 
     public sealed class CalySettingsDebug
     {

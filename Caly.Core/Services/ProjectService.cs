@@ -3,8 +3,10 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Threading.Tasks;
 using Caly.Core.Models;
 using Caly.Core.Services.Interfaces;
+using Caly.Core.Services.Store;
 
 namespace Caly.Core.Services;
 
@@ -19,7 +21,43 @@ public class ProjectService
     public ProjectService(ISettingsService settingsService)
     {
         _settingsService = settingsService;
+
+        // Store initialization hook (spec §10): startup sweep of crash residue in tmp/
+        // (§8/§11: writes only ever leave debris in tmp/, so clearing stale entries there
+        // is safe; the no_project fallback output is excluded by design).
+        try
+        {
+            var home = GetProjectHome();
+            if (!string.IsNullOrWhiteSpace(home))
+            {
+                StoreTask.CleanupStaleTasks(home);
+
+                // §7 cache GC (TTL + capacity): background pass over the regeneratable cache,
+                // never blocking startup and never touching projects/ or tmp/.
+                _ = Task.Run(() =>
+                {
+                    try
+                    {
+                        StoreGc.CleanupCache(home);
+                    }
+                    catch
+                    {
+                        // Best effort: the next startup pass retries.
+                    }
+                });
+            }
+        }
+        catch
+        {
+            // Best effort: the next startup sweep retries.
+        }
     }
+
+    /// <summary>
+    /// Read-only consistency scan of the store root (§7/§11): index vs disk agreement,
+    /// tmp/ residue, manifest and geocoding cache. Never mutates the store.
+    /// </summary>
+    public StoreDoctorReport RunStoreDoctor() => StoreDoctor.Scan(GetProjectHome());
 
     /// <summary>
     /// Gets the ProjectHome directory from settings.
@@ -31,70 +69,39 @@ public class ProjectService
     }
 
     /// <summary>
-    /// Gets the default project path for a given PDF file.
-    /// Format: {ProjectHome}/{PDFFileNameWithoutExtension}/
-    /// </summary>
-    public string GetDefaultProjectPath(string pdfPath)
-    {
-        var projectHome = GetProjectHome();
-        var fileNameWithoutExtension = Path.GetFileNameWithoutExtension(pdfPath);
-        return Path.Combine(projectHome, fileNameWithoutExtension);
-    }
-
-    /// <summary>
-    /// Checks if a project directory already exists for the given PDF.
-    /// </summary>
-    public bool ProjectExists(string pdfPath)
-    {
-        var projectPath = GetDefaultProjectPath(pdfPath);
-        return Directory.Exists(projectPath);
-    }
-
-    /// <summary>
-    /// Finds all existing project directories for a given PDF file.
-    /// Projects follow the naming pattern: {basename}, {basename}_2, {basename}_3, etc.
-    /// Returns a list of full project paths that have valid project.json metadata matching the PDF.
+    /// Finds all existing project directories for a given PDF file via the store index
+    /// (docs/traceview-storage-layout-spec.md §9), so both the legacy flat layout and the
+    /// sharded layout resolve. Replaces the {basename}[_N] directory glob, which stopped
+    /// matching once migrated directories became content-hash ids.
     /// </summary>
     public List<string> FindAllProjects(string pdfPath)
     {
         var projectHome = GetProjectHome();
-        var fileNameWithoutExtension = Path.GetFileNameWithoutExtension(pdfPath);
         var results = new List<string>();
 
         if (!Directory.Exists(projectHome))
             return results;
 
-        // Find all directories that match the pattern: {basename} or {basename}_N
-        var dirs = Directory.GetDirectories(projectHome, fileNameWithoutExtension + "*");
-        foreach (var dir in dirs)
+        var index = StoreIndex.LoadOrBuild(projectHome);
+        foreach (var entry in StoreIndex.FindByPdfPath(index, pdfPath))
         {
-            var dirName = Path.GetFileName(dir);
-            // Must match exactly {basename} or {basename}_N pattern
-            if (dirName == fileNameWithoutExtension || 
-                (dirName.StartsWith(fileNameWithoutExtension + "_") && IsNumeric(dirName.Substring(fileNameWithoutExtension.Length + 1))))
-            {
-                // Verify it's a valid project by checking for project.json
-                var metadataPath = Path.Combine(dir, "project.json");
-                if (File.Exists(metadataPath))
-                {
-                    var metadata = LoadProjectMetadata(dir);
-                    // Verify the project.json references the same PDF file
-                    if (metadata is not null && string.Equals(metadata.PdfPath, pdfPath, StringComparison.OrdinalIgnoreCase))
-                    {
-                        results.Add(dir);
-                    }
-                }
-            }
+            if (Directory.Exists(entry.ProjectPath))
+                results.Add(entry.ProjectPath);
         }
 
-        // Sort: base name first, then by numeric suffix
+        var fileNameWithoutExtension = Path.GetFileNameWithoutExtension(pdfPath);
+
+        // For never-migrated directories keep the historical ordering (base name first, then
+        // numeric suffix); sharded directories are hash ids and stay in DirName order.
         results.Sort((a, b) =>
         {
             var nameA = Path.GetFileName(a);
             var nameB = Path.GetFileName(b);
+            if (!IsLegacyDirName(nameA, fileNameWithoutExtension) || !IsLegacyDirName(nameB, fileNameWithoutExtension))
+                return string.Compare(nameA, nameB, StringComparison.Ordinal);
             if (nameA == fileNameWithoutExtension) return -1;
             if (nameB == fileNameWithoutExtension) return 1;
-            
+
             var suffixA = nameA.Substring(fileNameWithoutExtension.Length + 1);
             var suffixB = nameB.Substring(fileNameWithoutExtension.Length + 1);
             if (int.TryParse(suffixA, out var numA) && int.TryParse(suffixB, out var numB))
@@ -104,6 +111,10 @@ public class ProjectService
 
         return results;
     }
+
+    private static bool IsLegacyDirName(string dirName, string baseName) =>
+        dirName == baseName ||
+        (dirName.StartsWith(baseName + "_", StringComparison.Ordinal) && IsNumeric(dirName.Substring(baseName.Length + 1)));
 
     private static bool IsNumeric(string value)
     {
@@ -116,21 +127,20 @@ public class ProjectService
     /// </summary>
     public string GetUniqueProjectPath(string pdfPath)
     {
-        var basePath = GetDefaultProjectPath(pdfPath);
-        if (!Directory.Exists(basePath))
-            return basePath;
+        return StorePaths.ShardedProjectDir(GetProjectHome(), NextFreeProjectId(pdfPath));
+    }
 
-        var directory = Path.GetDirectoryName(basePath)!;
-        var fileName = Path.GetFileName(basePath);
-        var counter = 2;
-
-        while (true)
-        {
-            var newPath = Path.Combine(directory, $"{fileName}_{counter}");
-            if (!Directory.Exists(newPath))
-                return newPath;
-            counter++;
-        }
+    /// <summary>
+    /// First unused project id for the PDF: content hash, then deterministically chained
+    /// hashes while the sharded directory is already taken (duplicate-PDF projects).
+    /// </summary>
+    private string NextFreeProjectId(string pdfPath)
+    {
+        var root = GetProjectHome();
+        var id = StoreMigrator.ComputeProjectIdForPdf(pdfPath);
+        while (Directory.Exists(StorePaths.ShardedProjectDir(root, id)))
+            id = StoreMigrator.ChainProjectId(id);
+        return id;
     }
 
     /// <summary>
@@ -139,7 +149,10 @@ public class ProjectService
     /// </summary>
     public string CreateProject(string pdfPath, string? projectPath = null)
     {
-        projectPath ??= GetDefaultProjectPath(pdfPath);
+        // Phase C: new projects live in the sharded layout under a content-derived id
+        // (docs/traceview-storage-layout-spec.md §9); {basename}[_N] flat directories are
+        // only what legacy stores still hold.
+        projectPath ??= GetUniqueProjectPath(pdfPath);
 
         // Create main project directory
         Directory.CreateDirectory(projectPath);
@@ -152,33 +165,108 @@ public class ProjectService
         Directory.CreateDirectory(popoDir);
         Directory.CreateDirectory(semanticDir);
 
+        var sharded = StorePaths.IsShardedPath(GetProjectHome(), projectPath);
+
         // Create project metadata
         var metadata = new ProjectMetadata
         {
             PdfPath = pdfPath,
             PdfFileName = Path.GetFileName(pdfPath),
-            ProjectName = Path.GetFileName(projectPath),
+            ProjectName = sharded ? Path.GetFileNameWithoutExtension(pdfPath) : Path.GetFileName(projectPath),
             ProjectPath = projectPath,
+            ProjectId = sharded ? Path.GetFileName(projectPath) : null,
             CreatedAt = DateTime.UtcNow
         };
 
+        if (sharded)
+            NoteShardedCreation();
+
         var metadataPath = Path.Combine(projectPath, "project.json");
         File.WriteAllText(metadataPath, JsonSerializer.Serialize(metadata, SourceGenerationContext.Default.ProjectMetadata));
+
+        TryRegisterInIndex(projectPath, metadata);
 
         return projectPath;
     }
 
     /// <summary>
-    /// Ensures a project exists for the given PDF. If it doesn't exist, creates one.
+    /// Rebuilds the store index (store-index.json) from the projects on disk and returns it.
+    /// The index is a rebuildable cache; the directories remain the source of truth
+    /// (docs/traceview-storage-layout-spec.md Phase A).
     /// </summary>
-    public string EnsureProject(string pdfPath)
+    public StoreIndexFile BuildStoreIndex()
     {
-        var projectPath = GetDefaultProjectPath(pdfPath);
-        if (!Directory.Exists(projectPath))
+        return StoreIndex.BuildAndSave(GetProjectHome());
+    }
+
+    /// <summary>
+    /// Phase B: migrates flat legacy projects to the sharded layout. Pass dryRun: true to
+    /// get the plan without touching the disk. Idempotent; <see cref="RollbackStore"/> reverses it.
+    /// </summary>
+    public StoreMigrateResult MigrateStore(bool dryRun = false)
+    {
+        return StoreMigrator.Migrate(GetProjectHome(), dryRun);
+    }
+
+    /// <summary>Reverses a Phase B migration using the index's recorded original paths.</summary>
+    public StoreMigrateResult RollbackStore()
+    {
+        return StoreMigrator.Rollback(GetProjectHome());
+    }
+
+    /// <summary>Startup sweep wrapper: removes stale task staging directories under tmp/, returns their names.</summary>
+    public List<string> CleanupStaleStoreTasks(string root, TimeSpan? maxAge = null) =>
+        StoreTask.CleanupStaleTasks(root, maxAge);
+
+    /// <summary>
+    /// Best-effort registration of a created project in the store index.
+    /// Never fails project creation: the index self-heals via <see cref="BuildStoreIndex"/>.
+    /// </summary>
+    private void TryRegisterInIndex(string projectPath, ProjectMetadata metadata)
+    {
+        try
         {
-            return CreateProject(pdfPath, projectPath);
+            var root = GetProjectHome();
+            if (!projectPath.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            StoreIndex.Register(root, new StoreProjectEntry
+            {
+                DirName = Path.GetFileName(projectPath),
+                ProjectPath = projectPath,
+                PdfPath = metadata.PdfPath,
+                PdfFileName = metadata.PdfFileName,
+                CreatedAt = metadata.CreatedAt,
+                LastModified = metadata.LastModified,
+                Legacy = !StorePaths.IsShardedPath(root, projectPath),
+                ProjectId = metadata.ProjectId
+            });
         }
-        return projectPath;
+        catch
+        {
+            // Index maintenance is best-effort.
+        }
+    }
+
+    /// <summary>
+    /// Best-effort manifest note that creation now lands in the sharded layout.
+    /// </summary>
+    private void NoteShardedCreation()
+    {
+        try
+        {
+            var root = GetProjectHome();
+            var manifest = StoreManifest.Load(root);
+            if (manifest is not null && !string.Equals(manifest.NewProjectLayout, "sharded", StringComparison.Ordinal))
+            {
+                manifest.NewProjectLayout = "sharded";
+                StoreManifest.Save(root, manifest);
+            }
+        }
+        catch
+        {
+            // Informational only.
+        }
     }
 
     /// <summary>

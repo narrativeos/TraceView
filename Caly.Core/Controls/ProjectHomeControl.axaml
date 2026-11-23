@@ -1,0 +1,148 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:Caly.Core.ViewModels"
+             xmlns:models="clr-namespace:Caly.Core.Models"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+             x:Class="Caly.Core.Controls.ProjectHomeControl"
+             x:DataType="vm:MainViewModel">
+    <!-- 项目主页: the empty-state home (docs .design-flow/project-entry E01).
+         近期项目 + 打开 PDF… + 队列看板 all live inside the window here, so no entry
+         depends on the macOS menu bar being reachable. -->
+    <UserControl.Styles>
+        <Style Selector="TextBlock.homeSub">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Foreground" Value="{DynamicResource CalyMutedForegroundBrush}"/>
+        </Style>
+
+        <Style Selector="Button.homeRow">
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Padding" Value="12,10"/>
+            <Setter Property="Margin" Value="0,0,0,8"/>
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseLowBrush}"/>
+        </Style>
+        <Style Selector="Button.homeRow:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource CalyToolbarHoverBackgroundBrush}"/>
+        </Style>
+
+        <Style Selector="Border.badge">
+            <Setter Property="CornerRadius" Value="999"/>
+            <Setter Property="Padding" Value="8,2"/>
+            <Setter Property="Background" Value="#260A66D6"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="Border.badge.done">
+            <Setter Property="Background" Value="#261A7F37"/>
+        </Style>
+        <Style Selector="TextBlock.badge">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Foreground" Value="#FF0A66D6"/>
+        </Style>
+        <Style Selector="TextBlock.badge.done">
+            <Setter Property="Foreground" Value="#FF1A7F37"/>
+        </Style>
+
+        <Style Selector="Button.homePrimary">
+            <Setter Property="Padding" Value="14,8"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Background" Value="#FF0A66D6"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+        <Style Selector="Button.homePrimary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#FF0955B3"/>
+        </Style>
+        <Style Selector="Button.homeSecondary">
+            <Setter Property="Padding" Value="14,8"/>
+            <Setter Property="CornerRadius" Value="8"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Grid>
+        <Border MaxWidth="720"
+                Margin="24"
+                Padding="32,28"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                CornerRadius="14"
+                BorderThickness="1"
+                Background="{DynamicResource SystemControlBackgroundChromeWhiteBrush}"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
+            <StackPanel Spacing="14">
+                <!-- 空态错误横幅: open / create failures no longer vanish into ExceptionViewModel (C02). -->
+                <Border Background="#22E53935"
+                        BorderBrush="#66E53935"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="12,10"
+                        IsVisible="{Binding HasHomeError}">
+                    <TextBlock Text="{Binding HomeError}"
+                               TextWrapping="Wrap"
+                               Foreground="{DynamicResource CalyErrorForegroundBrush}"/>
+                </Border>
+
+                <TextBlock Text="项目"
+                           FontSize="17"
+                           FontWeight="SemiBold"/>
+                <TextBlock Classes="homeSub"
+                           Text="近期打开的项目（来自 ~/.TraceView 索引）"/>
+
+                <ItemsControl ItemsSource="{Binding RecentProjects}"
+                              IsVisible="{Binding HasRecentProjects}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="models:RecentProjectItem">
+                            <Button Classes="homeRow"
+                                    Command="{Binding $parent[ItemsControl].((vm:MainViewModel)DataContext).OpenRecentProjectCommand}"
+                                    CommandParameter="{Binding PdfPath}"
+                                    ToolTip.Tip="打开该项目">
+                                <Grid ColumnDefinitions="*,Auto,Auto">
+                                    <TextBlock Grid.Column="0"
+                                               Text="{Binding Name}"
+                                               FontWeight="SemiBold"
+                                               TextTrimming="CharacterEllipsis"
+                                               VerticalAlignment="Center"/>
+                                    <Border Grid.Column="1"
+                                            Margin="10,0,0,0"
+                                            Classes="badge"
+                                            Classes.done="{Binding IsDoneStage}"
+                                            IsVisible="{Binding HasStageBadge}">
+                                        <TextBlock Classes="badge"
+                                                   Classes.done="{Binding IsDoneStage}"
+                                                   Text="{Binding StageLabel}"/>
+                                    </Border>
+                                    <TextBlock Grid.Column="2"
+                                               Classes="homeSub"
+                                               Text="{Binding LastOpenedText}"
+                                               Margin="10,0,0,0"
+                                               VerticalAlignment="Center"/>
+                                </Grid>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <TextBlock Classes="homeSub"
+                           TextWrapping="Wrap"
+                           IsVisible="{Binding HasNoRecentProjects}"
+                           Text="还没有项目。用「打开 PDF…」打开一个 PDF，会自动创建项目并出现在这里。"/>
+
+                <StackPanel Orientation="Horizontal"
+                            Spacing="10"
+                            Margin="0,4,0,0">
+                    <Button Classes="homePrimary"
+                            Content="打开 PDF…"
+                            Command="{Binding OpenFileCommand}"/>
+                    <Button Classes="homeSecondary"
+                            Content="队列看板"
+                            ToolTip.Tip="队列看板 (Cmd+Shift+B)"
+                            Command="{Binding ShowQueueBoardCommand}"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

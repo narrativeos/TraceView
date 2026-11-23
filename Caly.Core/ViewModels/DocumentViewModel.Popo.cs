@@ -20,6 +20,7 @@
 
 using Caly.Core.Models;
 using Caly.Core.Services;
+using Caly.Core.Services.Store;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System.Collections.ObjectModel;
@@ -460,26 +461,35 @@ public sealed partial class DocumentViewModel
                 }
             }
 
-            // 2: Check MinerUService cache %LocalAppData%/Caly/mineru/{docId}/
-            // This is where MinerUService extracts the ZIP files.
-            // 3.x extracts to {docId}/hybrid_auto/; 4.0 extracts flat to {docId}/.
+            // 2: Check the global MinerU cache root {ProjectHome}/cache/mineru, where MinerUService
+            // extracts ZIPs without a project path. Entries are keyed by content hash, so scan its
+            // subdirectories; 3.x extracts to {entry}/hybrid_auto/, 4.0 flat to {entry}/.
             if (artifactsDir is null && LocalPath is not null)
             {
-                var docId = Path.GetFileNameWithoutExtension(LocalPath);
-                var minerUCacheBase = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-                var minerUDocDir = Path.Combine(minerUCacheBase, "Caly", "mineru", docId);
-                foreach (var candidate in new[] { Path.Combine(minerUDocDir, "hybrid_auto"), minerUDocDir })
+                var minerUCacheBase = MinerUService.GetDefaultCacheDirectory();
+                if (Directory.Exists(minerUCacheBase))
                 {
-                    var imagesDir = Path.Combine(candidate, "images");
-                    if (Directory.Exists(imagesDir))
+                    foreach (var entryDir in Directory.GetDirectories(minerUCacheBase))
                     {
-                        var imageFiles = System.IO.Directory.GetFiles(imagesDir, "*.*", System.IO.SearchOption.TopDirectoryOnly)
-                            .Where(f => System.IO.Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
-                            .ToList();
-                        if (imageFiles.Count > 0)
+                        foreach (var candidate in new[] { Path.Combine(entryDir, "hybrid_auto"), entryDir })
                         {
-                            artifactsDir = candidate;
-                            System.Diagnostics.Debug.WriteLine($"[Popo] Found images in MinerUService cache: {artifactsDir}");
+                            var imagesDir = Path.Combine(candidate, "images");
+                            if (Directory.Exists(imagesDir))
+                            {
+                                var imageFiles = Directory.GetFiles(imagesDir, "*.*", SearchOption.TopDirectoryOnly)
+                                    .Where(f => Path.GetExtension(f).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg")
+                                    .ToList();
+                                if (imageFiles.Count > 0)
+                                {
+                                    artifactsDir = candidate;
+                                    System.Diagnostics.Debug.WriteLine($"[Popo] Found images in MinerUService cache: {artifactsDir}");
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (artifactsDir is not null)
+                        {
                             break;
                         }
                     }
@@ -554,8 +564,7 @@ public sealed partial class DocumentViewModel
     {
         try
         {
-            var cacheBase = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".TraceView", docId);
-            var mineruCacheDir = Path.Combine(cacheBase, "mineru");
+            var mineruCacheDir = StorePaths.LegacyMineruCacheDir(StorePaths.ResolveRoot(), docId);
 
             if (!Directory.Exists(mineruCacheDir))
                 return null;

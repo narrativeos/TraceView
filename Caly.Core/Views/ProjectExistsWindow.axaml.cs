@@ -18,10 +18,14 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+using System;
 using System.Collections.Generic;
 using System.IO;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
+using Caly.Core.Services;
+using Caly.Core.Utilities;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Caly.Core.Views;
 
@@ -56,14 +60,29 @@ public partial class ProjectExistsWindow : Window
     protected override void OnApplyTemplate(TemplateAppliedEventArgs e)
     {
         base.OnApplyTemplate(e);
+
+        // 文案随数量说明情况（列表为空时根本不会弹这个窗，调用方已直接新建并打开）。
+        if (this.Find<TextBlock>("PART_HeaderText") is { } headerText)
+        {
+            headerText.Text = $"这个 PDF 已有 {_existingProjects.Count} 个项目";
+        }
+
         _projectList = this.Find<ListBox>("PART_ProjectList");
         if (_projectList is not null)
         {
+            var projectService = App.Current?.Services?.GetService<ProjectService>();
             var items = new List<ProjectListItem>();
             foreach (var path in _existingProjects)
             {
                 var name = Path.GetFileName(path);
-                items.Add(new ProjectListItem { Name = name, Path = path });
+                var metadata = projectService?.LoadProjectMetadata(path);
+                var lastOpened = metadata?.LastModified ?? metadata?.CreatedAt;
+                items.Add(new ProjectListItem
+                {
+                    Name = name,
+                    Path = path,
+                    TimeText = lastOpened is { } timestamp ? TimeText.SinceUtc(timestamp) : string.Empty,
+                });
             }
             _projectList.ItemsSource = items;
         }
@@ -93,6 +112,11 @@ public class ProjectListItem
 {
     public string Name { get; set; } = string.Empty;
     public string Path { get; set; } = string.Empty;
+
+    /// <summary>Relative 最近打开 text (e.g. 3 小时前); empty when metadata is unreadable.</summary>
+    public string TimeText { get; set; } = string.Empty;
+
+    public bool HasTime => !string.IsNullOrEmpty(TimeText);
 
     public override string ToString() => Name;
 }

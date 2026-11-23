@@ -33,6 +33,7 @@ using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
 using Caly.Core.Models;
+using Caly.Core.Services.Store;
 using Caly.Core.Utilities;
 
 namespace Caly.Core.Services;
@@ -160,10 +161,15 @@ public sealed class MinerUService : IDisposable
             && uri.Port == baseUri.Port;
     }
 
-    private static string GetDefaultCacheDirectory()
+    /// <summary>
+    /// Global (no-project) MinerU result cache: {ProjectHome}/cache/mineru (spec §4). First use
+    /// relocates the legacy %LocalAppData%/Caly/mineru root into the store once (spec §1).
+    /// </summary>
+    public static string GetDefaultCacheDirectory()
     {
-        var baseCache = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        return Path.Combine(baseCache, "Caly", "mineru");
+        var dir = StorePaths.StoreMinerUCacheDir(StorePaths.ResolveRoot());
+        StorePaths.MigrateLegacyAppCacheDir("mineru", dir);
+        return dir;
     }
 
     #region Health Check
@@ -636,21 +642,28 @@ public sealed class MinerUService : IDisposable
     #endregion
 
     /// <summary>
-    /// Gets the cached ZIP file path for a given PDF.
+    /// Content-derived cache key for a PDF: sha256(pdf)[0:32], the same id the sharded
+    /// project layout uses. Renames and moves of the same document keep hitting the
+    /// same cache entries (spec §11 acceptance: cache fully reused after a rename).
+    /// </summary>
+    private static string GetDocKey(string pdfPath) =>
+        StoreMigrator.ComputeProjectIdForPdf(pdfPath);
+
+    /// <summary>
+    /// Gets the cached ZIP file path for a given PDF: {cache}/{sha256(pdf)}.zip.
     /// </summary>
     private string GetCacheZipPath(string pdfPath)
     {
-        var docId = Path.GetFileNameWithoutExtension(pdfPath);
-        return Path.Combine(_cacheDirectory, $"{docId}.zip");
+        return Path.Combine(_cacheDirectory, $"{GetDocKey(pdfPath)}.zip");
     }
 
     /// <summary>
     /// Gets the extracted artifacts directory path for a given PDF.
-    /// Artifacts are normalized to {cache}/{docId}/ by ExtractZipToDocDir.
+    /// Artifacts are normalized to {cache}/{sha256(pdf)}/ by ExtractZipToDocDir.
     /// </summary>
     private string GetExtractedDirPath(string pdfPath)
     {
-        return Path.Combine(_cacheDirectory, Path.GetFileNameWithoutExtension(pdfPath));
+        return Path.Combine(_cacheDirectory, GetDocKey(pdfPath));
     }
 
     #region Task ID Persistence
@@ -661,12 +674,11 @@ public sealed class MinerUService : IDisposable
     /// </summary>
     private string GetTaskIdFilePath(string pdfPath, string? projectPath)
     {
-        var docId = Path.GetFileNameWithoutExtension(pdfPath);
         // Always save to project's mineru directory for consistency
         var baseDir = !string.IsNullOrEmpty(projectPath)
             ? Path.Combine(projectPath, "mineru")
             : _cacheDirectory;
-        return Path.Combine(baseDir, $"{docId}_task_id.json");
+        return Path.Combine(baseDir, $"{GetDocKey(pdfPath)}_task_id.json");
     }
 
     /// <summary>
@@ -820,16 +832,16 @@ public sealed class MinerUService : IDisposable
         if (!File.Exists(zipPath))
             return null;
 
-        var docId = Path.GetFileNameWithoutExtension(pdfPath);
-        // Artifacts are normalized to {cache}/{docId}/ (see ExtractZipToDocDir)
-        var artifactsDir = Path.Combine(_cacheDirectory, docId);
+        var docKey = GetDocKey(pdfPath);
+        // Artifacts are normalized to {cache}/{sha256(pdf)}/ (see ExtractZipToDocDir)
+        var artifactsDir = Path.Combine(_cacheDirectory, docKey);
 
         // If artifacts dir doesn't exist, extract from zip
         if (!Directory.Exists(artifactsDir))
         {
             try
             {
-                artifactsDir = ExtractZipToDocDir(zipPath, docId);
+                artifactsDir = ExtractZipToDocDir(zipPath, docKey);
             }
             catch
             {
@@ -857,15 +869,18 @@ public sealed class MinerUService : IDisposable
     /// Cleans up old extracted directories, keeping only the one for the current document.
     /// This prevents disk space from growing unbounded.
     /// </summary>
-    public void ClearOldExtractedDirs(string currentDocId)
+    public void ClearOldExtractedDirs(string currentPdfPath)
     {
+        var currentKey = GetDocKey(currentPdfPath);
         try
         {
             foreach (var dir in Directory.GetDirectories(_cacheDirectory))
             {
                 var dirName = Path.GetFileName(dir);
-                // Skip .zip files and the current document directory
-                if (!dirName.EndsWith(".zip") && dirName != currentDocId)
+                // Skip .zip-named dirs and the current document directory. Legacy
+                // basename-keyed directories no longer match the hash key and are
+                // removed here on the next parse (self-healing cleanup).
+                if (!dirName.EndsWith(".zip") && dirName != currentKey)
                 {
                     try
                     {
@@ -966,8 +981,8 @@ public sealed class MinerUService : IDisposable
     {
         onProgress?.Invoke(MinerUParseStatus.ParsingResult, 85);
 
-        var docId = Path.GetFileNameWithoutExtension(sourcePdfPath);
-        var artifactsDir = await Task.Run(() => ExtractZipToDocDir(zipPath, docId), ct);
+        var docKey = GetDocKey(sourcePdfPath);
+        var artifactsDir = await Task.Run(() => ExtractZipToDocDir(zipPath, docKey), ct);
 
         // Parse the extracted directory
         var minerUDoc = await Task.Run(() =>

@@ -21,8 +21,12 @@
 using Avalonia.Collections;
 using Caly.Core.Models;
 using Caly.Core.Services;
+using Caly.Core.Services.Agent;
+using Caly.Core.Services.Interfaces;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
+using Microsoft.Extensions.DependencyInjection;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -547,6 +551,221 @@ public partial class AnalysisViewModel : ViewModelBase
     private void CloseReferencePanel()
     {
         ShowReferencePanel = false;
+    }
+
+    #endregion
+
+    #region Agent
+
+    /// <summary>
+    /// Last patch validated by the TOC alignment agent, waiting for the user to apply
+    /// or discard it. Applying stays a deterministic, user-driven step: the agent can
+    /// only ever propose.
+    /// </summary>
+    private TocAlignmentPatch? _pendingAgentPatch;
+
+    [ObservableProperty]
+    private bool _isAgentRunning;
+
+    [ObservableProperty]
+    private string _agentStatusText = string.Empty;
+
+    [ObservableProperty]
+    private string _agentPatchSummary = string.Empty;
+
+    [ObservableProperty]
+    private bool _showAgentPatchPanel;
+
+    /// <summary>
+    /// Runs the popo.toc-align call site on the current document. The agent reads the
+    /// structure through its bound tools and must submit a patch that passes
+    /// <see cref="TocAlignmentPatcher"/> validation; the resulting diff is previewed
+    /// here and applied only if the user confirms.
+    /// </summary>
+    [RelayCommand]
+    private async System.Threading.Tasks.Task RunTocAlignAgentAsync()
+    {
+        if (IsAgentRunning)
+            return;
+
+        var agentService = App.Current?.Services?.GetRequiredService<IAgentService>();
+        if (agentService is null)
+        {
+            AgentStatusText = "智能体服务不可用。";
+            return;
+        }
+
+        IsAgentRunning = true;
+        AgentStatusText = "TOC 对齐智能体运行中…";
+
+        try
+        {
+            var context = new AgentToolContext { Document = _structureDocument };
+
+            var result = await agentService.RunAsync(
+                AgentCallSiteDefinitions.PopoTocAlign.Id,
+                "请阅读当前文档的目录与全部正文块，完成 TOC 二次编排与正文对齐，" +
+                "并通过 propose_alignment_patch 提交一个通过校验的完整补丁。",
+                context);
+
+            if (context.Items.TryGetValue(PopoTocAlignTools.SessionItemKey, out var sessionObject) &&
+                sessionObject is PopoTocAlignSession { ProposedPatch: not null } session)
+            {
+                _pendingAgentPatch = session.ProposedPatch;
+
+                var validation = session.LastValidation;
+                AgentPatchSummary =
+                    $"新目录 {_pendingAgentPatch.Nodes.Count} 个节点（当前 {_structureDocument.TocEntries.Count} 个），" +
+                    $"正文块对齐 {validation?.AssignedBlocks ?? 0}/{validation?.TotalBlocks ?? 0}。";
+                AgentStatusText = "补丁已生成并通过校验，请预览后应用。";
+                ShowAgentPatchPanel = true;
+            }
+            else
+            {
+                _pendingAgentPatch = null;
+                AgentStatusText = string.IsNullOrWhiteSpace(result.FinalText)
+                    ? "智能体未能产出有效补丁。"
+                    : result.FinalText;
+                App.Messenger.Send(new ShowNotificationMessage(
+                    Avalonia.Controls.Notifications.NotificationType.Warning,
+                    "TOC 对齐", "智能体未能产出有效补丁。"));
+            }
+        }
+        catch (System.Exception ex)
+        {
+            AgentStatusText = ex.Message;
+            App.Messenger.Send(new ShowNotificationMessage(
+                Avalonia.Controls.Notifications.NotificationType.Error, "TOC 对齐智能体", ex.Message));
+        }
+        finally
+        {
+            IsAgentRunning = false;
+        }
+    }
+
+    /// <summary>
+    /// Applies the pending patch to the in-memory structure via the deterministic
+    /// patcher (replaces the TOC entries). The block→node mapping stays in the patch
+    /// artifact; tree rewiring is a separate persistence step.
+    /// </summary>
+    [RelayCommand]
+    private void ApplyTocPatch()
+    {
+        if (_pendingAgentPatch is null)
+            return;
+
+        TocAlignmentPatcher.Apply(_structureDocument, _pendingAgentPatch);
+        AgentStatusText = $"已应用补丁：目录 {_pendingAgentPatch.Nodes.Count} 个节点。";
+        _pendingAgentPatch = null;
+        ShowAgentPatchPanel = false;
+    }
+
+    [RelayCommand]
+    private void CloseAgentPatchPanel()
+    {
+        ShowAgentPatchPanel = false;
+    }
+
+    /// <summary>
+    /// Pushes the current Popo structure to the Jiulu hub. This path stays outside the
+    /// agent loop: deterministic plan (book draft + one chapter per section), one
+    /// read-only duplicate check, then drafts; audit submission is a separate,
+    /// explicitly confirmed step. Local writes stop at drafts unless the user submits.
+    /// </summary>
+    [RelayCommand]
+    private async System.Threading.Tasks.Task PushToJiuluAsync()
+    {
+        if (IsAgentRunning)
+            return;
+
+        var services = App.Current?.Services;
+        var publisher = services?.GetRequiredService<JiuluPublisher>();
+        var dialogService = services?.GetRequiredService<IDialogService>();
+        if (publisher is null || dialogService is null)
+        {
+            AgentStatusText = "推送服务不可用。";
+            return;
+        }
+
+        var docName = string.IsNullOrWhiteSpace(_projectPath)
+            ? _structureDocument.DocId
+            : System.IO.Path.GetFileName(_projectPath.TrimEnd('/', '\\'));
+        if (string.IsNullOrWhiteSpace(docName))
+            docName = _structureDocument.DocId;
+
+        JiuluPushPlan plan;
+        try
+        {
+            plan = JiuluPublisher.BuildPlan(_structureDocument, docName);
+        }
+        catch (System.Exception ex)
+        {
+            AgentStatusText = ex.Message;
+            return;
+        }
+
+        if (!await dialogService.ShowConfirmationDialogAsync(
+                "推送至九录文华", JiuluPublisher.SummarizePlan(plan)))
+            return;
+
+        IsAgentRunning = true;
+        try
+        {
+            // Duplicate check first (the hub's own instructions: search, then write).
+            AgentStatusText = "查询重复书目…";
+            var search = await publisher.SearchBooksAsync(plan.DocName);
+            var total = JiuluPublisher.SearchTotalMatches(search);
+            if (total is > 0 &&
+                !await dialogService.ShowConfirmationDialogAsync(
+                    "疑似同名书目",
+                    $"九录已有 {total} 条与《{plan.DocName}》相关的结果，仍要创建新草稿吗？"))
+            {
+                AgentStatusText = "已取消：九录存在同名书目。";
+                return;
+            }
+
+            AgentStatusText = "创建书籍草稿…";
+            var bookResult = await publisher.CreateBookDraftAsync(plan.BookDraft);
+            var bookId = JiuluPublisher.ExtractDraftId(bookResult);
+            if (bookId is null)
+            {
+                AgentStatusText = $"书籍草稿已创建，但未从响应中取到 book_id：{JiuluPublisher.ResponseText(bookResult)}";
+                App.Messenger.Send(new ShowNotificationMessage(
+                    Avalonia.Controls.Notifications.NotificationType.Warning, "九录文华", AgentStatusText));
+                return;
+            }
+
+            for (var i = 0; i < plan.Chapters.Count; i++)
+            {
+                AgentStatusText = $"创建章节草稿 {i + 1}/{plan.Chapters.Count}…";
+                await publisher.CreateChapterDraftAsync(bookId.Value, plan.Chapters[i]);
+            }
+
+            // Audit submission is a separate, explicitly confirmed decision.
+            var outcome = $"草稿已保存（book_id={bookId}，章节 {plan.Chapters.Count} 个）";
+            if (await dialogService.ShowConfirmationDialogAsync(
+                    "提交人工审批",
+                    $"{outcome}。\n\n是否提交至九录的人工审批队列？"))
+            {
+                AgentStatusText = "提交人工审批…";
+                await publisher.SubmitBookRevisionAsync(bookId.Value, $"Popo 加工结果推送：《{plan.DocName}》");
+                outcome += "；已提交人工审批";
+            }
+
+            AgentStatusText = outcome;
+            App.Messenger.Send(new ShowNotificationMessage(
+                Avalonia.Controls.Notifications.NotificationType.Success, "九录文华", outcome));
+        }
+        catch (System.Exception ex)
+        {
+            AgentStatusText = ex.Message;
+            App.Messenger.Send(new ShowNotificationMessage(
+                Avalonia.Controls.Notifications.NotificationType.Error, "九录文华推送失败", ex.Message));
+        }
+        finally
+        {
+            IsAgentRunning = false;
+        }
     }
 
     #endregion

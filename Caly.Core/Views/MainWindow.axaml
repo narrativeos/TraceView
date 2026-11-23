@@ -34,6 +34,10 @@
                         <NativeMenuItem Header="打印…" Command="{Binding Path=PrintDocumentCommand, Source={x:Static app:App.MainViewModelInstance}}"
                                         Gesture="Cmd+P" />
                         <NativeMenuItemSeparator />
+                        <NativeMenuItem Header="队列看板"
+                                        Command="{Binding Path=ShowQueueBoardCommand, Source={x:Static app:App.MainViewModelInstance}}"
+                                        Gesture="Cmd+Shift+B" />
+                        <NativeMenuItemSeparator />
                         <NativeMenuItem Header="设置…" Command="{Binding Path=ToggleSettingsCommand, Source={x:Static app:App.MainViewModelInstance}}"
                                         Gesture="Cmd+OemComma" />
                     </NativeMenu>

@@ -580,8 +580,7 @@ public sealed partial class DocumentViewModel
         }
 
         // Step 3: Submit a new parse task
-        var docId = Path.GetFileNameWithoutExtension(LocalPath);
-        service.ClearOldExtractedDirs(docId);
+        service.ClearOldExtractedDirs(LocalPath);
 
         _minerUCts = new CancellationTokenSource();
         IsMinerUParsing = true;

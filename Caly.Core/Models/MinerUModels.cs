@@ -576,7 +576,7 @@ public class MinerUParseJobFileSource
 }
 
 /// <summary>
-/// Persisted task ID record (saved to {docId}_task_id.json for resume support).
+/// Persisted task ID record (saved to {{sha256(pdf)}}_task_id.json for resume support).
 /// </summary>
 public class MinerUTaskIdRecord
 {

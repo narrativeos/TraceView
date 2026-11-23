@@ -1,0 +1,123 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Caly.Core.ViewModels"
+        x:Class="Caly.Core.Views.QueueBoardWindow"
+        x:DataType="vm:QueueBoardViewModel"
+        Width="1320"
+        Height="780"
+        MinWidth="900"
+        MinHeight="500"
+        WindowStartupLocation="CenterOwner"
+        CanResize="True"
+        Icon="{DynamicResource AppIcon}"
+        Title="队列看板">
+
+    <Window.Styles>
+        <Style Selector="Button.queueCard">
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Margin" Value="2,3"/>
+            <Setter Property="Padding" Value="8,6"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeLowBrush}"/>
+        </Style>
+        <Style Selector="Button.queueCard:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource CalyToolbarHoverBackgroundBrush}"/>
+        </Style>
+    </Window.Styles>
+
+    <Window.Resources>
+        <DataTemplate x:Key="CardTemplate" x:DataType="vm:QueueCardViewModel">
+            <Button Classes="queueCard"
+                    Command="{Binding $parent[Window].((vm:QueueBoardViewModel)DataContext).OpenCardCommand}"
+                    CommandParameter="{Binding PdfPath}"
+                    ToolTip.Tip="{Binding Detail}">
+                <StackPanel Spacing="2">
+                    <TextBlock Text="{Binding Title}"
+                               TextTrimming="CharacterEllipsis"
+                               FontWeight="SemiBold"
+                               FontSize="12"/>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Border CornerRadius="4"
+                                Padding="4,1"
+                                Background="{DynamicResource SystemControlHighlightListAccentLowBrush}">
+                            <TextBlock Text="{Binding StageLabel}" FontSize="10"/>
+                        </Border>
+                        <TextBlock Text="{Binding ActivityText}"
+                                   FontSize="10"
+                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                    </StackPanel>
+                    <TextBlock Text="{Binding Detail}"
+                               FontSize="10"
+                               TextWrapping="Wrap"
+                               MaxHeight="32"
+                               TextTrimming="CharacterEllipsis"
+                               IsVisible="{Binding HasDetail}"
+                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                </StackPanel>
+            </Button>
+        </DataTemplate>
+    </Window.Resources>
+
+    <DockPanel>
+        <Border DockPanel.Dock="Top"
+                Padding="14,10"
+                BorderBrush="{DynamicResource CalyDividerBrush}"
+                BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Grid.Column="0" Spacing="2">
+                    <TextBlock Text="队列看板 · MinerU 解析 → Popo 分析"
+                               FontWeight="Bold"
+                               FontSize="15"/>
+                    <TextBlock Text="{Binding StoreRoot}"
+                               FontSize="11"
+                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal"
+                            Spacing="10"
+                            VerticalAlignment="Center">
+                    <TextBlock Text="{Binding SummaryText}"
+                               FontSize="11"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                    <TextBlock Text="{Binding LastRefreshText}"
+                               FontSize="11"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                    <Button Content="刷新"
+                            Command="{Binding RefreshCommand}"
+                            Padding="10,4"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <ItemsControl ItemsSource="{Binding Columns}" Margin="8,6">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <UniformGrid Rows="1"/>
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:QueueColumnViewModel">
+                    <DockPanel Margin="4,0">
+                        <StackPanel DockPanel.Dock="Top"
+                                    Orientation="Horizontal"
+                                    Spacing="4"
+                                    Margin="2,2,2,6">
+                            <TextBlock Text="{Binding Title}" FontSize="12" FontWeight="SemiBold"/>
+                            <TextBlock Text="{Binding Count}" FontSize="12"
+                                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                        </StackPanel>
+                        <ListBox ItemsSource="{Binding Cards}"
+                                 ItemTemplate="{StaticResource CardTemplate}"
+                                 Background="Transparent"
+                                 BorderThickness="1"
+                                 BorderBrush="{DynamicResource CalyDividerBrush}"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
+                    </DockPanel>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+    </DockPanel>
+</Window>

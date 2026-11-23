@@ -28,7 +28,8 @@
     <Grid Margin="20" RowDefinitions="Auto,Auto,Auto,*,Auto">
         <!-- Header with message -->
         <StackPanel Grid.Row="0" Spacing="6" Margin="0,0,0,10">
-            <TextBlock Text="发现已有项目，请选择："
+            <TextBlock x:Name="PART_HeaderText"
+                       Text="发现已有项目，请选择："
                        FontWeight="Bold"
                        FontSize="14"/>
             <TextBlock Text="点击项目名直接打开，或创建新项目。"
@@ -58,7 +59,7 @@
                          SelectionChanged="ProjectList_OnSelectionChanged">
                     <ListBox.ItemTemplate>
                         <DataTemplate DataType="views:ProjectListItem">
-                            <Grid ColumnDefinitions="Auto,*" MinHeight="36">
+                            <Grid ColumnDefinitions="Auto,*,Auto" MinHeight="36">
                                 <Panel Grid.Column="0" Margin="8,0,8,0">
                                     <Rectangle Width="8" Height="8" RadiusX="4" RadiusY="4"
                                                Fill="{DynamicResource SystemControlForegroundBaseMediumBrush}"
@@ -68,6 +69,13 @@
                                            Text="{Binding Name}"
                                            FontSize="13"
                                            VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="2"
+                                           Text="{Binding TimeText}"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                                           VerticalAlignment="Center"
+                                           Margin="8,0,8,0"
+                                           IsVisible="{Binding HasTime}"/>
                             </Grid>
                         </DataTemplate>
                     </ListBox.ItemTemplate>

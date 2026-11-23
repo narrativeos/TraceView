@@ -28,6 +28,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Mime;
 using System.Text.Json;
+using Caly.Core.Services.Store;
 using System.Threading;
 using System.Threading.Tasks;
 using Caly.Core.Models;
@@ -95,10 +96,15 @@ public sealed class PopoService : IDisposable
         Directory.CreateDirectory(_cacheDirectory);
     }
 
+    /// <summary>
+    /// Global (no-project) Popo result cache: {ProjectHome}/cache/popo (spec §4). First use
+    /// relocates the legacy %LocalAppData%/Caly/popo root into the store once (spec §1).
+    /// </summary>
     private static string GetDefaultCacheDirectory()
     {
-        var baseCache = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        return Path.Combine(baseCache, "Caly", "popo");
+        var dir = StorePaths.StorePopoCacheDir(StorePaths.ResolveRoot());
+        StorePaths.MigrateLegacyAppCacheDir("popo", dir);
+        return dir;
     }
 
     #region Health Check
@@ -857,23 +863,28 @@ public sealed class PopoService : IDisposable
                 }
             }
 
-            // 2: Check MinerUService cache directory %LocalAppData%/Caly/mineru/{docId}/
-            // This is where MinerUService extracts the ZIP files.
+            // 2: Check the global MinerU cache root {ProjectHome}/cache/mineru (where MinerUService
+            // extracts ZIPs when no project path is available; entries are keyed by content hash,
+            // so scan subdirectories like step 1 rather than guessing a name).
             {
-                var minerUCacheBase = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-                var minerUCacheDir = Path.Combine(minerUCacheBase, "Caly", "mineru", docId);
-                System.Diagnostics.Debug.WriteLine($"[Popo] Searching MinerUService cache: {minerUCacheDir}, exists={Directory.Exists(minerUCacheDir)}");
-                var cacheArtifactsDir = ResolveArtifactsDirWithImages(minerUCacheDir);
-                if (cacheArtifactsDir is not null)
+                var minerUCacheBase = MinerUService.GetDefaultCacheDirectory();
+                System.Diagnostics.Debug.WriteLine($"[Popo] Searching MinerUService cache root: {minerUCacheBase}, exists={Directory.Exists(minerUCacheBase)}");
+                if (Directory.Exists(minerUCacheBase))
                 {
-                    System.Diagnostics.Debug.WriteLine($"[Popo] SUCCESS (MinerUService cache): Returning {cacheArtifactsDir}");
-                    return cacheArtifactsDir;
+                    foreach (var subDir in Directory.GetDirectories(minerUCacheBase))
+                    {
+                        var cacheArtifactsDir = ResolveArtifactsDirWithImages(subDir);
+                        if (cacheArtifactsDir is not null)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"[Popo] SUCCESS (MinerUService cache): Returning {cacheArtifactsDir}");
+                            return cacheArtifactsDir;
+                        }
+                    }
                 }
             }
 
-            // 3: Fallback to legacy cache directory ~/.TraceView/{docId}/mineru/
-            var cacheBase = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".TraceView", docId);
-            var mineruCacheDir = Path.Combine(cacheBase, "mineru");
+            // 3: Fallback to legacy cache directory {ProjectHome}/{docId}/mineru/
+            var mineruCacheDir = StorePaths.LegacyMineruCacheDir(StorePaths.ResolveRoot(), docId);
             System.Diagnostics.Debug.WriteLine($"[Popo] Searching cache dir: {mineruCacheDir}, exists={Directory.Exists(mineruCacheDir)}");
 
             if (Directory.Exists(mineruCacheDir))

@@ -20,14 +20,18 @@
 
 using Avalonia.Collections;
 using Caly.Core.Models;
+using Caly.Core.Services;
 using Caly.Core.Services.Interfaces;
+using Caly.Core.Services.Store;
 using Caly.Core.Utilities;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.DependencyInjection;
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using System.IO;
 using System.Linq;
 using System.Reactive.Concurrency;
 using System.Reactive.Linq;
@@ -43,6 +47,37 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     private readonly IDisposable _documentCollectionDisposable;
 
     public ObservableCollection<DocumentViewModel> PdfDocuments { get; } = new();
+
+    /// <summary>
+    /// 近期项目 shown by the 项目主页 (empty state): store index by 最近打开, capped at 8
+    /// (docs .design-flow/project-entry — E01).
+    /// </summary>
+    public ObservableCollection<RecentProjectItem> RecentProjects { get; } = new();
+
+    public bool HasRecentProjects => RecentProjects.Count > 0;
+
+    public bool HasNoRecentProjects => RecentProjects.Count == 0;
+
+    /// <summary>
+    /// True while no document is open: the 项目主页 covers the document tabs.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsHomeVisible { get; set; } = true;
+
+    /// <summary>
+    /// Persistent error banner on the 项目主页. Empty-state open/create failures used to land
+    /// only in <see cref="ViewModelBase.Exception"/>, which nothing renders while no document
+    /// is open — the “点了没反应” symptom (docs .design-flow/project-entry C02).
+    /// </summary>
+    [ObservableProperty]
+    public partial string HomeError { get; set; } = string.Empty;
+
+    public bool HasHomeError => !string.IsNullOrEmpty(HomeError);
+
+    partial void OnHomeErrorChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasHomeError));
+    }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SelectedDocument))]
@@ -152,6 +187,9 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             {
                 Debug.ThrowOnUiThread();
 
+                // Keep the 项目主页 / document-tabs switch in sync with the collection.
+                Dispatcher.UIThread.Post(SyncHomeState);
+
                 // NB: Tabalonia uses a Remove + Add when moving tabs
                 try
                 {
@@ -195,6 +233,8 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
                     Dispatcher.UIThread.Post(() => Exception = new ExceptionViewModel(ex));
                 }
             });
+
+        RefreshRecentProjects();
     }
 
     public void Dispose()
@@ -205,6 +245,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     [RelayCommand]
     private async Task OpenFile(CancellationToken token)
     {
+        HomeError = string.Empty;
         try
         {
             var pdfDocumentsService = App.Current?.Services?.GetRequiredService<IPdfDocumentsManagerService>();
@@ -222,7 +263,112 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         catch (Exception ex)
         {
             Debug.WriteExceptionToFile(ex);
-            Dispatcher.UIThread.Post(() => Exception = new ExceptionViewModel(ex));
+            Dispatcher.UIThread.Post(() =>
+            {
+                Exception = new ExceptionViewModel(ex);
+                HomeError = $"打开失败：{ex.Message}";
+            });
+        }
+    }
+
+    /// <summary>
+    /// Opens a 近期项目 straight from the 项目主页 row (flow E01 → D01). A project whose PDF
+    /// has moved or been deleted reports on the home banner instead of failing silently
+    /// (<c>OpenLoadDocument(string)</c> returns without a trace for missing files).
+    /// </summary>
+    [RelayCommand]
+    private async Task OpenRecentProject(string? pdfPath, CancellationToken token)
+    {
+        if (string.IsNullOrWhiteSpace(pdfPath))
+        {
+            return;
+        }
+
+        HomeError = string.Empty;
+
+        if (!File.Exists(pdfPath))
+        {
+            HomeError = $"项目文件已不存在：{Path.GetFileName(pdfPath)}。用「打开 PDF…」重新选择即可。";
+            RefreshRecentProjects();
+            return;
+        }
+
+        try
+        {
+            var pdfDocumentsService = App.Current?.Services?.GetRequiredService<IPdfDocumentsManagerService>();
+            if (pdfDocumentsService is null)
+            {
+                throw new NullReferenceException($"Missing {nameof(IPdfDocumentsManagerService)} instance.");
+            }
+
+            await pdfDocumentsService.OpenLoadDocument(pdfPath, token);
+        }
+        catch (OperationCanceledException)
+        {
+            // No op
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteExceptionToFile(ex);
+            Dispatcher.UIThread.Post(() =>
+            {
+                Exception = new ExceptionViewModel(ex);
+                HomeError = $"打开失败：{ex.Message}";
+            });
+        }
+    }
+
+    /// <summary>
+    /// Rebuilds <see cref="RecentProjects"/> off the UI thread from the store index
+    /// (~/.TraceView). Called at startup and whenever the last document closes.
+    /// </summary>
+    public void RefreshRecentProjects()
+    {
+        _ = Task.Run(() =>
+        {
+            List<RecentProjectItem> items;
+            try
+            {
+                var root = App.Current?.Services?.GetService<ProjectService>()?.GetProjectHome();
+                items = string.IsNullOrWhiteSpace(root)
+                    ? []
+                    : StoreRecents.List(root!);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteExceptionToFile(ex);
+                items = [];
+            }
+
+            Dispatcher.UIThread.Post(() =>
+            {
+                RecentProjects.Clear();
+                foreach (var item in items)
+                {
+                    RecentProjects.Add(item);
+                }
+
+                OnPropertyChanged(nameof(HasRecentProjects));
+                OnPropertyChanged(nameof(HasNoRecentProjects));
+            });
+        });
+    }
+
+    private void SyncHomeState()
+    {
+        var home = PdfDocuments.Count == 0;
+        if (home == IsHomeVisible)
+        {
+            return;
+        }
+
+        IsHomeVisible = home;
+
+        // Coming back to the home: the just-closed (or just-opened) document updated its
+        // LastModified, so the 近期项目 ordering must be rebuilt.
+        if (home)
+        {
+            RefreshRecentProjects();
         }
     }
 
@@ -360,5 +506,25 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         dialogService?.ShowNotification("TraceView",
             $"TraceView {version}\nPDF 阅读与结构化分析工具。",
             Avalonia.Controls.Notifications.NotificationType.Information);
+    }
+
+    private Caly.Core.Views.QueueBoardWindow? _queueBoardWindow;
+
+    /// <summary>
+    /// Opens (or activates) the 队列看板: the production pipeline board over every project
+    /// in the store. Exposed on the native 文件 menu.
+    /// </summary>
+    [RelayCommand]
+    private void ShowQueueBoard()
+    {
+        if (_queueBoardWindow is not null)
+        {
+            _queueBoardWindow.Activate();
+            return;
+        }
+
+        _queueBoardWindow = new Caly.Core.Views.QueueBoardWindow(new QueueBoardViewModel());
+        _queueBoardWindow.Closed += (_, _) => _queueBoardWindow = null;
+        _queueBoardWindow.Show();
     }
 }

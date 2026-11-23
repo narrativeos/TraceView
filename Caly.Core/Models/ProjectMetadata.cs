@@ -42,4 +42,10 @@ public class ProjectMetadata
     /// Avoids scanning thousands of image files on each document open.
     /// </summary>
     public string? MinerUImagesDir { get; set; }
+
+    /// <summary>
+    /// Stable content-derived project id (sha256 of the PDF, first 32 hex chars).
+    /// Assigned by the Phase B store migration; null for never-migrated projects.
+    /// </summary>
+    public string? ProjectId { get; set; }
 }

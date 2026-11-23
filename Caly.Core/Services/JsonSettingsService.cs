@@ -39,6 +39,16 @@ namespace Caly.Core.Services;
 
 [JsonSourceGenerationOptions(DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault)]
 [JsonSerializable(typeof(CalySettings), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(McpServerConfig), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(List<McpServerConfig>), GenerationMode = JsonSourceGenerationMode.Metadata)]
+// GeoLibre story model (geo column)
+[JsonSerializable(typeof(GeoStoryConfig), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(GeoChapter), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(List<GeoChapter>), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(GeoBeat), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(List<GeoBeat>), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(GeoLayerEffect), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(List<GeoLayerEffect>), GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(MinerUUploadResponse), GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(MinerUJobResponse), GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(MinerUTaskProgress), GenerationMode = JsonSourceGenerationMode.Metadata)]
@@ -49,7 +59,10 @@ namespace Caly.Core.Services;
 [JsonSerializable(typeof(TemporalNormalizer.EraEntry), GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(List<TemporalNormalizer.EraEntry>), GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(ProjectMetadata), GenerationMode = JsonSourceGenerationMode.Metadata)]
-[JsonSerializable(typeof(ProjectMetadata), GenerationMode = JsonSourceGenerationMode.Metadata)]
+// Store index (rebuildable project registry, Phase A)
+[JsonSerializable(typeof(Caly.Core.Services.Store.StoreIndexFile), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(List<Caly.Core.Services.Store.StoreProjectEntry>), GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(Caly.Core.Services.Store.StoreManifest), GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(PopoTaskSubmitResponse), GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(PopoTaskStatusResponse), GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(PopoTaskResultResponse), GenerationMode = JsonSourceGenerationMode.Metadata)]
@@ -136,6 +149,11 @@ namespace Caly.Core.Services;
 // Popo progress record models
 [JsonSerializable(typeof(PopoProgressRecord), GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(List<PopoProgressRecord>), GenerationMode = JsonSourceGenerationMode.Metadata)]
+// TOC alignment patch — round-tripped through the agent, so full serialization mode
+// (deserialize the model's proposal in PopoTocAlignSession).
+[JsonSerializable(typeof(TocAlignmentPatch))]
+[JsonSerializable(typeof(ProposedTocNode))]
+[JsonSerializable(typeof(BlockAssignment))]
 internal partial class SourceGenerationContext : JsonSerializerContext;
 
 internal sealed class JsonSettingsService : ISettingsService
