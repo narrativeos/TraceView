@@ -33,7 +33,7 @@
 
 		<SplitView Grid.Row="0"
                    IsPaneOpen="{Binding IsSettingsPaneOpen, Mode=TwoWay}"
-                   OpenPaneLength="300"
+                   OpenPaneLength="420"
                    CompactPaneLength="0"
                    DisplayMode="CompactOverlay"
                    PanePlacement="Right">
