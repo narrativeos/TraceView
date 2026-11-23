@@ -61,6 +61,44 @@ internal static class AgentCallSiteDefinitions
     };
 
     /// <summary>
+    /// Popo column: TOC rule-pack tuning loop (contract: narrative-operator-MinerU-Popo
+    /// docs/toc-self-learning-loop.md §2.5). Overrides are validated deterministically
+    /// offline, every change gates on /toc/evaluate replay against the gold set, and the
+    /// single write (retoc_document) requires human approval. The agent can never touch the
+    /// global rule pack files — promotion of an override to the global pack is a human
+    /// code-review step outside this site (§3 write-domain table).
+    /// </summary>
+    public static AgentCallSiteDefinition PopoTocTune { get; } = new()
+    {
+        Id = "popo.toc-tune",
+        DisplayName = "TOC 规则调优",
+        Instructions =
+            "You tune the TOC rule pack for the current document. Strict loop: " +
+            "(1) call get_toc_quality first to see level jumps and low-confidence entries; " +
+            "(2) draft the smallest override with propose_rule_override and fix any rejected " +
+            "rule ids until it is accepted; (3) gate it with evaluate_rules passing the same " +
+            "override — the gold-set replay is the only gate that counts; (4) call " +
+            "retoc_document with that override only when evaluate_rules passed AND " +
+            "aggregate.regressions is empty, and only after the user approves the prompt — " +
+            "a regression means the override is rejected outright, tune further instead; " +
+            "(5) report the candidate fingerprint and leave any promotion of the override " +
+            "to the global rule pack to a human. You have no file tools and must never edit " +
+            "global rule pack files; a single-document override never becomes global on its " +
+            "own. Never call retoc_document before an evaluate_rules with the same override " +
+            "showed zero regressions.",
+        // Tools bind to the run's StructureDocument and the Popo HTTP service via
+        // TocRuleTuningTools; evaluation and validation are deterministic and local.
+        LocalTools = [],
+        LocalToolsFactory = TocRuleTuningTools.Create,
+        McpToolBindings = EmptyToolBindings,
+        // retoc_document rewrites the stored task result — the only write in this loop,
+        // deny-by-default and approval-gated (contract §3).
+        ApprovalRequiredTools = new HashSet<string>(System.StringComparer.Ordinal) { RetocDocumentToolName },
+    };
+
+    private const string RetocDocumentToolName = "retoc_document";
+
+    /// <summary>
     /// Popo column: submit the processed structure to the Jiulu spatiotemporal
     /// knowledge hub. Execution-type site: the hub has no single publish tool —
     /// content lands as drafts (book, then chapters) and enters a manual audit
@@ -112,6 +150,7 @@ internal static class AgentCallSiteDefinitions
         new Dictionary<string, AgentCallSiteDefinition>(System.StringComparer.Ordinal)
         {
             [PopoTocAlign.Id] = PopoTocAlign,
+            [PopoTocTune.Id] = PopoTocTune,
             [PopoPushJiulu.Id] = PopoPushJiulu,
         };
 }
