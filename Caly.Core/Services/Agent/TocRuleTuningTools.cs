@@ -53,9 +53,12 @@ internal static class TocRuleOverrideValidator
         RegexFlagList,
         IntRange,
         DepthTable,
+        Bool,
+        EnumValues,
+        NumberRange,
     }
 
-    private sealed record RuleSpec(OverrideKind Kind, long Min = 0, long Max = 0)
+    private sealed record RuleSpec(OverrideKind Kind, long Min = 0, long Max = 0, double Low = 0, double High = 0, string[]? Values = null)
     {
         public string Allowed => Kind switch
         {
@@ -68,6 +71,9 @@ internal static class TocRuleOverrideValidator
             OverrideKind.IntRange => $"integer {Min}..{Max}",
             OverrideKind.DepthTable =>
                 "array of {\"mode\": \"search\"|\"match\", \"pattern\": compilable regex, \"level\": integer >= 1}",
+            OverrideKind.Bool => "boolean",
+            OverrideKind.EnumValues => "one of " + string.Join(" | ", Values!),
+            OverrideKind.NumberRange => FormattableString.Invariant($"number in [{Low}, {High}]"),
             _ => "unknown",
         };
     }
@@ -100,6 +106,16 @@ internal static class TocRuleOverrideValidator
         ["linking.excluded_title_patterns"] = new(OverrideKind.RegexList),
         ["linking.garbage_keywords"] = new(OverrideKind.StringList),
         ["linking.structural_headings"] = new(OverrideKind.StringList),
+        // M2: global level inference + S6 bookmark / S7 geometry signals.
+        ["levels.inference.mode"] = new(OverrideKind.EnumValues, Values: ["pointwise", "viterbi"]),
+        ["levels.viterbi.max_depth"] = new(OverrideKind.IntRange, Min: 1, Max: 8),
+        ["levels.viterbi.transition.deeper_one"] = new(OverrideKind.NumberRange, Low: -5, High: 5),
+        ["levels.viterbi.transition.deep_jump"] = new(OverrideKind.NumberRange, Low: -5, High: 5),
+        ["levels.viterbi.disagree_penalty"] = new(OverrideKind.NumberRange, Low: 0, High: 5),
+        ["signals.bookmarks.enabled"] = new(OverrideKind.Bool),
+        ["signals.confidence.bookmarks"] = new(OverrideKind.Number0To1),
+        ["signals.geometry.enabled"] = new(OverrideKind.Bool),
+        ["signals.confidence.geometry"] = new(OverrideKind.Number0To1),
     };
 
     /// <summary>Every rule id an override may name, sorted for stable error text.</summary>
@@ -190,6 +206,32 @@ internal static class TocRuleOverrideValidator
             case OverrideKind.IntRange:
                 if (!TryGetNumber(value, out var number) ||
                     number != Math.Floor(number) || number < spec.Min || number > spec.Max)
+                {
+                    errors.Add($"'{key}': expected {spec.Allowed}.");
+                }
+
+                break;
+
+            case OverrideKind.Bool:
+                if (value is not JsonValue boolValue || !boolValue.TryGetValue(out bool _))
+                {
+                    errors.Add($"'{key}': expected {spec.Allowed}.");
+                }
+
+                break;
+
+            case OverrideKind.EnumValues:
+                if (value is not JsonValue enumValue ||
+                    !enumValue.TryGetValue(out string? text) ||
+                    Array.IndexOf(spec.Values!, text) < 0)
+                {
+                    errors.Add($"'{key}': expected {spec.Allowed}.");
+                }
+
+                break;
+
+            case OverrideKind.NumberRange:
+                if (!TryGetNumber(value, out var amount) || amount < spec.Low || amount > spec.High)
                 {
                     errors.Add($"'{key}': expected {spec.Allowed}.");
                 }

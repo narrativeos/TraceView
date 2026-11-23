@@ -93,13 +93,22 @@ public class TocRuleTuningTests
           "levels.fallback_default_level": 1,
           "linking.excluded_title_patterns": ["^图\\s*\\d+"],
           "linking.garbage_keywords": ["未知"],
-          "linking.structural_headings": ["前言"]
+          "linking.structural_headings": ["前言"],
+          "levels.inference.mode": "viterbi",
+          "levels.viterbi.max_depth": 6,
+          "levels.viterbi.transition.deeper_one": 0.25,
+          "levels.viterbi.transition.deep_jump": -1.5,
+          "levels.viterbi.disagree_penalty": 2,
+          "signals.bookmarks.enabled": true,
+          "signals.confidence.bookmarks": 0.9,
+          "signals.geometry.enabled": false,
+          "signals.confidence.geometry": 0.6
         }
         """;
 
         var normalized = ValidateOk(patches);
         Assert.NotNull(normalized);
-        Assert.Equal(13, normalized.Count);
+        Assert.Equal(22, normalized.Count);
     }
 
     [Fact]
@@ -148,6 +157,44 @@ public class TocRuleTuningTests
         Assert.Equal(3, errors.Length);
         Assert.Contains("integer 1..12", errors[0], StringComparison.Ordinal);
         Assert.Contains("integer 0..1000", errors[1], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Viterbi_mode_enum_accepts_only_the_two_modes()
+    {
+        Assert.NotNull(ValidateOk("""{"levels.inference.mode": "pointwise"}"""));
+        Assert.NotNull(ValidateOk("""{"levels.inference.mode": "viterbi"}"""));
+
+        var errors = ValidateErrors("""{"levels.inference.mode": "global"}""");
+        Assert.Single(errors);
+        Assert.Contains("pointwise | viterbi", errors[0], StringComparison.Ordinal);
+
+        Assert.NotEmpty(ValidateErrors("""{"levels.inference.mode": 1}"""));
+    }
+
+    [Fact]
+    public void Bool_switches_accept_only_true_and_false()
+    {
+        Assert.NotNull(ValidateOk("""{"signals.bookmarks.enabled": false, "signals.geometry.enabled": true}"""));
+
+        var errors = ValidateErrors("""{"signals.bookmarks.enabled": "yes", "signals.geometry.enabled": 1}""");
+        Assert.Equal(2, errors.Length);
+        Assert.All(errors, e => Assert.Contains("expected boolean", e, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Viterbi_transition_weights_are_signed_number_ranges()
+    {
+        Assert.NotNull(ValidateOk(
+            """{"levels.viterbi.transition.deeper_one": 0, "levels.viterbi.transition.deep_jump": -5, "levels.viterbi.disagree_penalty": 0}"""));
+
+        var errors = ValidateErrors(
+            """{"levels.viterbi.transition.deep_jump": -6, "levels.viterbi.disagree_penalty": 5.5, "levels.viterbi.max_depth": 9}""");
+
+        Assert.Equal(3, errors.Length);
+        Assert.Contains("number in [-5, 5]", errors[0], StringComparison.Ordinal);
+        Assert.Contains("number in [0, 5]", errors[1], StringComparison.Ordinal);
+        Assert.Contains("integer 1..8", errors[2], StringComparison.Ordinal);
     }
 
     [Fact]
