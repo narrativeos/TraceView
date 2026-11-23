@@ -1060,6 +1060,36 @@ public static class PopoJsonService
     }
 
     /// <summary>
+    /// Reads the Popo task id from the project's popo/popo_result.json wrapper format
+    /// (top-level "task_id"); returns null when the file or field is absent — a popo.json
+    /// cache alone does not carry it. Used by the popo.toc-tune agent entry to bind
+    /// retoc_document to the completed task that produced the document.
+    /// </summary>
+    public static string? TryReadTaskId(string? projectPath)
+    {
+        if (string.IsNullOrWhiteSpace(projectPath))
+            return null;
+
+        var resultPath = Path.Combine(projectPath, "popo", "popo_result.json");
+        if (!File.Exists(resultPath))
+            return null;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(resultPath));
+            return doc.RootElement.ValueKind == JsonValueKind.Object &&
+                   doc.RootElement.TryGetProperty("task_id", out var taskId)
+                ? taskId.GetString()
+                : null;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Popo] TryReadTaskId failed: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Tries to parse a single JSON file as a Popo-serialized StructureDocument.
     /// Handles two formats:
     ///   1. Direct StructureDocument JSON (e.g., popo.json)

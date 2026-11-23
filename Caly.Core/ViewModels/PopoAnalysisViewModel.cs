@@ -577,6 +577,17 @@ public partial class AnalysisViewModel : ViewModelBase
     private bool _showAgentPatchPanel;
 
     /// <summary>
+    /// Per-tool trace of the last popo.toc-tune run (one line per tool outcome), shown
+    /// in a collapsible panel so the loop's evaluate-gate and approval decisions are
+    /// visible to the user rather than hidden inside the model's final prose.
+    /// </summary>
+    [ObservableProperty]
+    private string _agentRunTraceText = string.Empty;
+
+    [ObservableProperty]
+    private bool _showAgentRunTrace;
+
+    /// <summary>
     /// Runs the popo.toc-align call site on the current document. The agent reads the
     /// structure through its bound tools and must submit a patch that passes
     /// <see cref="TocAlignmentPatcher"/> validation; the resulting diff is previewed
@@ -636,6 +647,101 @@ public partial class AnalysisViewModel : ViewModelBase
             AgentStatusText = ex.Message;
             App.Messenger.Send(new ShowNotificationMessage(
                 Avalonia.Controls.Notifications.NotificationType.Error, "TOC 对齐智能体", ex.Message));
+        }
+        finally
+        {
+            IsAgentRunning = false;
+        }
+    }
+
+    /// <summary>
+    /// Approval prompt for the popo.toc-tune write tool: shows the tool name and the
+    /// summarized arguments and asks the user to confirm the rewrite. A missing dialog
+    /// service fails closed — the write never runs.
+    /// </summary>
+    private static AgentToolApprover BuildTocTuneApprover() => async (request, ct) =>
+    {
+        var dialogService = App.Current?.Services?.GetRequiredService<IDialogService>();
+        if (dialogService is null)
+            return false;
+
+        return await dialogService.ShowConfirmationDialogAsync(
+            "智能体重写目录",
+            $"智能体请求执行 {request.ToolName}（站点 {request.CallSiteId}）。\n\n" +
+            $"参数：{request.ArgumentsSummary}\n\n" +
+            "这将用新规则包重写该文档已保存的任务目录（tree/toc）。是否批准？");
+    };
+
+    /// <summary>
+    /// Runs the popo.toc-tune call site on the current document: the agent inspects TOC
+    /// quality, drafts a minimal rule override against the rule-pack whitelist, gates it on
+    /// the gold-set replay, and only then may rewrite this document's stored task result
+    /// through the approval-gated retoc_document. The Popo base URL comes from settings and
+    /// the task id from the project's popo_result.json when present; without a task id the
+    /// run stays read-only (retoc_document refuses without it).
+    /// </summary>
+    [RelayCommand]
+    private async System.Threading.Tasks.Task RunTocTuneAgentAsync()
+    {
+        if (IsAgentRunning)
+            return;
+
+        var agentService = App.Current?.Services?.GetRequiredService<IAgentService>();
+        if (agentService is null)
+        {
+            AgentStatusText = "智能体服务不可用。";
+            return;
+        }
+
+        IsAgentRunning = true;
+        AgentStatusText = "TOC 规则调优智能体运行中…";
+        ShowAgentRunTrace = false;
+        AgentRunTraceText = string.Empty;
+
+        try
+        {
+            var context = new AgentToolContext { Document = _structureDocument };
+
+            var settingsService = App.Current?.Services?.GetRequiredService<ISettingsService>();
+            var popoBaseUrl = settingsService?.GetSettings().PopoBaseUrl;
+            if (!string.IsNullOrWhiteSpace(popoBaseUrl))
+            {
+                context.Items[TocRuleTuningTools.BaseUrlItemKey] = popoBaseUrl;
+            }
+
+            var taskId = PopoJsonService.TryReadTaskId(_projectPath);
+            if (!string.IsNullOrWhiteSpace(taskId))
+            {
+                context.Items[TocRuleTuningTools.TaskIdItemKey] = taskId;
+            }
+
+            var result = await agentService.RunAsync(
+                AgentCallSiteDefinitions.PopoTocTune.Id,
+                "请改善当前文档的目录层级质量：先调用 get_toc_quality 查看层级跳变与低置信条目；" +
+                "再用 propose_rule_override 起草最小规则覆盖；用 evaluate_rules 通过 gold 集门禁（零退化）；" +
+                "仅在门禁通过且用户批准后调用 retoc_document 重写本文档目录，并报告规则包指纹与层级差异。",
+                context,
+                BuildTocTuneApprover());
+
+            var traceLines = new System.Collections.Generic.List<string>(result.ToolTrace);
+            if (context.Items.TryGetValue(TocRuleTuningTools.SessionItemKey, out var sessionObject) &&
+                sessionObject is TocRuleTuningSession { AcceptedOverride: not null } session)
+            {
+                traceLines.Add($"accepted override: {session.AcceptedOverride.ToJsonString()}");
+            }
+
+            AgentRunTraceText = string.Join("\n", traceLines);
+            ShowAgentRunTrace = traceLines.Count > 0;
+
+            AgentStatusText = string.IsNullOrWhiteSpace(result.FinalText)
+                ? "智能体未产出调优结论。"
+                : result.FinalText;
+        }
+        catch (System.Exception ex)
+        {
+            AgentStatusText = ex.Message;
+            App.Messenger.Send(new ShowNotificationMessage(
+                Avalonia.Controls.Notifications.NotificationType.Error, "TOC 规则调优智能体", ex.Message));
         }
         finally
         {

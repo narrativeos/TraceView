@@ -36,6 +36,11 @@
                         IsEnabled="{Binding !IsAgentRunning}"
                         ToolTip.Tip="由智能体重新编排目录并对齐正文，生成待确认补丁"
                         MinWidth="80"/>
+                <Button Content="TOC 规则调优 (Agent)"
+                        Command="{Binding RunTocTuneAgentCommand}"
+                        IsEnabled="{Binding !IsAgentRunning}"
+                        ToolTip.Tip="智能体起草规则覆盖，gold 集门禁通过并经批准后仅重写本文档目录"
+                        MinWidth="80"/>
                 <Button Content="推送九录文华"
                         Command="{Binding PushToJiuluCommand}"
                         IsEnabled="{Binding !IsAgentRunning}"
@@ -45,6 +50,17 @@
                          Text="{Binding BlockSearchText}"
                          MinWidth="150"/>
             </StackPanel>
+
+            <!-- Agent run trace (popo.toc-tune): one line per tool outcome -->
+            <Expander Header="智能体执行轨迹"
+                      DockPanel.Dock="Top"
+                      IsVisible="{Binding ShowAgentRunTrace}"
+                      Margin="0,4,0,0">
+                <TextBlock Text="{Binding AgentRunTraceText}"
+                           TextWrapping="Wrap"
+                           FontFamily="{DynamicResource CalyMonoFontFamily}"
+                           FontSize="12"/>
+            </Expander>
 
             <!-- Main content with tabs -->
             <TabControl>
