@@ -252,6 +252,13 @@ public partial class App : Application
     /// </summary>
     private async Task OpenMacDocumentAsync(string path)
     {
+        // AppKit surfaces command-line argv file references here too (`dotnet TraceView.dll`
+        // hands over the app binary itself); only genuine documents should open.
+        if (IsOwnApplicationPath(path))
+        {
+            return;
+        }
+
         try
         {
             await OpenDoc(path, CancellationToken.None);
@@ -276,12 +283,25 @@ public partial class App : Application
 
             _listeningToFiles = Task.Run(ListenToIncomingFiles); // Start listening
 
-            if (e.Args.Length == 0)
+            // On macOS the lifetime args come from argv[1:], so launching from the command
+            // line (`dotnet TraceView.dll` or the app binary) hands over the app's own path
+            // before any document. Skip self references; only genuine documents are opened.
+            string? document = null;
+            foreach (var arg in e.Args)
+            {
+                if (!IsOwnApplicationPath(arg))
+                {
+                    document = arg;
+                    break;
+                }
+            }
+
+            if (document is null)
             {
                 return;
             }
 
-            await Task.Run(() => OpenDoc(e.Args[0], CancellationToken.None));
+            await Task.Run(() => OpenDoc(document, CancellationToken.None));
         }
         catch (Exception ex)
         {
@@ -340,6 +360,58 @@ public partial class App : Application
         finally
         {
             await _pipeServer.DisposeAsync();
+        }
+    }
+
+    /// <summary>
+    /// True when <paramref name="path"/> refers to this application's own files
+    /// (host executable, entry assembly or core library), which command-line launches
+    /// surface via argv rather than as documents to open. GUI relaunches rewrite the
+    /// process cwd, so relative argv fragments are matched against the tail of the
+    /// app's own absolute paths.
+    /// </summary>
+    private static bool IsOwnApplicationPath(string path)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(path))
+            {
+                return false;
+            }
+
+            var normalized = path.Replace('\\', '/');
+            var rooted = Path.IsPathRooted(path);
+
+            foreach (var own in new[]
+                     {
+                         Environment.ProcessPath,
+                         System.Reflection.Assembly.GetEntryAssembly()?.Location,
+                         typeof(App).Assembly.Location,
+                     })
+            {
+                if (string.IsNullOrEmpty(own))
+                {
+                    continue;
+                }
+
+                var ownNormalized = Path.GetFullPath(own).Replace('\\', '/');
+
+                var matches = rooted
+                    ? string.Equals(Path.GetFullPath(normalized).Replace('\\', '/'), ownNormalized, StringComparison.Ordinal)
+                    : ownNormalized.EndsWith("/" + normalized.TrimStart('/'), StringComparison.Ordinal);
+
+                if (matches)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteExceptionToFile(ex);
+            return false;
         }
     }
 
