@@ -473,3 +473,6 @@ Library/Application Support/Microsoft/DeveloperTools/deviceid
 
 # Development scripts (one-off fix scripts)
 scripts/
+
+# Zed editor settings
+.zed/
