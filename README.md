@@ -90,6 +90,13 @@ You can also help TraceView by contributing to:
 
 ## License
 
-TraceView is licensed under the [MIT License](https://github.com/CalyPdf/Caly/blob/master/LICENSE).
+TraceView is licensed under the [MIT License](LICENSE).
+
+TraceView is a fork of [Caly](https://github.com/CalyPdf/Caly) by BobLd
+(Copyright (c) 2025 BobLd). The original Caly code and its license terms are
+unchanged and remain attributable upstream; the TraceView fork contributions
+are Copyright (c) 2026 narrativeos and are distributed under the same MIT
+terms. See [THIRD-PARTY-NOTICES.TXT](THIRD-PARTY-NOTICES.TXT) for the
+third-party components.
 
 ![caly preview 3](https://github.com/user-attachments/assets/49a5cea8-a407-48b2-9f53-3d3022a120ba)
