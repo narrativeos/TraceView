@@ -21,9 +21,11 @@
 using System;
 using System.Threading.Tasks;
 using Avalonia.Controls;
+using Avalonia.Controls.Notifications;
 using Avalonia.Controls.Primitives;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
+using Caly.Core.Services;
 using Caly.Core.Services.Interfaces;
 using Caly.Core.ViewModels;
 
@@ -32,6 +34,8 @@ namespace Caly.Core.Controls;
 public class SettingsControl : TemplatedControl
 {
     private Button? _browseProjectHomeButton;
+    private TextBox? _aiKeyInput;
+    private Button? _saveAiKeyButton;
 
     protected override void OnApplyTemplate(TemplateAppliedEventArgs e)
     {
@@ -40,6 +44,57 @@ public class SettingsControl : TemplatedControl
         if (_browseProjectHomeButton != null)
         {
             _browseProjectHomeButton.Click += OnBrowseProjectHomeClicked;
+        }
+
+        _aiKeyInput = e.NameScope.Find<TextBox>("PART_AiKeyInput");
+        _saveAiKeyButton = e.NameScope.Find<Button>("PART_SaveAiKeyButton");
+        if (_saveAiKeyButton != null)
+        {
+            _saveAiKeyButton.Click += OnSaveAiKeyClicked;
+        }
+    }
+
+    private void OnSaveAiKeyClicked(object? sender, RoutedEventArgs e)
+    {
+        if (_aiKeyInput?.Text is not { Length: > 0 } key)
+        {
+            Notify("智能体密钥", "请先在左侧输入 API 密钥。", NotificationType.Warning);
+            return;
+        }
+
+        var reference = (DataContext as MainViewModel)?.Settings.AiCredentialRef ?? string.Empty;
+        if (!reference.StartsWith("keychain:", StringComparison.OrdinalIgnoreCase))
+        {
+            Notify("智能体密钥",
+                "密钥引用需为 keychain:服务/账户 形式才能写入钥匙串（env: 引用只读）。",
+                NotificationType.Warning);
+            return;
+        }
+
+        if (App.Current?.Services?.GetService(typeof(ISecretStore)) is not ISecretStore secretStore ||
+            !secretStore.TrySet(reference, key))
+        {
+            Notify("智能体密钥", "写入系统钥匙串失败，请检查密钥引用格式。", NotificationType.Error);
+            return;
+        }
+
+        // Wipe the field once stored, and persist the settings file so the reference
+        // survives the next start.
+        _aiKeyInput.Text = null;
+
+        if (App.Current?.Services?.GetService(typeof(ISettingsService)) is ISettingsService settingsService)
+        {
+            settingsService.Save();
+        }
+
+        Notify("智能体密钥", "密钥已存入系统钥匙串。", NotificationType.Success);
+    }
+
+    private static void Notify(string title, string message, NotificationType type)
+    {
+        if (App.Current?.Services?.GetService(typeof(IDialogService)) is IDialogService dialogService)
+        {
+            dialogService.ShowNotification(title, message, type);
         }
     }
 

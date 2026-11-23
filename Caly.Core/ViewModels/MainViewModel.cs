@@ -161,6 +161,57 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             .SetProperty(CalySettings.CalySettingsProperty.PaneSize, newValue);
     }
 
+    // ========== MCP Server Registry (settings UI) ==========
+
+    private ObservableCollection<McpServerConfig>? _mcpServers;
+
+    /// <summary>
+    /// Editable view over the MCP server registry in <see cref="Settings"/>. Item property
+    /// edits mutate the very config objects the agent/MCP services read at connect time;
+    /// add/remove re-syncs the settings list and persists it.
+    /// </summary>
+    public ObservableCollection<McpServerConfig> McpServers
+    {
+        get => _mcpServers ??= new ObservableCollection<McpServerConfig>(Settings.McpServers);
+    }
+
+    [RelayCommand]
+    private void AddMcpServer()
+    {
+        var taken = new HashSet<string>(McpServers.Select(s => s.Name), StringComparer.OrdinalIgnoreCase);
+        var name = "mcp_server_1";
+        for (var i = 2; taken.Contains(name); i++)
+        {
+            name = $"mcp_server_{i}";
+        }
+
+        McpServers.Add(new McpServerConfig
+        {
+            Name = name,
+            DisplayName = "MCP Server",
+        });
+
+        SyncMcpServersToSettings();
+    }
+
+    [RelayCommand]
+    private void RemoveMcpServer(McpServerConfig? server)
+    {
+        if (server is null)
+        {
+            return;
+        }
+
+        McpServers.Remove(server);
+        SyncMcpServersToSettings();
+    }
+
+    private void SyncMcpServersToSettings()
+    {
+        Settings.McpServers = McpServers.ToList();
+        App.Current?.Services?.GetService<ISettingsService>()?.Save();
+    }
+
     partial void OnScanWhiteBalanceChanged(bool value)
     {
         var settingsService = App.Current?.Services?.GetService<ISettingsService>();

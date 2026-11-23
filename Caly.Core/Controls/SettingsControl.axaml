@@ -1,6 +1,7 @@
 <ResourceDictionary xmlns="https://github.com/avaloniaui"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:controls="using:Caly.Core.Controls"
+                    xmlns:models="clr-namespace:Caly.Core.Models"
                     xmlns:vm="clr-namespace:Caly.Core.ViewModels">
 
     <Design.PreviewWith>
@@ -146,6 +147,149 @@
                                                IsChecked="{Binding Settings.PopoOutputEpub, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
                                          <ToolTip.Tip>让 Popo 服务端在结果中额外渲染 {doc_id}.epub。该参数在提交任务时确定，关闭后只能重新处理才能拿到 EPUB。</ToolTip.Tip>
                                      </CheckBox>
+                                 </StackPanel>
+                             </Expander>
+
+                             <!-- Built-in Agents / LLM -->
+                             <Expander Header="内置智能体 Configuration" IsExpanded="True">
+                                 <StackPanel Spacing="8" Margin="8,8">
+
+                                     <!-- OpenAI-compatible endpoint -->
+                                     <Grid ColumnDefinitions="Auto,12,*" RowDefinitions="Auto">
+                                         <TextBlock Grid.Column="0"
+                                                    Grid.Row="0"
+                                                    VerticalAlignment="Center"
+                                                    Text="服务地址"/>
+                                         <TextBox Grid.Column="2"
+                                                  Grid.Row="0"
+                                                  Margin="0,2"
+                                                  Watermark="https://api.openai.com/v1（留空用 OpenAI 默认端点）"
+                                                  Text="{Binding Settings.AiBaseUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                     </Grid>
+
+                                     <!-- Model id -->
+                                     <Grid ColumnDefinitions="Auto,12,*" RowDefinitions="Auto">
+                                         <TextBlock Grid.Column="0"
+                                                    Grid.Row="0"
+                                                    VerticalAlignment="Center"
+                                                    Text="模型"/>
+                                         <TextBox Grid.Column="2"
+                                                  Grid.Row="0"
+                                                  Margin="0,2"
+                                                  Watermark="gpt-4o-mini"
+                                                  Text="{Binding Settings.AiModel, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                     </Grid>
+
+                                     <!-- Credential reference -->
+                                     <Grid ColumnDefinitions="Auto,12,*" RowDefinitions="Auto">
+                                         <TextBlock Grid.Column="0"
+                                                    Grid.Row="0"
+                                                    VerticalAlignment="Center"
+                                                    Text="密钥引用"/>
+                                         <TextBox Grid.Column="2"
+                                                  Grid.Row="0"
+                                                  Margin="0,2"
+                                                  Watermark="keychain:com.traceview.llm/api_key 或 env:OPENAI_API_KEY"
+                                                  Text="{Binding Settings.AiCredentialRef, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                     </Grid>
+
+                                     <!-- Store the raw key in the OS keychain -->
+                                     <Grid ColumnDefinitions="Auto,12,*,Auto" RowDefinitions="Auto">
+                                         <TextBlock Grid.Column="0"
+                                                    Grid.Row="0"
+                                                    VerticalAlignment="Center"
+                                                    Text="API 密钥"/>
+                                         <TextBox Grid.Column="2"
+                                                  Grid.Row="0"
+                                                  Margin="0,2"
+                                                  x:Name="PART_AiKeyInput"
+                                                  PasswordChar="•"
+                                                  Watermark="输入 API 密钥后点右侧按钮存入系统钥匙串"/>
+                                         <Button Grid.Column="3"
+                                                 Grid.Row="0"
+                                                 Margin="4,0,0,0"
+                                                 x:Name="PART_SaveAiKeyButton"
+                                                 Content="存入钥匙串"/>
+                                     </Grid>
+
+                                     <TextBlock Margin="0,2,0,0"
+                                                FontSize="11"
+                                                Foreground="{DynamicResource SystemControlPageTextChromeDisabledBrush}"
+                                                Text="内置智能体使用 OpenAI 兼容的对话接口。密钥本体不写入设置文件：keychain:服务/账户 形式存入系统钥匙串（可用上方按钮），env:变量名 形式读取环境变量（只读）。"/>
+                                 </StackPanel>
+                             </Expander>
+
+                             <!-- MCP Servers -->
+                             <Expander Header="MCP 服务器" IsExpanded="True">
+                                 <StackPanel Spacing="8" Margin="8,8">
+
+                                     <ItemsControl ItemsSource="{Binding McpServers}">
+                                         <ItemsControl.ItemTemplate>
+                                             <DataTemplate x:DataType="models:McpServerConfig">
+                                                 <Border Margin="0,4"
+                                                         Padding="8"
+                                                         CornerRadius="4"
+                                                         Background="{DynamicResource SystemControlBackgroundListLowBrush}">
+                                                     <StackPanel Spacing="6">
+                                                         <Grid ColumnDefinitions="Auto,12,*">
+                                                             <TextBlock Grid.Column="0"
+                                                                        VerticalAlignment="Center"
+                                                                        Text="标识"/>
+                                                             <TextBox Grid.Column="2"
+                                                                      Margin="0,2"
+                                                                      ToolTip.Tip="注册表内唯一名称，调用点按此名绑定工具"
+                                                                      Text="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                         </Grid>
+                                                         <Grid ColumnDefinitions="Auto,12,*">
+                                                             <TextBlock Grid.Column="0"
+                                                                        VerticalAlignment="Center"
+                                                                        Text="显示名"/>
+                                                             <TextBox Grid.Column="2"
+                                                                      Margin="0,2"
+                                                                      ToolTip.Tip="审批对话框等处展示给用户看的名称"
+                                                                      Text="{Binding DisplayName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                         </Grid>
+                                                         <Grid ColumnDefinitions="Auto,12,*">
+                                                             <TextBlock Grid.Column="0"
+                                                                        VerticalAlignment="Center"
+                                                                        Text="服务地址"/>
+                                                             <TextBox Grid.Column="2"
+                                                                      Margin="0,2"
+                                                                      Watermark="https://example.com/mcp"
+                                                                      Text="{Binding Url, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                         </Grid>
+                                                         <Grid ColumnDefinitions="Auto,12,*">
+                                                             <TextBlock Grid.Column="0"
+                                                                        VerticalAlignment="Center"
+                                                                        Text="密钥引用"/>
+                                                             <TextBox Grid.Column="2"
+                                                                      Margin="0,2"
+                                                                      Watermark="keychain:com.traceview.mcp/token 或 env:JIULU_MCP_TOKEN"
+                                                                      Text="{Binding CredentialRef, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                         </Grid>
+                                                         <Grid ColumnDefinitions="*,Auto">
+                                                             <CheckBox Grid.Column="0"
+                                                                       Content="写操作需确认"
+                                                                       IsChecked="{Binding RequiresApprovalForWrites, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                             <Button Grid.Column="1"
+                                                                     Classes="flat"
+                                                                     Content="删除"
+                                                                     Command="{Binding $parent[ItemsControl].((vm:MainViewModel)DataContext).RemoveMcpServerCommand}"
+                                                                     CommandParameter="{Binding}"/>
+                                                         </Grid>
+                                                     </StackPanel>
+                                                 </Border>
+                                             </DataTemplate>
+                                         </ItemsControl.ItemTemplate>
+                                     </ItemsControl>
+
+                                     <Button Content="添加服务器"
+                                             HorizontalAlignment="Left"
+                                             Command="{Binding AddMcpServerCommand}"/>
+
+                                     <TextBlock FontSize="11"
+                                                Foreground="{DynamicResource SystemControlPageTextChromeDisabledBrush}"
+                                                Text="内置智能体可从这里登记的 MCP 服务绑定工具。令牌通过密钥引用间接解析，不保存在设置文件中。"/>
                                  </StackPanel>
                              </Expander>
 
