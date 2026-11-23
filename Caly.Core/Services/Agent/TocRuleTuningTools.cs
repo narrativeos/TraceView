@@ -397,6 +397,9 @@ internal sealed class TocRuleTuningSession
     /// <summary>Cap on low-confidence entries echoed back by get_toc_quality.</summary>
     private const int LowConfidenceCap = 20;
 
+    /// <summary>Cap on candidate rows echoed back by distill_rule_candidates.</summary>
+    private const int CandidateCap = 20;
+
     /// <summary>
     /// Gold-set replay and tree re-derivation are server-side batch jobs; give them a
     /// generous but bounded deadline (PopoService keeps its client-wide timeout huge
@@ -601,6 +604,28 @@ internal sealed class TocRuleTuningSession
         return summary.ToJsonString();
     }
 
+    /// <summary>
+    /// Read-only corpus distillation (contract §2.7): aggregates the service's retoc
+    /// override ledger into global rule-pack candidate proposals. Proposes only — the
+    /// call never writes the pack, and promotion stays a human code review.
+    /// </summary>
+    public async Task<string> DistillRuleCandidates(int? top = null)
+    {
+        var body = new JsonObject();
+        if (top is not null)
+        {
+            body["top"] = top.Value;
+        }
+
+        var (report, error) = await PostAsync("/toc/distill", body).ConfigureAwait(false);
+        if (error is not null)
+        {
+            return error.ToJsonString();
+        }
+
+        return RenderDistillReport(report).ToJsonString();
+    }
+
     // ------------------------------------------------------------- internals
 
     /// <summary>
@@ -630,6 +655,48 @@ internal sealed class TocRuleTuningSession
 
         refusalObject["errors"] = errorArray;
         return (null, refusalObject.ToJsonString());
+    }
+
+    private static JsonObject RenderDistillReport(JsonNode? report)
+    {
+        var result = new JsonObject
+        {
+            ["ledger_size"] = report?["ledger_size"]?.DeepClone(),
+            ["docs"] = report?["docs"]?.DeepClone(),
+        };
+
+        var candidates = new JsonArray();
+        var total = 0;
+        if (report?["candidates"] is JsonArray rawCandidates)
+        {
+            total = rawCandidates.Count;
+            foreach (var item in rawCandidates.Take(CandidateCap))
+            {
+                candidates.Add(new JsonObject
+                {
+                    ["rule_id"] = item?["rule_id"]?.DeepClone(),
+                    ["value"] = item?["value"]?.DeepClone(),
+                    ["support"] = item?["support"]?.DeepClone(),
+                    ["conflict_ratio"] = item?["conflict_ratio"]?.DeepClone(),
+                    ["gold_evidence"] = item?["gold_evidence"]?.DeepClone(),
+                    ["promotable"] = item?["promotable"]?.DeepClone(),
+                    ["notes"] = item?["notes"]?.DeepClone() ?? new JsonArray(),
+                    ["gate"] = item?["gate"] is JsonObject gate
+                        ? new JsonObject
+                        {
+                            ["passed"] = gate["passed"]?.DeepClone(),
+                            ["reasons"] = gate["reasons"]?.DeepClone() ?? new JsonArray(),
+                            ["regressions"] = gate["regressions"]?.DeepClone() ?? new JsonArray(),
+                            ["level_accuracy"] = gate["level_accuracy"]?.DeepClone(),
+                        }
+                        : null,
+                });
+            }
+        }
+
+        result["candidates"] = candidates;
+        result["candidates_total"] = total;
+        return result;
     }
 
     private static JsonObject RenderEvaluateReport(JsonNode? report)
@@ -867,6 +934,14 @@ internal static class TocRuleTuningTools
                              "override returned passed with zero regressions. Returns the level_diff, the " +
                              "pack fingerprint and the artifact flags; the full tree/toc stays in the task " +
                              "result."),
+            AIFunctionFactory.Create(session.DistillRuleCandidates,
+                name: "distill_rule_candidates",
+                description: "Read-only corpus distillation: aggregates the service's retoc override ledger " +
+                             "via /toc/distill into recurring cross-document rule changes as global-pack " +
+                             "candidates with support, conflict ratio, gold evidence, and a gold-gate verdict " +
+                             "for the top promotable ones (optional top argument, 0-5, caps the gate " +
+                             "reruns). Proposes only: nothing this returns changes the global rule pack; " +
+                             "promotion stays a human code review."),
         ];
     }
 }

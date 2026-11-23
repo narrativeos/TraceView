@@ -85,7 +85,10 @@ internal static class AgentCallSiteDefinitions
             "to the global rule pack to a human. You have no file tools and must never edit " +
             "global rule pack files; a single-document override never becomes global on its " +
             "own. Never call retoc_document before an evaluate_rules with the same override " +
-            "showed zero regressions.",
+            "showed zero regressions. You may also call distill_rule_candidates at any time: " +
+            "it reads the service's override ledger and returns recurring cross-document " +
+            "overrides as gold-gated global candidates — proposals only; report them to the " +
+            "human, who promotes by editing the rule pack through code review.",
         // Tools bind to the run's StructureDocument and the Popo HTTP service via
         // TocRuleTuningTools; evaluation and validation are deterministic and local.
         LocalTools = [],

@@ -20,6 +20,8 @@
 
 using System;
 using System.Linq;
+using System.Net;
+using System.Text;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
@@ -310,10 +312,13 @@ public class TocRuleTuningTests
         Assert.Contains("evaluate_rules", site.Instructions, StringComparison.Ordinal);
         Assert.Contains("zero regressions", site.Instructions, StringComparison.Ordinal);
         Assert.Contains("retoc_document", site.Instructions, StringComparison.Ordinal);
+        // M3: corpus distillation is in the loop as proposals-only.
+        Assert.Contains("distill_rule_candidates", site.Instructions, StringComparison.Ordinal);
+        Assert.Contains("proposals only", site.Instructions, StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task Factory_exposes_the_four_tools_and_wraps_only_retoc_for_approval()
+    public async Task Factory_exposes_the_five_tools_and_wraps_only_retoc_for_approval()
     {
         var approvals = 0;
         AgentToolApprover approver = (_, _) => { approvals++; return Task.FromResult(true); };
@@ -323,7 +328,7 @@ public class TocRuleTuningTests
             AgentCallSiteDefinitions.PopoTocTune, new FakeMcpRegistry(), approver, context);
 
         Assert.Equal(
-            ["get_toc_quality", "propose_rule_override", "evaluate_rules", "retoc_document"],
+            ["get_toc_quality", "propose_rule_override", "evaluate_rules", "retoc_document", "distill_rule_candidates"],
             AgentCallSiteFactory.DescribeToolSurface(resolved));
 
         Assert.True(resolved.Tools.Single(t => t.Function.Name == "retoc_document").RequiresApproval);
@@ -338,5 +343,44 @@ public class TocRuleTuningTests
         await resolved.Tools.Single(t => t.Function.Name == "propose_rule_override").Function
             .InvokeAsync(new AIFunctionArguments { ["patches"] = """{"alignment.max_toc_depth": 3}""" });
         Assert.Equal(0, approvals);
+    }
+
+    [Fact]
+    public async Task Distill_rule_candidates_calls_the_endpoint_and_renders_the_summary()
+    {
+        using var listener = LoopbackListener.Start(out var baseUrl);
+        string? body = null;
+
+        var serve = Task.Run(async () =>
+        {
+            var context = await listener.GetContextAsync();
+            Assert.Equal("/toc/distill", context.Request.Url?.AbsolutePath);
+            using var reader = new System.IO.StreamReader(context.Request.InputStream, Encoding.UTF8);
+            body = await reader.ReadToEndAsync();
+            await LoopbackListener.RespondAsync(context, HttpStatusCode.OK, """
+                {"schema":1,"ledger_size":3,"docs":3,"candidates":[
+                  {"rule_id":"signals.confidence.pattern","value":0.97,"support":3,"docs":["a","b","c"],
+                   "docs_truncated":0,"total_docs":3,"conflict_ratio":0.0,"mean_level_changes":1.0,
+                   "gold_evidence":1,"default_value":0.85,"promotable":true,"notes":[],
+                   "gate":{"passed":false,"reasons":["1 regressed case(s) > max_regressions 0: x"],
+                           "regressions":["x"],"level_accuracy":0.95}}]}
+                """);
+        });
+
+        var session = new TocRuleTuningSession(new StructureDocument(), baseUrl, null);
+        var result = JsonNode.Parse(await session.DistillRuleCandidates(2))!;
+        await serve;
+
+        Assert.Equal(2, JsonNode.Parse(body!)!["top"]!.GetValue<int>());
+        Assert.Equal(3, result["ledger_size"]!.GetValue<int>());
+        Assert.Equal(1, result["candidates_total"]!.GetValue<int>());
+
+        var candidate = result["candidates"]![0]!.AsObject();
+        Assert.Equal("signals.confidence.pattern", candidate["rule_id"]!.GetValue<string>());
+        Assert.True(candidate["promotable"]!.GetValue<bool>());
+        Assert.Equal(1, candidate["gold_evidence"]!.GetValue<int>());
+        // The compact gate rides along so the agent can report the regression risk.
+        Assert.False(candidate["gate"]!["passed"]!.GetValue<bool>());
+        Assert.Single(candidate["gate"]!["regressions"]!.AsArray());
     }
 }
