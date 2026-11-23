@@ -71,8 +71,8 @@
                 VerticalAlignment="Center"
                 CornerRadius="14"
                 BorderThickness="1"
-                Background="{DynamicResource SystemControlBackgroundChromeWhiteBrush}"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
+                Background="{DynamicResource CalyCardBackgroundBrush}"
+                BorderBrush="{DynamicResource CalyCardBorderBrush}">
             <StackPanel Spacing="14">
                 <!-- 空态错误横幅: open / create failures no longer vanish into ExceptionViewModel (C02). -->
                 <Border Background="#22E53935"
