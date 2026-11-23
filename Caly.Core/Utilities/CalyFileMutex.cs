@@ -37,10 +37,28 @@ namespace Caly.Core.Utilities;
 /// See <see href="https://github.com/dotnet/runtime/issues/110348"/> and
 /// <see href="https://www.martyndavis.com/?p=440"/>
 /// </para>
+/// <para>
+/// The lock file lives at a deterministic per-user path (see <see cref="InstancePaths"/>) so
+/// instances from different <c>$TMPDIR</c> sessions still see each other; otherwise both would
+/// become primary and run side by side.
+/// </para>
 /// </summary>
 public sealed class CalyFileMutex
 {
-    private static readonly string LockFileName = Path.Combine(Path.GetTempPath(), "caly.lock");
+    private static readonly string LockFileName = GetLockFileName();
+
+    private static string GetLockFileName()
+    {
+        // Windows %TEMP% is stable per user, so the historical location still agrees across
+        // instances there. Elsewhere $TMPDIR varies per session and must be avoided.
+        if (OperatingSystem.IsWindows())
+        {
+            return Path.Combine(Path.GetTempPath(), "caly.lock");
+        }
+
+        string name = $"caly_{InstancePaths.PerUserToken}.lock";
+        return Path.Combine(InstancePaths.ResolveDirectory(name), name);
+    }
 
     private FileStream? _lockFile;
 
@@ -67,6 +85,11 @@ public sealed class CalyFileMutex
         {
             // Force FileMode.CreateNew - if the file already exists, should throw (done for Linux)
             _lockFile = new FileStream(LockFileName, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Delete);
+
+            if (!OperatingSystem.IsWindows())
+            {
+                InstancePaths.TryRestrictToCurrentUser(LockFileName);
+            }
         }
         catch (IOException)
         {
