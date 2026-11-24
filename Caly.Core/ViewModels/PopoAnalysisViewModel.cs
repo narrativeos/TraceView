@@ -728,6 +728,9 @@ public partial class AnalysisViewModel : ViewModelBase
     [ObservableProperty]
     private bool _showAgentConversation;
 
+    [RelayCommand]
+    private void HideAgentConversation() => ShowAgentConversation = false;
+
     [ObservableProperty]
     private string _agentComposerText = string.Empty;
 

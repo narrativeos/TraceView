@@ -512,7 +512,9 @@
 
 					</DockPanel>
 
-					<SplitView Grid.Row="1"
+					<Grid Grid.Row="1" ColumnDefinitions="*,Auto">
+
+					<SplitView Grid.Column="0"
 							   Name="PART_SplitView"
 							   IsPaneOpen="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).IsDocumentPaneOpen, Mode=TwoWay}"
 							   OpenPaneLength="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).PaneSize, Mode=TwoWay}"
@@ -3004,6 +3006,18 @@
 						</SplitView.Pane>
 
 					</SplitView>
+
+					<!-- 内置智能体对话：独立右栏，不再占用左侧缩略图列 -->
+					<Border Grid.Column="1"
+							Width="360"
+							IsVisible="{Binding AnalysisViewModel.ShowAgentConversation}"
+							Background="{DynamicResource CalyCardBackgroundBrush}"
+							BorderBrush="{DynamicResource CalyCardBorderBrush}"
+							BorderThickness="1,0,0,0">
+						<controls:AgentConversationControl DataContext="{Binding AnalysisViewModel}"/>
+					</Border>
+
+					</Grid>
 
 				</Grid>
 
