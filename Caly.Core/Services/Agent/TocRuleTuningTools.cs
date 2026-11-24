@@ -999,8 +999,9 @@ internal static class TocRuleTuningTools
             AIFunctionFactory.Create(session.RetocDocument,
                 name: "retoc_document",
                 description: "Rewrite this document's stored task tree/toc by replaying the rule pack with " +
-                             "the override via /tasks/{id}/retoc. The only WRITE in this loop and it needs " +
-                             "explicit human approval. Call it only after evaluate_rules with the same " +
+                             "the override via /tasks/{id}/retoc. The only WRITE in this loop; calling it " +
+                             "automatically shows the user an approval dialog (denial returns a refusal). " +
+                             "Call it once evaluate_rules with the same " +
                              "override returned passed with zero regressions. Returns the level_diff, the " +
                              "pack fingerprint and the artifact flags; the full tree/toc stays in the task " +
                              "result."),

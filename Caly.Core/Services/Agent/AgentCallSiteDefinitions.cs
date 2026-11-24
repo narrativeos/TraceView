@@ -78,9 +78,11 @@ internal static class AgentCallSiteDefinitions
             "(2) draft the smallest override with propose_rule_override and fix any rejected " +
             "rule ids until it is accepted; (3) gate it with evaluate_rules passing the same " +
             "override — the gold-set replay is the only gate that counts; (4) call " +
-            "retoc_document with that override only when evaluate_rules passed AND " +
-            "aggregate.regressions is empty, and only after the user approves the prompt — " +
-            "a regression means the override is rejected outright, tune further instead; " +
+            "retoc_document with that override as soon as evaluate_rules passed AND " +
+            "aggregate.regressions is empty — calling it automatically shows the user an " +
+            "approval dialog, so never wait for a chat approval first; if the user denies " +
+            "there, the tool reports a refusal; a regression means the override is rejected " +
+            "outright, tune further instead; " +
             "(5) report the candidate fingerprint and leave any promotion of the override " +
             "to the global rule pack to a human. You have no file tools and must never edit " +
             "global rule pack files; a single-document override never becomes global on its " +

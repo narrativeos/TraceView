@@ -857,7 +857,7 @@ public partial class AnalysisViewModel : ViewModelBase
                 AgentCallSiteDefinitions.PopoTocTune.Id,
                 "请改善当前文档的目录层级质量：先调用 get_toc_quality 查看层级跳变与低置信条目；" +
                 "再用 propose_rule_override 起草最小规则覆盖；用 evaluate_rules 通过 gold 集门禁（零退化）；" +
-                "仅在门禁通过且用户批准后调用 retoc_document 重写本文档目录，并报告规则包指纹与层级差异。",
+                "门禁通过且零退化后立即调用 retoc_document 重写本文档目录（调用它会自动弹出用户批准对话框，不要先在对话里征求批准），并报告规则包指纹与层级差异。",
                 context,
                 BuildTocTuneApprover());
 
