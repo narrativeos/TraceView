@@ -20,7 +20,9 @@
 
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Threading;
+using System;
 using Caly.Core.ViewModels;
 using System.Collections.Specialized;
 using System.ComponentModel;
@@ -34,10 +36,26 @@ namespace Caly.Core.Controls;
 public partial class AgentConversationControl : UserControl
 {
     private AnalysisViewModel? _subscribedViewModel;
+    private TextBox? _composer;
+    private EventHandler<KeyEventArgs>? _composerKeyDownHandler;
 
     public AgentConversationControl()
     {
         InitializeComponent();
+        _composerKeyDownHandler = OnAgentComposerKeyDown;
+
+        // The XAML is this UserControl's content, not a template: resolve the
+        // composer directly (FindControl), never through a template NameScope.
+        _composer = this.FindControl<TextBox>("PART_AgentComposer");
+        if (_composer is not null)
+        {
+            // TextBox can mark Enter handled before an ordinary instance handler runs.
+            // Subscribe in the tunneling phase and with handledEventsToo in the bubble
+            // phase as a fallback. A second invocation is a no-op: sending clears first.
+            _composer.AddHandler(KeyDownEvent, _composerKeyDownHandler, RoutingStrategies.Tunnel, handledEventsToo: true);
+            _composer.AddHandler(KeyDownEvent, _composerKeyDownHandler, RoutingStrategies.Bubble, handledEventsToo: true);
+        }
+
         DataContextChanged += OnDataContextChanged;
     }
 
@@ -100,8 +118,15 @@ public partial class AgentConversationControl : UserControl
             return;
         }
 
-        if (sender is TextBox { Text: { } text } && !string.IsNullOrWhiteSpace(text)
-            && _subscribedViewModel is { } vm && vm.SendAgentPromptCommand.CanExecute(null))
+        if (sender is not TextBox composer || string.IsNullOrWhiteSpace(composer.Text))
+        {
+            return;
+        }
+
+        // Resolve the VM from the composer's own inherited DataContext first; the
+        // subscription token can lag when the panel appears after the document loads.
+        var vm = composer.DataContext as AnalysisViewModel ?? _subscribedViewModel;
+        if (vm is not null && vm.SendAgentPromptCommand.CanExecute(null))
         {
             vm.SendAgentPromptCommand.Execute(null);
             e.Handled = true;

@@ -20,6 +20,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.Globalization;
 using System.IO;
 using System.Text.Encodings.Web;
@@ -44,13 +46,102 @@ public enum AgentMessageKind
     Done,
 }
 
+/// <summary>Lifecycle of one checklist step shown on a live run card.</summary>
+public enum AgentStepState
+{
+    Pending,
+    Running,
+    Done,
+    Failed,
+}
+
+/// <summary>One checklist line of a run card: label plus live state glyph.</summary>
+public partial class AgentRunStep : ObservableObject
+{
+    public string Label { get; init; } = string.Empty;
+
+    [ObservableProperty]
+    private AgentStepState _state;
+
+    public bool IsPending => State == AgentStepState.Pending;
+
+    public bool IsRunning => State == AgentStepState.Running;
+
+    public bool IsDone => State == AgentStepState.Done;
+
+    public bool IsFailed => State == AgentStepState.Failed;
+
+    partial void OnStateChanged(AgentStepState value)
+    {
+        OnPropertyChanged(nameof(IsPending));
+        OnPropertyChanged(nameof(IsRunning));
+        OnPropertyChanged(nameof(IsDone));
+        OnPropertyChanged(nameof(IsFailed));
+    }
+}
+
+/// <summary>Small labelled metric rendered as a chip (e.g. 层级 / 跳变) on the Done card.</summary>
+public sealed class AgentStatChip
+{
+    public string Label { get; init; } = string.Empty;
+
+    public string Value { get; init; } = string.Empty;
+}
+
+/// <summary>
+/// One lineage row: identity line, one-line quality stats and the full override payload,
+/// which is only ever shown inside a collapsed monospace region (never inline in the
+/// thread text, which once laid out a 12 MB tree).
+/// </summary>
+public sealed class AgentRevisionRow
+{
+    private const int OverridesPreviewLength = 60_000;
+
+    public string Label { get; init; } = string.Empty;
+
+    public string Stats { get; init; } = string.Empty;
+
+    public string OverridesText { get; init; } = string.Empty;
+
+    public bool HasOverrides => OverridesText.Length > 0;
+
+    /// <summary>Bounded text for the collapsible region so expansion never lays out megabytes.</summary>
+    public string OverridesPreview => OverridesText.Length > OverridesPreviewLength
+        ? OverridesText.Substring(0, OverridesPreviewLength) + "\n…（覆写 JSON 过大，此处截断；谱系接口保留完整内容）"
+        : OverridesText;
+}
+
 /// <summary>
 /// One message on the built-in agent's conversation thread. Plain kinds carry text;
 /// card kinds additionally carry a live-updated text body, an inline action pair
 /// (approve/deny labels and commands owned per message) and a status line.
+/// Structured side-collections (checklist steps, stat chips, lineage rows, bullets) keep
+/// large payloads out of the thread text; anything raw or oversized renders collapsed.
 /// </summary>
 public partial class AgentMessage : ObservableObject
 {
+    private const int LongTextThreshold = 1200;
+
+    private const int LongTextPreviewLength = 600;
+
+    private const int ExpandedTextLength = 60_000;
+
+    public AgentMessage()
+    {
+        Steps.CollectionChanged += OnSideCollectionChanged;
+        Stats.CollectionChanged += OnSideCollectionChanged;
+        Bullets.CollectionChanged += OnSideCollectionChanged;
+        Revisions.CollectionChanged += OnSideCollectionChanged;
+    }
+
+    private void OnSideCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        OnPropertyChanged(nameof(HasSteps));
+        OnPropertyChanged(nameof(HasStats));
+        OnPropertyChanged(nameof(HasBullets));
+        OnPropertyChanged(nameof(HasRevisions));
+    }
+
     public AgentMessageKind Kind { get; init; }
 
     public string RoleLabel { get; init; } = string.Empty;
@@ -93,6 +184,66 @@ public partial class AgentMessage : ObservableObject
     public bool HasStatus => Status.Length > 0;
 
     partial void OnStatusChanged(string value) => OnPropertyChanged(nameof(HasStatus));
+
+    // Role flags driving the item template's layout branches.
+    public bool IsUser => Kind == AgentMessageKind.User;
+
+    public bool IsAgent => Kind == AgentMessageKind.Agent;
+
+    public bool IsSystem => Kind == AgentMessageKind.System;
+
+    public bool IsError => Kind == AgentMessageKind.Error;
+
+    public bool IsRunCard => Kind == AgentMessageKind.RunCard;
+
+    public bool IsApproval => Kind == AgentMessageKind.Approval;
+
+    public bool IsDone => Kind == AgentMessageKind.Done;
+
+    public bool IsCard => Kind is AgentMessageKind.RunCard or AgentMessageKind.Approval or AgentMessageKind.Done;
+
+    /// <summary>True while the message waits behind an in-flight run (shown as a 排队中 chip).</summary>
+    [ObservableProperty]
+    private bool _isQueued;
+
+    /// <summary>Long payloads show a bounded preview inline; the full text lives in a collapsible region.</summary>
+    public bool HasLongText => Text.Length > LongTextThreshold;
+
+    public string PreviewText => Text.Length > LongTextThreshold
+        ? Text.Substring(0, LongTextPreviewLength) + "\n…（内容较长，可展开原始内容）"
+        : Text;
+
+    /// <summary>Bounded payload for the collapsible region; MB-scale raw JSON must never enter layout.</summary>
+    public string ExpandedText => Text.Length > ExpandedTextLength
+        ? Text.Substring(0, ExpandedTextLength) + "\n…（内容过大，此处截断；完整内容保留在本地记录中）"
+        : Text;
+
+    partial void OnTextChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasLongText));
+        OnPropertyChanged(nameof(PreviewText));
+        OnPropertyChanged(nameof(ExpandedText));
+    }
+
+    /// <summary>Checklist shown instead of the raw card text while a run is live.</summary>
+    public ObservableCollection<AgentRunStep> Steps { get; } = new();
+
+    public bool HasSteps => Steps.Count > 0;
+
+    /// <summary>Key metrics chips (Done card).</summary>
+    public ObservableCollection<AgentStatChip> Stats { get; } = new();
+
+    public bool HasStats => Stats.Count > 0;
+
+    /// <summary>Short outcome lines rendered as a list under the message text.</summary>
+    public ObservableCollection<string> Bullets { get; } = new();
+
+    public bool HasBullets => Bullets.Count > 0;
+
+    /// <summary>Revision-lineage rows with collapsible override payloads.</summary>
+    public ObservableCollection<AgentRevisionRow> Revisions { get; } = new();
+
+    public bool HasRevisions => Revisions.Count > 0;
 
     public static AgentMessage User(string text) =>
         new() { Kind = AgentMessageKind.User, RoleLabel = "你", Text = text };

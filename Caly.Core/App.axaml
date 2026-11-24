@@ -57,6 +57,8 @@
                     <SolidColorBrush x:Key="CalyWarningForegroundBrush" Color="#FFEF6C00" />
                     <SolidColorBrush x:Key="CalySuccessForegroundBrush" Color="#FF2E7D32" />
                     <SolidColorBrush x:Key="CalyInfoForegroundBrush" Color="#FF1565C0" />
+                    <SolidColorBrush x:Key="CalyUserBubbleBackgroundBrush" Color="#FFDFF3F0" />
+                    <SolidColorBrush x:Key="CalyUserBubbleBorderBrush" Color="#FFBFE3DD" />
                     <SolidColorBrush x:Key="CalyPurpleSolidBrush" Color="#FF8E24AA" />
                     <SolidColorBrush x:Key="CalyPurpleDeepBrush" Color="#FF6A1B9A" />
                     <SolidColorBrush x:Key="CalyBlueDeepBrush" Color="#FF1565C0" />
@@ -156,6 +158,8 @@
                     <SolidColorBrush x:Key="CalyWarningForegroundBrush" Color="#FFFF9800" />
                     <SolidColorBrush x:Key="CalySuccessForegroundBrush" Color="#FF4CAF50" />
                     <SolidColorBrush x:Key="CalyInfoForegroundBrush" Color="#FF2196F3" />
+                    <SolidColorBrush x:Key="CalyUserBubbleBackgroundBrush" Color="#2615F2C7" />
+                    <SolidColorBrush x:Key="CalyUserBubbleBorderBrush" Color="#4D15F2C7" />
                     <SolidColorBrush x:Key="CalyPurpleSolidBrush" Color="#FF9C27B0" />
                     <SolidColorBrush x:Key="CalyPurpleDeepBrush" Color="#FF7B1FA2" />
                     <SolidColorBrush x:Key="CalyBlueDeepBrush" Color="#FF1565C0" />

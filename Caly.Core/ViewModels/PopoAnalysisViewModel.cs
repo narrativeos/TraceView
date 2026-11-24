@@ -29,6 +29,7 @@ using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.DependencyInjection;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Linq;
 using System.Text.Json.Nodes;
 using AIChatMessage = Microsoft.Extensions.AI.ChatMessage;
@@ -79,6 +80,7 @@ public partial class AnalysisViewModel : ViewModelBase
 
         ApplyFilters();
         LoadAgentConversation();
+        AgentMessages.CollectionChanged += (_, _) => OnPropertyChanged(nameof(IsConversationEmpty));
     }
 
     public StructureDocument StructureDocument => _structureDocument;
@@ -725,6 +727,9 @@ public partial class AnalysisViewModel : ViewModelBase
     /// <summary>The agent thread: user prompts, live run cards, inline approvals, results.</summary>
     public ObservableCollection<AgentMessage> AgentMessages { get; } = new();
 
+    /// <summary>Drives the empty-state overlay (P01) until the first message lands.</summary>
+    public bool IsConversationEmpty => AgentMessages.Count == 0;
+
     [ObservableProperty]
     private bool _showAgentConversation;
 
@@ -744,6 +749,37 @@ public partial class AnalysisViewModel : ViewModelBase
 
     [ObservableProperty]
     private string _agentConnectionStatus = string.Empty;
+
+    /// <summary>Failure reasons surfaced in the panel banner (S01) while endpoints are broken.</summary>
+    [ObservableProperty]
+    private string _connectionBanner = string.Empty;
+
+    public bool HasConnectionBanner => ConnectionBanner.Length > 0;
+
+    partial void OnConnectionBannerChanged(string value) => OnPropertyChanged(nameof(HasConnectionBanner));
+
+    [ObservableProperty]
+    private bool _isConnectionFailing;
+
+    /// <summary>Header dot state: green when a probe passed, red while failing, grey when never probed.</summary>
+    public bool IsConnectionOk => !IsConnectionFailing && AgentConnectionStatus.Contains('✓');
+
+    public bool IsConnectionIdle => !IsConnectionFailing && !IsConnectionOk;
+
+    public bool HasConnectionStatus => AgentConnectionStatus.Length > 0;
+
+    partial void OnIsConnectionFailingChanged(bool value)
+    {
+        OnPropertyChanged(nameof(IsConnectionOk));
+        OnPropertyChanged(nameof(IsConnectionIdle));
+    }
+
+    partial void OnAgentConnectionStatusChanged(string value)
+    {
+        OnPropertyChanged(nameof(IsConnectionOk));
+        OnPropertyChanged(nameof(IsConnectionIdle));
+        OnPropertyChanged(nameof(HasConnectionStatus));
+    }
 
     /// <summary>Incremented by prompt seeding so the view can focus and select the composer.</summary>
     [ObservableProperty]
@@ -874,12 +910,15 @@ public partial class AnalysisViewModel : ViewModelBase
             return;
 
         AgentComposerText = string.Empty;
-        AppendConversation(AgentMessage.User(prompt));
+        var sent = AgentMessage.User(prompt);
+        if (IsAgentRunning)
+            sent.IsQueued = true;
+        AppendConversation(sent);
 
         if (IsAgentRunning)
         {
+            // S02: the queued chip on the bubble carries the state; no separate system note.
             _queuedInterjections.Add(prompt);
-            AppendConversation(AgentMessage.SystemNote("已记入对话；本轮按原计划继续，下一轮开始时会把这条并入任务。"));
             return;
         }
 
@@ -904,9 +943,12 @@ public partial class AnalysisViewModel : ViewModelBase
         AgentConnectionStatus = "测试中…";
 
         var problems = await CollectPreflightProblemsAsync(settings);
-        AgentConnectionStatus = problems.Count == 0
+        var ok = problems.Count == 0;
+        AgentConnectionStatus = ok
             ? "配置齐备，端点可达 ✓"
             : "✗ " + string.Join("；", problems);
+        IsConnectionFailing = !ok;
+        ConnectionBanner = ok ? string.Empty : string.Join("；", problems);
     }
 
     /// <summary>
@@ -920,8 +962,15 @@ public partial class AnalysisViewModel : ViewModelBase
         var problems = await CollectPreflightProblemsAsync(settings);
 
         if (problems.Count == 0)
+        {
+            IsConnectionFailing = false;
+            ConnectionBanner = string.Empty;
             return true;
+        }
 
+        // S01: the banner carries the reasons in the panel; the thread line stays for the audit log.
+        IsConnectionFailing = true;
+        ConnectionBanner = string.Join("；", problems);
         AppendConversation(AgentMessage.Error(
             "预检未通过：" + string.Join("；", problems) + "\n任务未开始，未产生任何写入。修好后重新发送即可。"));
         return false;
@@ -1009,6 +1058,8 @@ public partial class AnalysisViewModel : ViewModelBase
             RoleLabel = "智能体",
             Text = BuildTuneCardText(),
         };
+        foreach (var label in TuneStepLabels)
+            card.Steps.Add(new AgentRunStep { Label = label });
         _activeRunCard = card;
         AppendConversation(card);
 
@@ -1117,8 +1168,20 @@ public partial class AnalysisViewModel : ViewModelBase
 
         _tuneStepState[index] = glyph;
         if (_activeRunCard is { } card)
+        {
             card.Text = BuildTuneCardText();
+            for (var i = 0; i < card.Steps.Count && i < _tuneStepState.Length; i++)
+                card.Steps[i].State = StepStateFromGlyph(_tuneStepState[i]);
+        }
     }
+
+    private static AgentStepState StepStateFromGlyph(string glyph) => glyph switch
+    {
+        "✓" => AgentStepState.Done,
+        "●" => AgentStepState.Running,
+        "✗" => AgentStepState.Failed,
+        _ => AgentStepState.Pending,
+    };
 
     private string BuildTuneCardText()
     {
@@ -1267,6 +1330,30 @@ public partial class AnalysisViewModel : ViewModelBase
             DenyLabel = "撤销到上一修订",
         };
 
+        // P05: the card carries stat chips and the head's override summary; the raw
+        // override JSON and the full lineage stay out of the thread text.
+        if (head is not null)
+        {
+            card.Stats.Add(new AgentStatChip
+            {
+                Label = "修订",
+                Value = previous is null ? $"r{head.Rev}" : $"r{head.Rev}（基线 r{previous.Rev}）",
+            });
+            card.Stats.Add(new AgentStatChip { Label = "层级", Value = head.MaxDepth.ToString(CultureInfo.InvariantCulture) });
+            card.Stats.Add(new AgentStatChip { Label = "跳变", Value = head.LevelJumpViolations.ToString(CultureInfo.InvariantCulture) });
+            card.Stats.Add(new AgentStatChip { Label = "编号违规", Value = head.NumberingViolationCount.ToString(CultureInfo.InvariantCulture) });
+
+            if (head.Overrides is { Count: > 0 } headOverrides)
+            {
+                foreach (var pair in headOverrides)
+                    card.Bullets.Add($"{pair.Key} = {TruncateForDisplay(pair.Value?.ToJsonString() ?? "null", 200)}");
+            }
+            else
+            {
+                card.Bullets.Add("基线覆写（本修订未携带自定义覆写）");
+            }
+        }
+
         card.ApproveCommand = new AsyncRelayCommand(async () =>
         {
             // Compare is non-destructive and repeatable; unlike approval it must not hide the
@@ -1283,6 +1370,9 @@ public partial class AnalysisViewModel : ViewModelBase
         AppendConversation(card);
     }
 
+    private static string TruncateForDisplay(string value, int maxLength) =>
+        value.Length > maxLength ? value.Substring(0, maxLength) + "…" : value;
+
     private async System.Threading.Tasks.Task AppendLineageComparisonAsync(string? taskId, string? popoBaseUrl)
     {
         if (string.IsNullOrWhiteSpace(taskId))
@@ -1295,16 +1385,22 @@ public partial class AnalysisViewModel : ViewModelBase
         {
             using var popo = new PopoService(popoBaseUrl);
             var lineage = await popo.FetchTocLineageAsync(taskId!);
-            var sb = new System.Text.StringBuilder("修订谱系（新→旧，最多 5 条）：\n");
+
+            // P06: one compact row per revision; the full override JSON only ever appears
+            // inside the row's collapsed monospace region, never in the thread text.
+            var message = AgentMessage.Agent("修订谱系（新→旧，最多 5 条）：");
             for (var i = lineage.Revisions.Count - 1; i >= 0 && i >= lineage.Revisions.Count - 5; i--)
             {
                 var rev = lineage.Revisions[i];
-                var overrides = rev.Overrides is null or { Count: 0 } ? "基线覆写" : rev.Overrides.ToJsonString();
-                sb.AppendLine(
-                    $"r{rev.Rev}（{rev.Source}，{rev.Fingerprint}）层级 {rev.MaxDepth} · 跳变 {rev.LevelJumpViolations} · 编号违规 {rev.NumberingViolationCount} · 覆写 {overrides}");
+                message.Revisions.Add(new AgentRevisionRow
+                {
+                    Label = $"r{rev.Rev}（{rev.Source}，{rev.Fingerprint}）",
+                    Stats = $"层级 {rev.MaxDepth} · 跳变 {rev.LevelJumpViolations} · 编号违规 {rev.NumberingViolationCount}",
+                    OverridesText = rev.Overrides is null or { Count: 0 } ? string.Empty : rev.Overrides.ToJsonString(),
+                });
             }
 
-            AppendConversation(AgentMessage.Agent(sb.ToString().TrimEnd()));
+            AppendConversation(message);
         }
         catch (System.Exception ex)
         {
@@ -1342,7 +1438,9 @@ public partial class AnalysisViewModel : ViewModelBase
             // conversation view unrenderable (multi-megabyte TextBlock layout spins the UI thread).
             // The revision ledger stays the source of truth for what the undo produced.
             await popo.RetocTaskAsync(taskId!, target.Overrides);
-            AppendConversation(AgentMessage.Agent($"撤销完成：已按 r{target.Rev} 的覆写重跑 retoc，新修订已写入谱系。"));
+            var undoDone = AgentMessage.Agent($"撤销完成：已按 r{target.Rev} 的覆写重跑 retoc，新修订已写入谱系。");
+            undoDone.Bullets.Add($"r{target.Rev} 本身保留在谱系中，可在完成卡再次查看对比。");
+            AppendConversation(undoDone);
         }
         catch (System.Exception ex)
         {

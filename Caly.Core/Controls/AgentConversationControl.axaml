@@ -6,101 +6,528 @@
              x:DataType="vm:AnalysisViewModel">
 
     <DockPanel>
-        <!-- Header: title and close entry -->
+        <!-- Header: connection dot, title, status pill, close entry -->
         <Border DockPanel.Dock="Top"
-                Padding="8,6"
+                Padding="10,0"
+                Height="40"
+                Background="{DynamicResource CalyCardBackgroundBrush}"
                 BorderThickness="0,0,0,1"
                 BorderBrush="{DynamicResource CalyCardBorderBrush}">
-            <Grid ColumnDefinitions="*,Auto">
-                <TextBlock Grid.Column="0"
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                <Grid Grid.Column="0" Width="10" Height="10" VerticalAlignment="Center">
+                    <Ellipse Width="8" Height="8"
+                             IsVisible="{Binding IsConnectionIdle}"
+                             Fill="{DynamicResource CalyMutedForegroundBrush}" Opacity="0.5"/>
+                    <Ellipse Width="8" Height="8"
+                             IsVisible="{Binding IsConnectionOk}"
+                             Fill="{DynamicResource CalySuccessForegroundBrush}"/>
+                    <Ellipse Width="8" Height="8"
+                             IsVisible="{Binding IsConnectionFailing}"
+                             Fill="{DynamicResource CalyErrorForegroundBrush}"/>
+                </Grid>
+                <TextBlock Grid.Column="1"
                            Text="内置智能体对话"
+                           Margin="8,0,0,0"
                            FontSize="13"
                            FontWeight="SemiBold"
                            Foreground="{DynamicResource CalyStrongForegroundBrush}"
                            VerticalAlignment="Center"/>
-                <Button Grid.Column="1"
+                <Border Grid.Column="2"
+                        IsVisible="{Binding HasConnectionStatus}"
+                        Background="{DynamicResource CalyChipBackgroundBrush}"
+                        BorderBrush="{DynamicResource CalyChipBorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="10"
+                        Padding="8,2"
+                        Margin="0,0,6,0"
+                        VerticalAlignment="Center">
+                    <TextBlock Text="{Binding AgentConnectionStatus}"
+                               FontSize="11"
+                               Foreground="{DynamicResource CalyMutedForegroundBrush}"/>
+                </Border>
+                <Button Grid.Column="3"
                         Content="×"
                         Command="{Binding HideAgentConversationCommand}"
                         FontSize="14"
                         Padding="6,0"
                         Background="Transparent"
                         BorderThickness="0"
+                        VerticalAlignment="Center"
                         ToolTip.Tip="隐藏对话面板"/>
             </Grid>
         </Border>
 
-        <!-- Composer row -->
-        <StackPanel DockPanel.Dock="Bottom"
-                    Orientation="Horizontal"
-                    Spacing="4"
-                    Margin="4">
-            <TextBox x:Name="PART_AgentComposer"
-                     Text="{Binding AgentComposerText}"
-                     PlaceholderText="对智能体说…（Enter 发送，运行中发送会排队）"
-                     MinWidth="160"
-                     HorizontalAlignment="Stretch"
-                     KeyDown="OnAgentComposerKeyDown"
-                     ToolTip.Tip="Enter 发送；Shift+Enter 换行"/>
-            <Button Content="发送"
-                    Command="{Binding SendAgentPromptCommand}"/>
-            <Button Content="取消"
-                    Command="{Binding CancelAgentRunCommand}"
-                    IsVisible="{Binding IsAgentRunning}"/>
-            <Button Content="测试连接"
-                    Command="{Binding TestAgentConnectionCommand}"/>
-        </StackPanel>
-        <TextBlock DockPanel.Dock="Bottom"
-                   Text="{Binding AgentConnectionStatus}"
-                   FontSize="11"
-                   Opacity="0.7"
-                   Margin="6,0,6,2"
-                   TextWrapping="Wrap"/>
+        <!-- S01: connection banner with in-place retry -->
+        <Border DockPanel.Dock="Top"
+                IsVisible="{Binding HasConnectionBanner}"
+                Margin="10,8,10,0"
+                Background="{DynamicResource CalySubtleBackgroundBrush}"
+                BorderBrush="{DynamicResource CalyErrorForegroundBrush}"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="9,7">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0"
+                           Text="{Binding ConnectionBanner}"
+                           FontSize="12"
+                           TextWrapping="Wrap"
+                           Foreground="{DynamicResource CalyErrorForegroundBrush}"
+                           VerticalAlignment="Center"/>
+                <Button Grid.Column="1"
+                        Content="重试"
+                        Command="{Binding TestAgentConnectionCommand}"
+                        FontSize="12"
+                        Margin="8,0,0,0"
+                        VerticalAlignment="Top"/>
+            </Grid>
+        </Border>
 
-        <ScrollViewer x:Name="PART_AgentScroll"
-                      VerticalScrollBarVisibility="Auto"
-                      Padding="6">
-            <ItemsControl x:Name="PART_AgentMessages" ItemsSource="{Binding AgentMessages}">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="agent:AgentMessage">
-                        <StackPanel Spacing="2" Margin="0,4">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <TextBlock Text="{Binding RoleLabel}" FontWeight="Bold" FontSize="12"/>
-                                <TextBlock Text="{Binding TimeText}"
+        <!-- Composer: multi-line input plus action row -->
+        <Border DockPanel.Dock="Bottom"
+                Background="{DynamicResource CalyCardBackgroundBrush}"
+                BorderThickness="0,1,0,0"
+                BorderBrush="{DynamicResource CalyCardBorderBrush}"
+                Padding="8">
+            <StackPanel Spacing="6">
+                <TextBox x:Name="PART_AgentComposer"
+                         Text="{Binding AgentComposerText}"
+                         AcceptsReturn="True"
+                         TextWrapping="Wrap"
+                         MinHeight="40"
+                         MaxHeight="140"
+                         FontSize="12.5"
+                         PlaceholderText="对智能体说…（Enter 发送，Shift+Enter 换行）"/>
+                <Grid ColumnDefinitions="Auto,Auto,Auto,*">
+                    <Button Grid.Column="0"
+                            Content="发送"
+                            Command="{Binding SendAgentPromptCommand}"
+                            FontSize="12"/>
+                    <Button Grid.Column="1"
+                            Content="取消"
+                            Command="{Binding CancelAgentRunCommand}"
+                            IsVisible="{Binding IsAgentRunning}"
+                            FontSize="12"
+                            Margin="6,0,0,0"/>
+                    <Button Grid.Column="2"
+                            Content="测试连接"
+                            Command="{Binding TestAgentConnectionCommand}"
+                            FontSize="12"
+                            Margin="6,0,0,0"/>
+                    <TextBlock Grid.Column="3"
+                               Text="Enter 发送 · Shift+Enter 换行"
+                               FontSize="11"
+                               Foreground="{DynamicResource CalyMutedForegroundBrush}"
+                               HorizontalAlignment="Right"
+                               VerticalAlignment="Center"/>
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- Thread with empty-state overlay -->
+        <Grid>
+            <ScrollViewer x:Name="PART_AgentScroll"
+                          VerticalScrollBarVisibility="Auto"
+                          Padding="10">
+                <ItemsControl x:Name="PART_AgentMessages" ItemsSource="{Binding AgentMessages}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="agent:AgentMessage">
+                            <!-- Exactly one branch is visible per message; the Panel keeps a
+                                 single template root while each kind owns its own layout. -->
+                            <Panel>
+
+                            <!-- P02: system notes as centered pills -->
+                            <Border IsVisible="{Binding IsSystem}"
+                                    HorizontalAlignment="Center"
+                                    Background="{DynamicResource CalyChipBackgroundBrush}"
+                                    BorderBrush="{DynamicResource CalyChipBorderBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="999"
+                                    Padding="10,2"
+                                    Margin="0,4">
+                                <TextBlock Text="{Binding Text}"
                                            FontSize="11"
-                                           Opacity="0.55"
-                                           VerticalAlignment="Center"/>
-                            </StackPanel>
-                            <TextBlock Text="{Binding Text}"
-                                       TextWrapping="Wrap"
-                                       FontSize="12"/>
-                            <Expander IsVisible="{Binding HasTrace}"
-                                      Header="执行轨迹"
-                                      FontSize="11"
-                                      IsExpanded="False">
-                                <TextBlock Text="{Binding TraceText}"
                                            TextWrapping="Wrap"
-                                           FontSize="11"
-                                           Opacity="0.7"
-                                           FontFamily="{DynamicResource CalyMonoFontFamily}"/>
-                            </Expander>
-                            <StackPanel Orientation="Horizontal"
-                                        Spacing="8"
-                                        IsVisible="{Binding ShowActions}">
-                                <Button Content="{Binding ApproveLabel}"
-                                        Command="{Binding ApproveCommand}"
-                                        FontSize="12"/>
-                                <Button Content="{Binding DenyLabel}"
-                                        Command="{Binding DenyCommand}"
-                                        FontSize="12"/>
+                                           MaxWidth="420"
+                                           TextAlignment="Center"
+                                           Foreground="{DynamicResource CalyMutedForegroundBrush}"/>
+                            </Border>
+
+                            <!-- P02/S02: user messages as right-aligned bubbles + queued chip -->
+                            <StackPanel IsVisible="{Binding IsUser}"
+                                        HorizontalAlignment="Right"
+                                        Spacing="2"
+                                        Margin="0,4"
+                                        MaxWidth="420">
+                                <Border Background="{DynamicResource CalyUserBubbleBackgroundBrush}"
+                                        BorderBrush="{DynamicResource CalyUserBubbleBorderBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="10,10,2,10"
+                                        Padding="10,7">
+                                    <TextBlock Text="{Binding PreviewText}"
+                                               FontSize="12.5"
+                                               TextWrapping="Wrap"
+                                               Foreground="{DynamicResource CalyStrongForegroundBrush}"/>
+                                </Border>
+                                <StackPanel Orientation="Horizontal"
+                                            Spacing="6"
+                                            HorizontalAlignment="Right">
+                                    <Border IsVisible="{Binding IsQueued}"
+                                            Background="{DynamicResource CalyChipBackgroundBrush}"
+                                            BorderBrush="{DynamicResource CalyChipBorderBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="8"
+                                            Padding="6,1">
+                                        <TextBlock Text="排队中"
+                                                   FontSize="10.5"
+                                                   Foreground="{DynamicResource CalyWarningForegroundBrush}"/>
+                                    </Border>
+                                    <TextBlock Text="{Binding TimeText}"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource CalyMutedForegroundBrush}"/>
+                                </StackPanel>
                             </StackPanel>
-                            <TextBlock Text="{Binding Status}"
-                                       IsVisible="{Binding HasStatus}"
-                                       FontSize="11"
-                                       Opacity="0.6"/>
-                        </StackPanel>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-        </ScrollViewer>
+
+                            <!-- Errors: full-width card with the danger accent -->
+                            <Border IsVisible="{Binding IsError}"
+                                    Margin="0,4"
+                                    Background="{DynamicResource CalyCardBackgroundBrush}"
+                                    BorderBrush="{DynamicResource CalyErrorForegroundBrush}"
+                                    BorderThickness="3,0,0,0"
+                                    CornerRadius="8"
+                                    Padding="10,8">
+                                <StackPanel Spacing="3">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <TextBlock Text="{Binding RoleLabel}" FontSize="11" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource CalyErrorForegroundBrush}"/>
+                                        <TextBlock Text="{Binding TimeText}" FontSize="11"
+                                                   Foreground="{DynamicResource CalyMutedForegroundBrush}"/>
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding PreviewText}"
+                                               FontSize="12"
+                                               TextWrapping="Wrap"
+                                               Foreground="{DynamicResource CalyStrongForegroundBrush}"/>
+                                    <Expander IsVisible="{Binding HasLongText}"
+                                              Header="查看原始内容"
+                                              FontSize="11"
+                                              IsExpanded="False">
+                                        <ScrollViewer MaxHeight="160" HorizontalScrollBarVisibility="Auto">
+                                            <TextBlock Text="{Binding ExpandedText}"
+                                                       FontSize="11"
+                                                       TextWrapping="NoWrap"
+                                                       FontFamily="{DynamicResource CalyMonoFontFamily}"
+                                                       Foreground="{DynamicResource CalyMutedForegroundBrush}"/>
+                                        </ScrollViewer>
+                                    </Expander>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- P03: live run card with the checklist -->
+                            <Border IsVisible="{Binding IsRunCard}"
+                                    Margin="0,4"
+                                    Background="{DynamicResource CalyCardBackgroundBrush}"
+                                    BorderBrush="{DynamicResource CalyPrimaryBrush}"
+                                    BorderThickness="3,0,0,0"
+                                    CornerRadius="8"
+                                    Padding="10,8">
+                                <StackPanel Spacing="5">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <TextBlock Text="TOC 规则调优" FontSize="12.5" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource CalyStrongForegroundBrush}"/>
+                                        <Border Background="{DynamicResource CalyChipBackgroundBrush}"
+                                                BorderBrush="{DynamicResource CalyChipBorderBrush}"
+                                                BorderThickness="1" CornerRadius="8" Padding="6,1">
+                                            <TextBlock Text="运行中" FontSize="10.5"
+                                                       Foreground="{DynamicResource CalyInfoForegroundBrush}"/>
+                                        </Border>
+                                        <TextBlock Text="{Binding TimeText}" FontSize="11" VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource CalyMutedForegroundBrush}"/>
+                                    </StackPanel>
+                                    <ItemsControl ItemsSource="{Binding Steps}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="agent:AgentRunStep">
+                                                <Grid ColumnDefinitions="16,*" Margin="0,1">
+                                                    <Grid Grid.Column="0">
+                                                        <TextBlock Text="…" FontSize="12" IsVisible="{Binding IsPending}"
+                                                                   Foreground="{DynamicResource CalyMutedForegroundBrush}"/>
+                                                        <TextBlock Text="●" FontSize="11" FontWeight="Bold" IsVisible="{Binding IsRunning}"
+                                                                   Foreground="{DynamicResource CalyInfoForegroundBrush}"/>
+                                                        <TextBlock Text="✓" FontSize="12" FontWeight="Bold" IsVisible="{Binding IsDone}"
+                                                                   Foreground="{DynamicResource CalySuccessForegroundBrush}"/>
+                                                        <TextBlock Text="✗" FontSize="12" FontWeight="Bold" IsVisible="{Binding IsFailed}"
+                                                                   Foreground="{DynamicResource CalyErrorForegroundBrush}"/>
+                                                    </Grid>
+                                                    <Grid Grid.Column="1">
+                                                        <TextBlock Text="{Binding Label}" FontSize="12" IsVisible="{Binding IsPending}"
+                                                                   Foreground="{DynamicResource CalyMutedForegroundBrush}"/>
+                                                        <TextBlock Text="{Binding Label}" FontSize="12" IsVisible="{Binding !IsPending}"
+                                                                   Foreground="{DynamicResource CalyStrongForegroundBrush}"/>
+                                                    </Grid>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <TextBlock IsVisible="{Binding !HasSteps}"
+                                               Text="{Binding PreviewText}"
+                                               FontSize="12"
+                                               TextWrapping="Wrap"
+                                               Foreground="{DynamicResource CalyStrongForegroundBrush}"/>
+                                    <TextBlock Text="{Binding Status}"
+                                               IsVisible="{Binding HasStatus}"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource CalyMutedForegroundBrush}"/>
+                                    <Expander IsVisible="{Binding HasTrace}"
+                                              Header="执行轨迹"
+                                              FontSize="11"
+                                              IsExpanded="False">
+                                        <ScrollViewer MaxHeight="160">
+                                            <TextBlock Text="{Binding TraceText}"
+                                                       FontSize="11"
+                                                       TextWrapping="NoWrap"
+                                                       FontFamily="{DynamicResource CalyMonoFontFamily}"
+                                                       Foreground="{DynamicResource CalyMutedForegroundBrush}"/>
+                                        </ScrollViewer>
+                                    </Expander>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- P04: approval card with the warning accent and inline actions -->
+                            <Border IsVisible="{Binding IsApproval}"
+                                    Margin="0,4"
+                                    Background="{DynamicResource CalyCardBackgroundBrush}"
+                                    BorderBrush="{DynamicResource CalyWarningForegroundBrush}"
+                                    BorderThickness="3,0,0,0"
+                                    CornerRadius="8"
+                                    Padding="10,8">
+                                <StackPanel Spacing="5">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <TextBlock Text="{Binding RoleLabel}" FontSize="11"
+                                                   Foreground="{DynamicResource CalyMutedForegroundBrush}"/>
+                                        <TextBlock Text="待确认" FontSize="11" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource CalyWarningForegroundBrush}"/>
+                                        <TextBlock Text="{Binding TimeText}" FontSize="11"
+                                                   Foreground="{DynamicResource CalyMutedForegroundBrush}"/>
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding PreviewText}"
+                                               FontSize="12"
+                                               TextWrapping="Wrap"
+                                               Foreground="{DynamicResource CalyStrongForegroundBrush}"/>
+                                    <Expander IsVisible="{Binding HasLongText}"
+                                              Header="查看原始内容"
+                                              FontSize="11"
+                                              IsExpanded="False">
+                                        <ScrollViewer MaxHeight="160" HorizontalScrollBarVisibility="Auto">
+                                            <TextBlock Text="{Binding ExpandedText}"
+                                                       FontSize="11"
+                                                       TextWrapping="NoWrap"
+                                                       FontFamily="{DynamicResource CalyMonoFontFamily}"
+                                                       Foreground="{DynamicResource CalyMutedForegroundBrush}"/>
+                                        </ScrollViewer>
+                                    </Expander>
+                                    <StackPanel Orientation="Horizontal"
+                                                Spacing="8"
+                                                IsVisible="{Binding ShowActions}">
+                                        <Button Content="{Binding ApproveLabel}"
+                                                Command="{Binding ApproveCommand}"
+                                                FontSize="12"/>
+                                        <Button Content="{Binding DenyLabel}"
+                                                Command="{Binding DenyCommand}"
+                                                FontSize="12"/>
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding Status}"
+                                               IsVisible="{Binding HasStatus}"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource CalyMutedForegroundBrush}"/>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- P05: completion card with stat chips -->
+                            <Border IsVisible="{Binding IsDone}"
+                                    Margin="0,4"
+                                    Background="{DynamicResource CalyCardBackgroundBrush}"
+                                    BorderBrush="{DynamicResource CalySuccessForegroundBrush}"
+                                    BorderThickness="3,0,0,0"
+                                    CornerRadius="8"
+                                    Padding="10,8">
+                                <StackPanel Spacing="5">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <TextBlock Text="{Binding RoleLabel}" FontSize="11"
+                                                   Foreground="{DynamicResource CalyMutedForegroundBrush}"/>
+                                        <TextBlock Text="已完成" FontSize="11" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource CalySuccessForegroundBrush}"/>
+                                        <TextBlock Text="{Binding TimeText}" FontSize="11"
+                                                   Foreground="{DynamicResource CalyMutedForegroundBrush}"/>
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding PreviewText}"
+                                               FontSize="12"
+                                               TextWrapping="Wrap"
+                                               Foreground="{DynamicResource CalyStrongForegroundBrush}"/>
+                                    <ItemsControl ItemsSource="{Binding Stats}" IsVisible="{Binding HasStats}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <WrapPanel/>
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="agent:AgentStatChip">
+                                                <Border Background="{DynamicResource CalyChipBackgroundBrush}"
+                                                        BorderBrush="{DynamicResource CalyChipBorderBrush}"
+                                                        BorderThickness="1"
+                                                        CornerRadius="6"
+                                                        Padding="7,2"
+                                                        Margin="0,0,6,4">
+                                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                                        <TextBlock Text="{Binding Label}" FontSize="11"
+                                                                   Foreground="{DynamicResource CalyMutedForegroundBrush}"/>
+                                                        <TextBlock Text="{Binding Value}" FontSize="11" FontWeight="SemiBold"
+                                                                   Foreground="{DynamicResource CalyStrongForegroundBrush}"/>
+                                                    </StackPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <ItemsControl ItemsSource="{Binding Bullets}" IsVisible="{Binding HasBullets}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="x:String">
+                                                <TextBlock Text="{Binding}"
+                                                           FontSize="11.5"
+                                                           TextWrapping="Wrap"
+                                                           FontFamily="{DynamicResource CalyMonoFontFamily}"
+                                                           Foreground="{DynamicResource CalyMutedForegroundBrush}"/>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <StackPanel Orientation="Horizontal"
+                                                Spacing="8"
+                                                IsVisible="{Binding ShowActions}">
+                                        <Button Content="{Binding ApproveLabel}"
+                                                Command="{Binding ApproveCommand}"
+                                                FontSize="12"/>
+                                        <Button Content="{Binding DenyLabel}"
+                                                Command="{Binding DenyCommand}"
+                                                FontSize="12"/>
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding Status}"
+                                               IsVisible="{Binding HasStatus}"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource CalyMutedForegroundBrush}"/>
+                                    <Expander IsVisible="{Binding HasTrace}"
+                                              Header="执行轨迹"
+                                              FontSize="11"
+                                              IsExpanded="False">
+                                        <ScrollViewer MaxHeight="160">
+                                            <TextBlock Text="{Binding TraceText}"
+                                                       FontSize="11"
+                                                       TextWrapping="NoWrap"
+                                                       FontFamily="{DynamicResource CalyMonoFontFamily}"
+                                                       Foreground="{DynamicResource CalyMutedForegroundBrush}"/>
+                                        </ScrollViewer>
+                                    </Expander>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- P02/P06/P07: plain agent messages, left-aligned; lineage rows
+                                 and raw payloads never inline into the thread text -->
+                            <StackPanel IsVisible="{Binding IsAgent}" Spacing="4" Margin="0,4">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <TextBlock Text="{Binding RoleLabel}" FontSize="11"
+                                               Foreground="{DynamicResource CalyMutedForegroundBrush}"/>
+                                    <TextBlock Text="{Binding TimeText}" FontSize="11"
+                                               Foreground="{DynamicResource CalyMutedForegroundBrush}" Opacity="0.75"/>
+                                </StackPanel>
+                                <TextBlock Text="{Binding PreviewText}"
+                                           FontSize="12"
+                                           TextWrapping="Wrap"
+                                           Foreground="{DynamicResource CalyStrongForegroundBrush}"/>
+                                <ItemsControl ItemsSource="{Binding Bullets}" IsVisible="{Binding HasBullets}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="x:String">
+                                            <TextBlock Text="{Binding}"
+                                                       FontSize="11.5"
+                                                       TextWrapping="Wrap"
+                                                       FontFamily="{DynamicResource CalyMonoFontFamily}"
+                                                       Foreground="{DynamicResource CalyMutedForegroundBrush}"/>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <ItemsControl ItemsSource="{Binding Revisions}" IsVisible="{Binding HasRevisions}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="agent:AgentRevisionRow">
+                                            <Border Background="{DynamicResource CalySubtleBackgroundBrush}"
+                                                    BorderBrush="{DynamicResource CalySubtleBorderBrush}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="6"
+                                                    Padding="8,6"
+                                                    Margin="0,2">
+                                                <StackPanel Spacing="2">
+                                                    <TextBlock Text="{Binding Label}"
+                                                               FontSize="12"
+                                                               FontWeight="SemiBold"
+                                                               FontFamily="{DynamicResource CalyMonoFontFamily}"
+                                                               Foreground="{DynamicResource CalyStrongForegroundBrush}"/>
+                                                    <TextBlock Text="{Binding Stats}"
+                                                               FontSize="11"
+                                                               Foreground="{DynamicResource CalyMutedForegroundBrush}"/>
+                                                    <Expander IsVisible="{Binding HasOverrides}"
+                                                              Header="覆写原文（JSON）"
+                                                              FontSize="11"
+                                                              IsExpanded="False">
+                                                        <ScrollViewer MaxHeight="160" HorizontalScrollBarVisibility="Auto">
+                                                            <TextBlock Text="{Binding OverridesPreview}"
+                                                                       FontSize="11"
+                                                                       TextWrapping="NoWrap"
+                                                                       FontFamily="{DynamicResource CalyMonoFontFamily}"
+                                                                       Foreground="{DynamicResource CalyMutedForegroundBrush}"/>
+                                                        </ScrollViewer>
+                                                    </Expander>
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <Expander IsVisible="{Binding HasLongText}"
+                                          Header="查看原始内容"
+                                          FontSize="11"
+                                          IsExpanded="False">
+                                    <ScrollViewer MaxHeight="160" HorizontalScrollBarVisibility="Auto">
+                                        <TextBlock Text="{Binding ExpandedText}"
+                                                   FontSize="11"
+                                                   TextWrapping="NoWrap"
+                                                   FontFamily="{DynamicResource CalyMonoFontFamily}"
+                                                   Foreground="{DynamicResource CalyMutedForegroundBrush}"/>
+                                    </ScrollViewer>
+                                </Expander>
+                            </StackPanel>
+
+                            </Panel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+
+            <!-- P01: empty state with two starting points -->
+            <Border IsVisible="{Binding IsConversationEmpty}"
+                    Background="{DynamicResource CalyCanvasBackgroundBrush}">
+                <StackPanel Spacing="10"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Margin="24">
+                    <TextBlock Text="与内置智能体开始对话"
+                               FontSize="14"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource CalyMutedForegroundBrush}"
+                               HorizontalAlignment="Center"/>
+                    <TextBlock Text="在下方输入框直接下指令；或先种子一段目录调优任务，再在输入框里校准。"
+                               FontSize="12"
+                               TextWrapping="Wrap"
+                               TextAlignment="Center"
+                               MaxWidth="260"
+                               Foreground="{DynamicResource CalyMutedForegroundBrush}"
+                               HorizontalAlignment="Center"/>
+                    <Button Content="发起 TOC 规则调优"
+                            Command="{Binding SeedTocTunePromptCommand}"
+                            HorizontalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+        </Grid>
     </DockPanel>
 </UserControl>
