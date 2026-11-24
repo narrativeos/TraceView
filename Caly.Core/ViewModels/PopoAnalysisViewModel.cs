@@ -939,36 +939,49 @@ public partial class AnalysisViewModel : ViewModelBase
 
         if (!string.IsNullOrWhiteSpace(settings?.AiBaseUrl))
         {
-            using var probe = new System.Net.Sockets.TcpClient();
-            using var timeout = new System.Threading.CancellationTokenSource(System.TimeSpan.FromSeconds(2));
-            try
-            {
-                var uri = new System.Uri(settings!.AiBaseUrl);
-                await probe.ConnectAsync(uri.Host, uri.IsDefaultPort ? (uri.Scheme == "https" ? 443 : 80) : uri.Port, timeout.Token);
-            }
-            catch (System.Exception)
-            {
-                problems.Add($"LLM 端点不可达（{settings!.AiBaseUrl}）");
-            }
+            var error = await ProbeTcpEndpointAsync(settings!.AiBaseUrl);
+            if (error is not null)
+                problems.Add($"LLM 端点不可达（{settings!.AiBaseUrl}：{error}）");
         }
 
         var popoUrl = settings?.PopoBaseUrl;
         if (!string.IsNullOrWhiteSpace(popoUrl))
         {
-            using var probe = new System.Net.Sockets.TcpClient();
-            using var timeout = new System.Threading.CancellationTokenSource(System.TimeSpan.FromSeconds(2));
-            try
-            {
-                var uri = new System.Uri(popoUrl!);
-                await probe.ConnectAsync(uri.Host, uri.IsDefaultPort ? (uri.Scheme == "https" ? 443 : 80) : uri.Port, timeout.Token);
-            }
-            catch (System.Exception)
-            {
-                problems.Add($"Popo 服务不可达（{popoUrl}）");
-            }
+            var error = await ProbeTcpEndpointAsync(popoUrl!);
+            if (error is not null)
+                problems.Add($"Popo 服务不可达（{popoUrl}：{error}）");
         }
 
         return problems;
+    }
+
+    /// <summary>
+    /// TCP-connect probe for a base URL. Returns null when reachable, otherwise a short
+    /// failure reason (distinguishing timeout from refusal, e.g. a denied macOS
+    /// Local Network permission surfaces as NetworkUnreachable) so the problem line is actionable.
+    /// </summary>
+    private static async System.Threading.Tasks.Task<string?> ProbeTcpEndpointAsync(string baseUrl)
+    {
+        using var probe = new System.Net.Sockets.TcpClient();
+        using var timeout = new System.Threading.CancellationTokenSource(System.TimeSpan.FromSeconds(4));
+        try
+        {
+            var uri = new System.Uri(baseUrl);
+            await probe.ConnectAsync(uri.Host, uri.IsDefaultPort ? (uri.Scheme == "https" ? 443 : 80) : uri.Port, timeout.Token);
+            return null;
+        }
+        catch (System.OperationCanceledException)
+        {
+            return "连接超时";
+        }
+        catch (System.Net.Sockets.SocketException ex)
+        {
+            return ex.SocketErrorCode.ToString();
+        }
+        catch (System.Exception ex)
+        {
+            return ex.GetType().Name;
+        }
     }
 
     /// <summary>
@@ -1127,6 +1140,24 @@ public partial class AnalysisViewModel : ViewModelBase
             foreach (var message in restored)
                 AgentMessages.Add(message);
 
+            // Commands cannot be serialized; re-attach the non-destructive compare and the
+            // undo entry to the last completion card so the undo path survives a reload.
+            var lastDone = restored.FindLast(m => m.Kind == AgentMessageKind.Done);
+            if (lastDone is not null)
+            {
+                var settings = App.Current?.Services?.GetRequiredService<ISettingsService>()?.GetSettings();
+                lastDone.ApproveLabel = "查看改前改后对比";
+                lastDone.DenyLabel = "撤销到上一修订";
+                lastDone.ApproveCommand = new AsyncRelayCommand(async () =>
+                    await AppendLineageComparisonAsync(PopoJsonService.TryReadTaskId(_projectPath), settings?.PopoBaseUrl));
+                lastDone.DenyCommand = new AsyncRelayCommand(async () =>
+                {
+                    lastDone.ShowActions = false;
+                    await UndoToPreviousRevisionAsync(PopoJsonService.TryReadTaskId(_projectPath), settings?.PopoBaseUrl);
+                });
+                lastDone.ShowActions = true;
+            }
+
             AgentMessages.Add(AgentMessage.SystemNote($"已恢复 {restored.Count} 条历史对话（本地 JSONL）。"));
             ShowAgentConversation = true;
         }
@@ -1231,7 +1262,8 @@ public partial class AnalysisViewModel : ViewModelBase
 
         card.ApproveCommand = new AsyncRelayCommand(async () =>
         {
-            card.ShowActions = false;
+            // Compare is non-destructive and repeatable; unlike approval it must not hide the
+            // undo action — losing undo after viewing the compare would strand the write.
             await AppendLineageComparisonAsync(taskId, settings?.PopoBaseUrl);
         });
 
@@ -1299,8 +1331,11 @@ public partial class AnalysisViewModel : ViewModelBase
             AppendConversation(AgentMessage.SystemNote(
                 $"撤销：以 r{target.Rev} 的覆写重跑 retoc，会产生新修订；r{target.Rev} 本身保留在谱系中。"));
 
-            var response = await popo.RetocTaskAsync(taskId!, target.Overrides);
-            AppendConversation(AgentMessage.Agent($"撤销完成。服务端响应：{response.ToJsonString()}"));
+            // The retoc response embeds the whole TOC tree; inlining it in a chat line makes the
+            // conversation view unrenderable (multi-megabyte TextBlock layout spins the UI thread).
+            // The revision ledger stays the source of truth for what the undo produced.
+            await popo.RetocTaskAsync(taskId!, target.Overrides);
+            AppendConversation(AgentMessage.Agent($"撤销完成：已按 r{target.Rev} 的覆写重跑 retoc，新修订已写入谱系。"));
         }
         catch (System.Exception ex)
         {

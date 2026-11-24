@@ -30,6 +30,10 @@
 	<string>NSApplication</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<!-- The LLM/Popo endpoints are usually LAN addresses; macOS requires this
+	     description to prompt for the Local Network permission. -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>TraceView needs access to your local network to reach the configured LLM and Popo services.</string>
 	<!-- TraceView opens PDF documents (Viewer role: it does not author them). -->
 	<key>CFBundleDocumentTypes</key>
 	<array>

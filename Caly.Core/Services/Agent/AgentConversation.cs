@@ -117,6 +117,12 @@ public static class AgentConversationLog
 {
     private const string FileName = "agent_conversation.jsonl";
 
+    /// <summary>
+    /// Replay safety cap: a single audit line may legitimately embed a large payload, but the
+    /// UI must never try to lay out one. Long lines are truncated only in the replayed view.
+    /// </summary>
+    private const int MaxReplayTextLength = 4096;
+
     private static readonly JsonSerializerOptions LineOptions = new()
     {
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
@@ -167,11 +173,19 @@ public static class AgentConversationLog
 
                 var kind = ParseKind(line["kind"]?.GetValue<string>());
                 var text = line["text"]?.GetValue<string>() ?? string.Empty;
+                if (text.Length > MaxReplayTextLength)
+                    text = text.Substring(0, MaxReplayTextLength) + "…（内容过长，仅在回放中截断，审计日志保留全文）";
 
                 // Replay cards as plain text lines; live actions cannot be reconstructed.
-                if (kind is AgentMessageKind.RunCard or AgentMessageKind.Approval or AgentMessageKind.Done)
+                if (kind is AgentMessageKind.RunCard or AgentMessageKind.Approval)
                 {
                     kind = AgentMessageKind.Agent;
+                    text = "（历史卡片）" + text;
+                }
+                else if (kind == AgentMessageKind.Done)
+                {
+                    // Keep completion cards in the Done kind: the undo path stays valid across
+                    // sessions, so the host re-attaches compare/undo actions to the last card.
                     text = "（历史卡片）" + text;
                 }
 

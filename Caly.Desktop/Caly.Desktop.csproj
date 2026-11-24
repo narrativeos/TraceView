@@ -101,13 +101,19 @@
 	     Files are hard-linked (cp -al) into the bundle: zero extra disk usage, and the
 	     apphost is a real file inside the bundle so LaunchServices/Dock pick up AppIcon.icns.
 	     The bundle is staged in a sibling temp dir first (so cp never recurses into itself),
-	     then moved into place. -->
+	     then moved into place. The bundle is then ad-hoc signed so the code signature binds
+	     Info.plist and carries the real bundle identifier; without this, TCC attributes the
+	     app to the apphost binary's default identity ("apphost") and silently denies
+	     Local Network access (no prompt) when it connects to LAN endpoints.
+	     Foreign-runtime directories are pruned from the bundle before signing: deep
+	     signing treats directories like runtimes/win/lib/net9.0 as malformed subbundles.
+	     The host only ever resolves its own RID graph on macOS, so osx*/unix* suffice. -->
 	<Target Name="CreateMacAppBundle" AfterTargets="Build" Condition="$([MSBuild]::IsOSPlatform('OSX')) and '$(TargetFramework)' != ''">
 		<PropertyGroup>
 			<AppBundlePath>$(OutDir)TraceView.app</AppBundlePath>
 			<AppBundleStaging>$(MSBuildProjectDirectory)/obj/$(TargetFramework)/.TraceView.app.staging</AppBundleStaging>
 		</PropertyGroup>
-		<Exec Command="rm -rf &quot;$(AppBundleStaging)&quot; &quot;$(AppBundlePath)&quot; &amp;&amp; mkdir -p &quot;$(AppBundleStaging)/Contents/MacOS&quot; &quot;$(AppBundleStaging)/Contents/Resources&quot; &amp;&amp; cp -al &quot;$(OutDir).&quot; &quot;$(AppBundleStaging)/Contents/MacOS/&quot; &amp;&amp; cp &quot;$(MSBuildProjectDirectory)/../Logo/AppIcon.icns&quot; &quot;$(AppBundleStaging)/Contents/Resources/AppIcon.icns&quot; &amp;&amp; sed -e 's/__VERSION__/$(Version)/g' &quot;$(MSBuildProjectDirectory)/MacAppBundle/Info.plist&quot; &gt; &quot;$(AppBundleStaging)/Contents/Info.plist&quot; &amp;&amp; mv &quot;$(AppBundleStaging)&quot; &quot;$(AppBundlePath)&quot;" />
+		<Exec Command="rm -rf &quot;$(AppBundleStaging)&quot; &quot;$(AppBundlePath)&quot; &amp;&amp; mkdir -p &quot;$(AppBundleStaging)/Contents/MacOS&quot; &quot;$(AppBundleStaging)/Contents/Resources&quot; &amp;&amp; cp -al &quot;$(OutDir).&quot; &quot;$(AppBundleStaging)/Contents/MacOS/&quot; &amp;&amp; cp &quot;$(MSBuildProjectDirectory)/../Logo/AppIcon.icns&quot; &quot;$(AppBundleStaging)/Contents/Resources/AppIcon.icns&quot; &amp;&amp; sed -e 's/__VERSION__/$(Version)/g' &quot;$(MSBuildProjectDirectory)/MacAppBundle/Info.plist&quot; &gt; &quot;$(AppBundleStaging)/Contents/Info.plist&quot; &amp;&amp; mv &quot;$(AppBundleStaging)&quot; &quot;$(AppBundlePath)&quot; &amp;&amp; if [ -d &quot;$(AppBundlePath)/Contents/MacOS/runtimes&quot; ]; then find &quot;$(AppBundlePath)/Contents/MacOS/runtimes&quot; -mindepth 1 -maxdepth 1 -type d ! -name 'osx*' ! -name 'unix*' -exec rm -rf {} + ; fi &amp;&amp; codesign --force --deep --sign - &quot;$(AppBundlePath)&quot;" />
 	</Target>
 
 	<Target Name="DeletePdbAfterPublish" AfterTargets="Publish">
