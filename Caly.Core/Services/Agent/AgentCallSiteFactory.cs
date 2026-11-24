@@ -53,11 +53,18 @@ internal static class AgentCallSiteFactory
 
         var tools = new List<AgentTool>(localTools.Count);
 
+        var progress = context is not null &&
+                       context.Items.TryGetValue(AgentToolProgressKeys.ItemKey, out var progressCallback) &&
+                       progressCallback is Action<string, string> callback
+            ? callback
+            : null;
+
         foreach (var function in localTools)
         {
             var requiresApproval = definition.ApprovalRequiredTools.Contains(function.Name);
             tools.Add(new AgentTool(
-                Wrap(function, requiresApproval, definition.Id, serverName: null, approver), requiresApproval));
+                WithProgress(Wrap(function, requiresApproval, definition.Id, serverName: null, approver), progress),
+                requiresApproval));
         }
 
         foreach (var (serverName, allowedToolNames) in definition.McpToolBindings)
@@ -72,7 +79,8 @@ internal static class AgentCallSiteFactory
                 // MCP tools can opt out later via an explicit ReadOnlyMcpTools list.
                 const bool requiresApproval = true;
                 tools.Add(new AgentTool(
-                    Wrap(tool, requiresApproval, definition.Id, serverName, approver), requiresApproval, serverName));
+                    WithProgress(Wrap(tool, requiresApproval, definition.Id, serverName, approver), progress),
+                    requiresApproval, serverName));
             }
         }
 
@@ -91,6 +99,14 @@ internal static class AgentCallSiteFactory
         string? serverName,
         AgentToolApprover? approver) =>
         requiresApproval ? new UserApprovalAIFunction(function, approver, callSiteId, serverName) : function;
+
+    /// <summary>
+    /// Outermost layer when the caller asked for live tool progress: the notification
+    /// fires around approval too, so a run card shows the step as running while the
+    /// user's decision is pending.
+    /// </summary>
+    private static AIFunction WithProgress(AIFunction function, Action<string, string>? progress) =>
+        progress is not null ? new NotifyingAIFunction(function, progress) : function;
 
     /// <summary>
     /// Flatten for diagnostics/tests: "server-or-local:tool" names actually bound.

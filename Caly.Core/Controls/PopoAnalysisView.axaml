@@ -2,6 +2,7 @@
                      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                      xmlns:controls="using:Caly.Core.Controls"
                      xmlns:vm="using:Caly.Core.ViewModels"
+                     xmlns:agent="using:Caly.Core.Services.Agent"
                      x:Class="Caly.Core.Controls.AnalysisView"
                      x:DataType="vm:AnalysisViewModel">
 
@@ -37,9 +38,8 @@
                         ToolTip.Tip="由智能体重新编排目录并对齐正文，生成待确认补丁"
                         MinWidth="80"/>
                 <Button Content="TOC 规则调优 (Agent)"
-                        Command="{Binding RunTocTuneAgentCommand}"
-                        IsEnabled="{Binding !IsAgentRunning}"
-                        ToolTip.Tip="智能体起草规则覆盖，gold 集门禁通过并经批准后仅重写本文档目录"
+                        Command="{Binding SeedTocTunePromptCommand}"
+                        ToolTip.Tip="把调优提示词填入对话输入框，由你编辑后发送才开始执行"
                         MinWidth="80"/>
                 <Button Content="推送九录文华"
                         Command="{Binding PushToJiuluCommand}"
@@ -50,6 +50,89 @@
                          Text="{Binding BlockSearchText}"
                          MinWidth="150"/>
             </StackPanel>
+
+            <!-- Agent conversation: thread of messages, run cards, inline approvals and the composer -->
+            <Border DockPanel.Dock="Top"
+                    IsVisible="{Binding ShowAgentConversation}"
+                    Background="{DynamicResource CalyCardBackgroundBrush}"
+                    BorderBrush="{DynamicResource CalyCardBorderBrush}"
+                    BorderThickness="0,0,0,1"
+                    Margin="0,2,0,0">
+                <DockPanel>
+                    <!-- Composer row -->
+                    <StackPanel DockPanel.Dock="Bottom"
+                                Orientation="Horizontal"
+                                Spacing="4"
+                                Margin="4">
+                        <TextBox x:Name="PART_AgentComposer"
+                                 Text="{Binding AgentComposerText}"
+                                 PlaceholderText="对智能体说…（Enter 发送，运行中发送会排队）"
+                                 MinWidth="220"
+                                 HorizontalAlignment="Stretch"
+                                 KeyDown="OnAgentComposerKeyDown"
+                                 ToolTip.Tip="Enter 发送；Shift+Enter 换行"/>
+                        <Button Content="发送"
+                                Command="{Binding SendAgentPromptCommand}"/>
+                        <Button Content="取消"
+                                Command="{Binding CancelAgentRunCommand}"
+                                IsVisible="{Binding IsAgentRunning}"/>
+                        <Button Content="测试连接"
+                                Command="{Binding TestAgentConnectionCommand}"/>
+                        <TextBlock Text="{Binding AgentConnectionStatus}"
+                                   FontSize="11"
+                                   Opacity="0.7"
+                                   VerticalAlignment="Center"
+                                   TextWrapping="Wrap"/>
+                    </StackPanel>
+                    <ScrollViewer x:Name="PART_AgentScroll"
+                                  MaxHeight="260"
+                                  VerticalScrollBarVisibility="Auto"
+                                  Padding="6">
+                        <ItemsControl x:Name="PART_AgentMessages" ItemsSource="{Binding AgentMessages}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="agent:AgentMessage">
+                                    <StackPanel Spacing="2" Margin="0,4">
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <TextBlock Text="{Binding RoleLabel}" FontWeight="Bold" FontSize="12"/>
+                                            <TextBlock Text="{Binding TimeText}"
+                                                       FontSize="11"
+                                                       Opacity="0.55"
+                                                       VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding Text}"
+                                                   TextWrapping="Wrap"
+                                                   FontSize="12"/>
+                                        <Expander IsVisible="{Binding HasTrace}"
+                                                  Header="执行轨迹"
+                                                  FontSize="11"
+                                                  IsExpanded="False">
+                                            <TextBlock Text="{Binding TraceText}"
+                                                       TextWrapping="Wrap"
+                                                       FontSize="11"
+                                                       Opacity="0.7"
+                                                       FontFamily="{DynamicResource CalyMonoFontFamily}"/>
+                                        </Expander>
+                                        <StackPanel Orientation="Horizontal"
+                                                    Spacing="8"
+                                                    IsVisible="{Binding ShowActions}">
+                                            <Button Content="{Binding ApproveLabel}"
+                                                    Command="{Binding ApproveCommand}"
+                                                    FontSize="12"/>
+                                            <Button Content="{Binding DenyLabel}"
+                                                    Command="{Binding DenyCommand}"
+                                                    FontSize="12"/>
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding Status}"
+                                                   IsVisible="{Binding HasStatus}"
+                                                   FontSize="11"
+                                                   Opacity="0.6"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
 
             <!-- Agent run trace (popo.toc-tune): one line per tool outcome -->
             <Expander Header="智能体执行轨迹"

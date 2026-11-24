@@ -25,6 +25,7 @@ using Avalonia.Controls.Notifications;
 using Avalonia.Controls.Primitives;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
+using Avalonia.Threading;
 using Caly.Core.Services;
 using Caly.Core.Services.Interfaces;
 using Caly.Core.ViewModels;
@@ -36,6 +37,14 @@ public class SettingsControl : TemplatedControl
     private Button? _browseProjectHomeButton;
     private TextBox? _aiKeyInput;
     private Button? _saveAiKeyButton;
+    private TextBox? _popoBaseUrlInput;
+    private TextBox? _aiBaseUrlInput;
+    private TextBox? _aiModelInput;
+    private TextBox? _aiCredentialRefInput;
+    private DispatcherTimer? _autoSaveTimer;
+
+    /// <summary>Debounce before persisting agent/server settings typed straight into the settings singleton.</summary>
+    private static readonly TimeSpan AutoSaveDelay = TimeSpan.FromMilliseconds(600);
 
     protected override void OnApplyTemplate(TemplateAppliedEventArgs e)
     {
@@ -52,6 +61,46 @@ public class SettingsControl : TemplatedControl
         {
             _saveAiKeyButton.Click += OnSaveAiKeyClicked;
         }
+
+        // Agent and Popo endpoints/models autosave (debounced) so an agent run never
+        // depends on the user remembering to hit a save button (spec C02).
+        HookAutoSaveTextBox(e, "PART_PopoBaseUrlInput", ref _popoBaseUrlInput);
+        HookAutoSaveTextBox(e, "PART_AiBaseUrlInput", ref _aiBaseUrlInput);
+        HookAutoSaveTextBox(e, "PART_AiModelInput", ref _aiModelInput);
+        HookAutoSaveTextBox(e, "PART_AiCredentialRefInput", ref _aiCredentialRefInput);
+    }
+
+    private void HookAutoSaveTextBox(TemplateAppliedEventArgs e, string name, ref TextBox? field)
+    {
+        if (field is not null)
+        {
+            field.TextChanged -= OnAutoSaveSettingTextChanged;
+        }
+
+        field = e.NameScope.Find<TextBox>(name);
+        if (field is not null)
+        {
+            field.TextChanged += OnAutoSaveSettingTextChanged;
+        }
+    }
+
+    private void OnAutoSaveSettingTextChanged(object? sender, TextChangedEventArgs e)
+    {
+        if (_autoSaveTimer is null)
+        {
+            _autoSaveTimer = new DispatcherTimer { Interval = AutoSaveDelay };
+            _autoSaveTimer.Tick += (_, _) =>
+            {
+                _autoSaveTimer?.Stop();
+                if (App.Current?.Services?.GetService(typeof(ISettingsService)) is ISettingsService settingsService)
+                {
+                    settingsService.Save();
+                }
+            };
+        }
+
+        _autoSaveTimer.Stop();
+        _autoSaveTimer.Start();
     }
 
     private void OnSaveAiKeyClicked(object? sender, RoutedEventArgs e)

@@ -138,6 +138,7 @@
                                          <TextBox Grid.Column="2"
                                                   Grid.Row="0"
                                                   Margin="0,2"
+                                                  x:Name="PART_PopoBaseUrlInput"
                                                   Text="{Binding Settings.PopoBaseUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
                                      </Grid>
 
@@ -164,6 +165,7 @@
                                                   Grid.Row="0"
                                                   Margin="0,2"
                                                   Watermark="https://api.openai.com/v1（留空用 OpenAI 默认端点）"
+                                                  x:Name="PART_AiBaseUrlInput"
                                                   Text="{Binding Settings.AiBaseUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
                                      </Grid>
 
@@ -177,6 +179,7 @@
                                                   Grid.Row="0"
                                                   Margin="0,2"
                                                   Watermark="gpt-4o-mini"
+                                                  x:Name="PART_AiModelInput"
                                                   Text="{Binding Settings.AiModel, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
                                      </Grid>
 
@@ -190,6 +193,7 @@
                                                   Grid.Row="0"
                                                   Margin="0,2"
                                                   Watermark="keychain:com.traceview.llm/api_key 或 env:OPENAI_API_KEY"
+                                                  x:Name="PART_AiCredentialRefInput"
                                                   Text="{Binding Settings.AiCredentialRef, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
                                      </Grid>
 

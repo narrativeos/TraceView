@@ -30,6 +30,8 @@ using Microsoft.Extensions.DependencyInjection;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Text.Json.Nodes;
+using AIChatMessage = Microsoft.Extensions.AI.ChatMessage;
 
 namespace Caly.Core.ViewModels;
 
@@ -76,6 +78,7 @@ public partial class AnalysisViewModel : ViewModelBase
         VisibleTypes.Add("caption");
 
         ApplyFilters();
+        LoadAgentConversation();
     }
 
     public StructureDocument StructureDocument => _structureDocument;
@@ -717,6 +720,56 @@ public partial class AnalysisViewModel : ViewModelBase
     [ObservableProperty]
     private bool _showAgentRunTrace;
 
+    // === Agent 对话（conversation-first 运行体验）===
+
+    /// <summary>The agent thread: user prompts, live run cards, inline approvals, results.</summary>
+    public ObservableCollection<AgentMessage> AgentMessages { get; } = new();
+
+    [ObservableProperty]
+    private bool _showAgentConversation;
+
+    [ObservableProperty]
+    private string _agentComposerText = string.Empty;
+
+    /// <summary>True while a run is in flight: composer input is queued, not re-run.</summary>
+    [ObservableProperty]
+    private bool _agentComposerIsBusy;
+
+    [ObservableProperty]
+    private string _agentConnectionStatus = string.Empty;
+
+    /// <summary>Incremented by prompt seeding so the view can focus and select the composer.</summary>
+    [ObservableProperty]
+    private int _agentComposerFocusToken;
+
+    private System.Threading.CancellationTokenSource? _agentRunCts;
+    private AgentMessage? _activeRunCard;
+    private readonly List<string> _queuedInterjections = new();
+
+    /// <summary>4-step checklist mirrored on the run card: ✓ done, ● running, … pending, ✗ failed.</summary>
+    private readonly string[] _tuneStepState = { "…", "…", "…", "…" };
+
+    private static readonly string[] TuneStepLabels =
+    {
+        "读取目录质量",
+        "起草最小规则覆写（等你校准）",
+        "校准后重跑校验",
+        "汇报改前改后对比",
+    };
+
+    private static readonly Dictionary<string, int> TuneStepByTool = new(System.StringComparer.Ordinal)
+    {
+        ["get_toc_quality"] = 0,
+        ["propose_rule_override"] = 1,
+        ["evaluate_rules"] = 2,
+        ["retoc_document"] = 2,
+    };
+
+    /// <summary>Default prompt seeded into the composer by the 调优 entry button.</summary>
+    private const string DefaultTocTunePrompt =
+        "请检查当前文档的目录质量（层级跳变与低置信条目）；如果不理想，起草最小规则覆写并用 gold 集门禁校验；" +
+        "在我校准覆写卡片后重跑目录生成，最后汇报改前改后的层级对比与规则包指纹。";
+
     /// <summary>
     /// Runs the popo.toc-align call site on the current document. The agent reads the
     /// structure through its bound tools and must submit a patch that passes
@@ -789,62 +842,175 @@ public partial class AnalysisViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Approval prompt for the popo.toc-tune write tool: shows the tool name and the
-    /// summarized arguments and asks the user to confirm the rewrite. A missing dialog
-    /// service fails closed — the write never runs.
-    /// </summary>
-    private static AgentToolApprover BuildTocTuneApprover() => async (request, ct) =>
-    {
-        var dialogService = App.Current?.Services?.GetRequiredService<IDialogService>();
-        if (dialogService is null)
-            return false;
-
-        return await dialogService.ShowConfirmationDialogAsync(
-            "智能体重写目录",
-            $"智能体请求执行 {request.ToolName}（站点 {request.CallSiteId}）。\n\n" +
-            $"参数：{request.ArgumentsSummary}\n\n" +
-            "这将用新规则包重写该文档已保存的任务目录（tree/toc）。是否批准？");
-    };
-
-    /// <summary>
-    /// Runs the popo.toc-tune call site on the current document: the agent inspects TOC
-    /// quality, drafts a minimal rule override against the rule-pack whitelist, gates it on
-    /// the gold-set replay, and only then may rewrite this document's stored task result
-    /// through the approval-gated retoc_document. The Popo base URL comes from settings and
-    /// the task id from the project's popo_result.json when present; without a task id the
-    /// run stays read-only (retoc_document refuses without it).
+    /// Entry point for the TOC 规则调优 toolbar button. Clicking it no longer starts a run:
+    /// it seeds the editable default prompt into the composer (zero side effects), and the
+    /// task begins only when the user sends it from the conversation (<see cref="SendAgentPromptAsync"/>).
     /// </summary>
     [RelayCommand]
-    private async System.Threading.Tasks.Task RunTocTuneAgentAsync()
+    private void SeedTocTunePrompt()
     {
-        if (IsAgentRunning)
+        AgentComposerText = DefaultTocTunePrompt;
+        ShowAgentConversation = true;
+        AgentComposerFocusToken++;
+    }
+
+    /// <summary>
+    /// Sends whatever is in the composer. When a run is in flight the message is logged and
+    /// carried into the next run instead of starting one; otherwise a preflight must pass
+    /// before the popo.toc-tune loop begins — no silent zero-write failures.
+    /// </summary>
+    [RelayCommand]
+    private async System.Threading.Tasks.Task SendAgentPromptAsync()
+    {
+        var prompt = AgentComposerText.Trim();
+        if (prompt.Length == 0)
             return;
 
-        IsAgentRunning = true;
-        AgentStatusText = "TOC 规则调优智能体运行中…";
-        ShowAgentRunTrace = false;
-        AgentRunTraceText = string.Empty;
+        AgentComposerText = string.Empty;
+        AppendConversation(AgentMessage.User(prompt));
 
-        // GetRequiredService throws (it does not return null) when the service
-        // cannot be activated, and AsyncRelayCommand rethrows task failures on
-        // the UI thread unhandled — resolve inside the try so a DI failure
-        // surfaces as a status message instead of crashing the app.
+        if (IsAgentRunning)
+        {
+            _queuedInterjections.Add(prompt);
+            AppendConversation(AgentMessage.SystemNote("已记入对话；本轮按原计划继续，下一轮开始时会把这条并入任务。"));
+            return;
+        }
+
+        if (!await RunAgentPreflightAsync())
+            return;
+
+        await RunTocTuneConversationAsync(prompt);
+    }
+
+    /// <summary>Stops the in-flight run. Approvals still pending resolve as denied; the
+    /// deterministic loop never writes past an unapproved step.</summary>
+    [RelayCommand]
+    private void CancelAgentRun()
+    {
+        _agentRunCts?.Cancel();
+    }
+
+    [RelayCommand]
+    private async System.Threading.Tasks.Task TestAgentConnectionAsync()
+    {
+        var settings = App.Current?.Services?.GetRequiredService<ISettingsService>()?.GetSettings();
+        AgentConnectionStatus = "测试中…";
+
+        var problems = await CollectPreflightProblemsAsync(settings);
+        AgentConnectionStatus = problems.Count == 0
+            ? "配置齐备，端点可达 ✓"
+            : "✗ " + string.Join("；", problems);
+    }
+
+    /// <summary>
+    /// Preflight before a run starts (C01): model configured, credential resolvable,
+    /// LLM and Popo endpoints reachable. On failure the reason is posted into the
+    /// conversation and the task never begins — zero side effects by construction.
+    /// </summary>
+    private async System.Threading.Tasks.Task<bool> RunAgentPreflightAsync()
+    {
+        var settings = App.Current?.Services?.GetRequiredService<ISettingsService>()?.GetSettings();
+        var problems = await CollectPreflightProblemsAsync(settings);
+
+        if (problems.Count == 0)
+            return true;
+
+        AppendConversation(AgentMessage.Error(
+            "预检未通过：" + string.Join("；", problems) + "\n任务未开始，未产生任何写入。修好后重新发送即可。"));
+        return false;
+    }
+
+    private static async System.Threading.Tasks.Task<System.Collections.Generic.List<string>> CollectPreflightProblemsAsync(CalySettings? settings)
+    {
+        var problems = new System.Collections.Generic.List<string>();
+
+        if (string.IsNullOrWhiteSpace(settings?.AiModel))
+            problems.Add("未配置智能体模型");
+
+        if (string.IsNullOrWhiteSpace(settings?.AiCredentialRef))
+        {
+            problems.Add("未配置 API 密钥引用");
+        }
+        else if (App.Current?.Services?.GetRequiredService<ISecretStore>() is { } store &&
+                 !store.TryResolve(settings!.AiCredentialRef, out _))
+        {
+            problems.Add("密钥引用无法解析（密钥未存入或环境变量缺失）");
+        }
+
+        if (!string.IsNullOrWhiteSpace(settings?.AiBaseUrl))
+        {
+            using var probe = new System.Net.Sockets.TcpClient();
+            using var timeout = new System.Threading.CancellationTokenSource(System.TimeSpan.FromSeconds(2));
+            try
+            {
+                var uri = new System.Uri(settings!.AiBaseUrl);
+                await probe.ConnectAsync(uri.Host, uri.IsDefaultPort ? (uri.Scheme == "https" ? 443 : 80) : uri.Port, timeout.Token);
+            }
+            catch (System.Exception)
+            {
+                problems.Add($"LLM 端点不可达（{settings!.AiBaseUrl}）");
+            }
+        }
+
+        var popoUrl = settings?.PopoBaseUrl;
+        if (!string.IsNullOrWhiteSpace(popoUrl))
+        {
+            using var probe = new System.Net.Sockets.TcpClient();
+            using var timeout = new System.Threading.CancellationTokenSource(System.TimeSpan.FromSeconds(2));
+            try
+            {
+                var uri = new System.Uri(popoUrl!);
+                await probe.ConnectAsync(uri.Host, uri.IsDefaultPort ? (uri.Scheme == "https" ? 443 : 80) : uri.Port, timeout.Token);
+            }
+            catch (System.Exception)
+            {
+                problems.Add($"Popo 服务不可达（{popoUrl}）");
+            }
+        }
+
+        return problems;
+    }
+
+    /// <summary>
+    /// Conversation-driven popo.toc-tune run: a live 4-step card in the thread, tool events
+    /// as they happen, inline approval instead of a modal dialog, and a completion card with
+    /// the r(N-1)→rN lineage and the undo entry point.
+    /// </summary>
+    private async System.Threading.Tasks.Task RunTocTuneConversationAsync(string userPrompt)
+    {
+        IsAgentRunning = true;
+        AgentComposerIsBusy = true;
+        for (var i = 0; i < _tuneStepState.Length; i++)
+            _tuneStepState[i] = "…";
+
+        var card = new AgentMessage
+        {
+            Kind = AgentMessageKind.RunCard,
+            RoleLabel = "智能体",
+            Text = BuildTuneCardText(),
+        };
+        _activeRunCard = card;
+        AppendConversation(card);
+
+        var startedAt = System.DateTime.Now;
+        _agentRunCts = new System.Threading.CancellationTokenSource();
+
         try
         {
             var agentService = App.Current?.Services?.GetRequiredService<IAgentService>();
             if (agentService is null)
             {
-                AgentStatusText = "智能体服务不可用。";
+                card.Status = "✗ 智能体服务不可用。";
+                AppendConversation(AgentMessage.Error("智能体服务不可用。"));
                 return;
             }
 
             var context = new AgentToolContext { Document = _structureDocument };
 
-            var settingsService = App.Current?.Services?.GetRequiredService<ISettingsService>();
-            var popoBaseUrl = settingsService?.GetSettings().PopoBaseUrl;
-            if (!string.IsNullOrWhiteSpace(popoBaseUrl))
+            var settings = App.Current?.Services?.GetRequiredService<ISettingsService>()?.GetSettings();
+            if (!string.IsNullOrWhiteSpace(settings?.PopoBaseUrl))
             {
-                context.Items[TocRuleTuningTools.BaseUrlItemKey] = popoBaseUrl;
+                context.Items[TocRuleTuningTools.BaseUrlItemKey] = settings!.PopoBaseUrl;
             }
 
             var taskId = PopoJsonService.TryReadTaskId(_projectPath);
@@ -853,37 +1019,292 @@ public partial class AnalysisViewModel : ViewModelBase
                 context.Items[TocRuleTuningTools.TaskIdItemKey] = taskId;
             }
 
-            var result = await agentService.RunAsync(
-                AgentCallSiteDefinitions.PopoTocTune.Id,
-                "请改善当前文档的目录层级质量：先调用 get_toc_quality 查看层级跳变与低置信条目；" +
-                "再用 propose_rule_override 起草最小规则覆盖；用 evaluate_rules 通过 gold 集门禁（零退化）；" +
-                "门禁通过且零退化后立即调用 retoc_document 重写本文档目录（调用它会自动弹出用户批准对话框，不要先在对话里征求批准），并报告规则包指纹与层级差异。",
-                context,
-                BuildTocTuneApprover());
-
-            var traceLines = new System.Collections.Generic.List<string>(result.ToolTrace);
-            if (context.Items.TryGetValue(TocRuleTuningTools.SessionItemKey, out var sessionObject) &&
-                sessionObject is TocRuleTuningSession { AcceptedOverride: not null } session)
+            var prompt = userPrompt;
+            if (_queuedInterjections.Count > 0)
             {
-                traceLines.Add($"accepted override: {session.AcceptedOverride.ToJsonString()}");
+                prompt = string.Join("；", _queuedInterjections) + "\n\n" + prompt;
+                _queuedInterjections.Clear();
             }
 
-            AgentRunTraceText = string.Join("\n", traceLines);
-            ShowAgentRunTrace = traceLines.Count > 0;
+            context.Items[AgentToolProgressKeys.ItemKey] =
+                new System.Action<string, string>(
+                    (name, state) => Avalonia.Threading.Dispatcher.UIThread.Post(
+                        () => OnAgentToolProgress(card, name, state, startedAt)));
 
-            AgentStatusText = string.IsNullOrWhiteSpace(result.FinalText)
-                ? "智能体未产出调优结论。"
-                : result.FinalText;
+            AgentRunTraceText = string.Empty;
+            ShowAgentRunTrace = false;
+
+            var result = await agentService.RunAsync(
+                AgentCallSiteDefinitions.PopoTocTune.Id,
+                prompt,
+                context,
+                BuildTocTuneApprover(),
+                _agentRunCts.Token);
+
+            AgentRunTraceText = string.Join("\n", result.ToolTrace);
+            ShowAgentRunTrace = result.ToolTrace.Count > 0;
+
+            SetTuneStep(3, "✓");
+            card.Status = $"完成（{(System.DateTime.Now - startedAt).ToString("mm\\:ss")}）";
+
+            AppendConversation(AgentMessage.Agent(
+                string.IsNullOrWhiteSpace(result.FinalText) ? "智能体未产出调优结论。" : result.FinalText));
+
+            await AppendCompletionCardAsync();
+        }
+        catch (System.OperationCanceledException)
+        {
+            card.Status = "已取消。未通过校准的覆写不会写入；若批准已发生，新修订保留。";
+            AppendConversation(AgentMessage.SystemNote("运行已取消。"));
         }
         catch (System.Exception ex)
         {
-            AgentStatusText = ex.Message;
+            card.Status = "✗ 失败";
+            AppendConversation(AgentMessage.Error(ex.Message));
             App.Messenger.Send(new ShowNotificationMessage(
                 Avalonia.Controls.Notifications.NotificationType.Error, "TOC 规则调优智能体", ex.Message));
         }
         finally
         {
+            _activeRunCard = null;
+            _agentRunCts.Dispose();
+            _agentRunCts = null;
             IsAgentRunning = false;
+            AgentComposerIsBusy = false;
+        }
+    }
+
+    private void OnAgentToolProgress(AgentMessage card, string toolName, string state, System.DateTime startedAt)
+    {
+        var elapsed = (System.DateTime.Now - startedAt).ToString("mm\\:ss");
+        AgentRunTraceText += $"\n{System.DateTime.Now:HH:mm:ss} {toolName} {state}";
+        ShowAgentRunTrace = true;
+        card.TraceText += $"{elapsed} {toolName} {state}\n";
+
+        if (!TuneStepByTool.TryGetValue(toolName, out var step))
+            return;
+
+        // start → running; done on the tool that ends a step marks the step done.
+        SetTuneStep(step, state == "start" ? "●" : state == "done" ? "✓" : "✗");
+    }
+
+    private void SetTuneStep(int index, string glyph)
+    {
+        // A later running step implies the earlier ones finished.
+        for (var i = 0; i < index; i++)
+            if (_tuneStepState[i] != "✓")
+                _tuneStepState[i] = "✓";
+
+        _tuneStepState[index] = glyph;
+        if (_activeRunCard is { } card)
+            card.Text = BuildTuneCardText();
+    }
+
+    private string BuildTuneCardText()
+    {
+        var lines = new System.Text.StringBuilder();
+        lines.Append("TOC 规则调优 · 运行中\n");
+        for (var i = 0; i < TuneStepLabels.Length; i++)
+            lines.Append($"{_tuneStepState[i]} {TuneStepLabels[i]}\n");
+        return lines.ToString().TrimEnd();
+    }
+
+    private void AppendConversation(AgentMessage message)
+    {
+        AgentMessages.Add(message);
+        ShowAgentConversation = true;
+        AgentConversationLog.Append(_projectPath, message);
+    }
+
+    private void LoadAgentConversation()
+    {
+        try
+        {
+            var restored = AgentConversationLog.Load(_projectPath);
+            if (restored.Count == 0)
+                return;
+
+            foreach (var message in restored)
+                AgentMessages.Add(message);
+
+            AgentMessages.Add(AgentMessage.SystemNote($"已恢复 {restored.Count} 条历史对话（本地 JSONL）。"));
+            ShowAgentConversation = true;
+        }
+        catch (System.Exception)
+        {
+            // A corrupt log must never block opening the document.
+        }
+    }
+
+    /// <summary>
+    /// Inline approval for the popo.toc-tune write: instead of a separate dialog window the
+    /// run blocks on an approval card inside the conversation, showing the exact write,
+    /// the arguments and the undo path. A missing UI dispatcher fails closed.
+    /// </summary>
+    private AgentToolApprover BuildTocTuneApprover() => async (request, ct) =>
+    {
+        var completion = new System.Threading.Tasks.TaskCompletionSource<bool>(
+            System.Threading.Tasks.TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var approval = new AgentMessage
+        {
+            Kind = AgentMessageKind.Approval,
+            RoleLabel = "智能体",
+            Text = $"本次要写入：重跑目录生成（新修订）\n工具：{request.ToolName}（站点 {request.CallSiteId}）\n参数：{request.ArgumentsSummary}\n当前目录会被服务端标为已替换；完成卡内可一键撤销。",
+            ShowActions = true,
+            Status = "等待校准…",
+        };
+
+        approval.ApproveCommand = new RelayCommand(() =>
+        {
+            approval.ShowActions = false;
+            approval.Status = "已校准，重跑开始。";
+            AppendConversation(AgentMessage.SystemNote($"覆写已批准：{request.ArgumentsSummary}"));
+            completion.TrySetResult(true);
+        });
+
+        approval.DenyCommand = new RelayCommand(() =>
+        {
+            approval.ShowActions = false;
+            approval.Status = "已拒绝，按零写入收尾。";
+            AppendConversation(AgentMessage.SystemNote("覆写已拒绝：保持当前修订不变。"));
+            completion.TrySetResult(false);
+        });
+
+        ct.Register(() =>
+        {
+            approval.ShowActions = false;
+            approval.Status = "已取消。";
+            completion.TrySetResult(false);
+        });
+
+        // Append the card on the UI thread whether or not we are already there
+        // (InvokeAsync executes inline when called from the UI thread).
+        await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() => AppendConversation(approval));
+        return await completion.Task.WaitAsync(ct);
+    };
+
+    /// <summary>
+    /// Completion card with the lineage comparison entry (P05) and the undo entry (P04),
+    /// built from the Popo revision ledger for the task bound to this document.
+    /// </summary>
+    private async System.Threading.Tasks.Task AppendCompletionCardAsync()
+    {
+        var taskId = PopoJsonService.TryReadTaskId(_projectPath);
+        var settings = App.Current?.Services?.GetRequiredService<ISettingsService>()?.GetSettings();
+
+        string text;
+        PopoTocRevision? head = null;
+        PopoTocRevision? previous = null;
+
+        if (string.IsNullOrWhiteSpace(taskId))
+        {
+            text = "目录重写完成。本次运行未绑定 Popo 任务，无法展示修订谱系。";
+        }
+        else
+        {
+            try
+            {
+                using var popo = new PopoService(settings?.PopoBaseUrl);
+                var lineage = await popo.FetchTocLineageAsync(taskId!);
+                head = lineage.Revisions.Count > 0 ? lineage.Revisions[lineage.Revisions.Count - 1] : null;
+                previous = lineage.Revisions.Count > 1 ? lineage.Revisions[lineage.Revisions.Count - 2] : null;
+                text = previous is null || head is null
+                    ? $"目录重写完成，当前修订 r{lineage.HeadRevision}。这是首个修订，没有改前改后对比。"
+                    : $"目录重写完成 · 改前 r{previous.Rev} → 改后 r{head.Rev}。";
+            }
+            catch (System.Exception ex)
+            {
+                text = "目录重写完成，但修订谱系读取失败：" + ex.Message;
+            }
+        }
+
+        var card = new AgentMessage
+        {
+            Kind = AgentMessageKind.Done,
+            RoleLabel = "智能体",
+            Text = text,
+            ShowActions = true,
+            ApproveLabel = "查看改前改后对比",
+            DenyLabel = "撤销到上一修订",
+        };
+
+        card.ApproveCommand = new AsyncRelayCommand(async () =>
+        {
+            card.ShowActions = false;
+            await AppendLineageComparisonAsync(taskId, settings?.PopoBaseUrl);
+        });
+
+        card.DenyCommand = new AsyncRelayCommand(async () =>
+        {
+            card.ShowActions = false;
+            await UndoToPreviousRevisionAsync(taskId, settings?.PopoBaseUrl);
+        });
+
+        AppendConversation(card);
+    }
+
+    private async System.Threading.Tasks.Task AppendLineageComparisonAsync(string? taskId, string? popoBaseUrl)
+    {
+        if (string.IsNullOrWhiteSpace(taskId))
+        {
+            AppendConversation(AgentMessage.Error("本文档未绑定 Popo 任务，无法给出修订对比。"));
+            return;
+        }
+
+        try
+        {
+            using var popo = new PopoService(popoBaseUrl);
+            var lineage = await popo.FetchTocLineageAsync(taskId!);
+            var sb = new System.Text.StringBuilder("修订谱系（新→旧，最多 5 条）：\n");
+            for (var i = lineage.Revisions.Count - 1; i >= 0 && i >= lineage.Revisions.Count - 5; i--)
+            {
+                var rev = lineage.Revisions[i];
+                var overrides = rev.Overrides is null or { Count: 0 } ? "基线覆写" : rev.Overrides.ToJsonString();
+                sb.AppendLine(
+                    $"r{rev.Rev}（{rev.Source}，{rev.Fingerprint}）层级 {rev.MaxDepth} · 跳变 {rev.LevelJumpViolations} · 编号违规 {rev.NumberingViolationCount} · 覆写 {overrides}");
+            }
+
+            AppendConversation(AgentMessage.Agent(sb.ToString().TrimEnd()));
+        }
+        catch (System.Exception ex)
+        {
+            AppendConversation(AgentMessage.Error("修订谱系读取失败：" + ex.Message));
+        }
+    }
+
+    /// <summary>
+    /// Undo (P04): replays the previous revision's own overrides through retoc, producing a
+    /// new revision that restores its outcome. The previous revision stays in the ledger.
+    /// </summary>
+    private async System.Threading.Tasks.Task UndoToPreviousRevisionAsync(string? taskId, string? popoBaseUrl)
+    {
+        if (string.IsNullOrWhiteSpace(taskId))
+        {
+            AppendConversation(AgentMessage.Error("本文档未绑定 Popo 任务，无法撤销。"));
+            return;
+        }
+
+        try
+        {
+            using var popo = new PopoService(popoBaseUrl);
+            var lineage = await popo.FetchTocLineageAsync(taskId!);
+            if (lineage.Revisions.Count < 2)
+            {
+                AppendConversation(AgentMessage.SystemNote("当前已是首个修订，没有可恢复的上一修订。"));
+                return;
+            }
+
+            var target = lineage.Revisions[lineage.Revisions.Count - 2];
+            AppendConversation(AgentMessage.SystemNote(
+                $"撤销：以 r{target.Rev} 的覆写重跑 retoc，会产生新修订；r{target.Rev} 本身保留在谱系中。"));
+
+            var response = await popo.RetocTaskAsync(taskId!, target.Overrides);
+            AppendConversation(AgentMessage.Agent($"撤销完成。服务端响应：{response.ToJsonString()}"));
+        }
+        catch (System.Exception ex)
+        {
+            AppendConversation(AgentMessage.Error("撤销失败：" + ex.Message));
         }
     }
 
