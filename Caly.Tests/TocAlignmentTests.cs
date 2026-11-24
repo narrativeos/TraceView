@@ -330,7 +330,7 @@ public class TocAlignmentTests
 
         var service = new AgentService(
             new FakeSettingsService(new CalySettings { AiModel = "test-model", AiCredentialRef = "keychain:s/a" }),
-            new FakeSecretStore(), new FakeMcpRegistry(), NullLogger<AgentService>.Instance,
+            new FakeSecretStore(), new FakeMcpRegistry(),
             (_, _) => scripted);
 
         var context = new AgentToolContext { Document = MakeDoc() };

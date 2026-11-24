@@ -238,7 +238,24 @@ public class AgentApprovalTests
 
     private static AgentService MakeService(CalySettings settings, bool secretFound, IChatClient chat) =>
         new(new FakeSettingsService(settings), new FakeSecretStore(secretFound), new FakeMcpRegistry(),
-            NullLogger<AgentService>.Instance, (_, _) => chat);
+            (_, _) => chat);
+
+    [Fact]
+    public void AgentService_has_no_logger_dependency()
+    {
+        // The app's DI container registers no Microsoft.Extensions.Logging services;
+        // an ILogger<T> constructor parameter would make IAgentService unresolvable
+        // and crash the app on the first agent-button click.
+        foreach (var ctor in typeof(AgentService).GetConstructors(
+                     System.Reflection.BindingFlags.Instance |
+                     System.Reflection.BindingFlags.Public |
+                     System.Reflection.BindingFlags.NonPublic))
+        {
+            Assert.DoesNotContain(ctor.GetParameters(), p =>
+                p.ParameterType.IsGenericType &&
+                p.ParameterType.GetGenericTypeDefinition() == typeof(Microsoft.Extensions.Logging.ILogger<>));
+        }
+    }
 
     [Fact]
     public async Task AgentService_throws_without_configured_model()

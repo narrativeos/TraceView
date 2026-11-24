@@ -729,18 +729,22 @@ public partial class AnalysisViewModel : ViewModelBase
         if (IsAgentRunning)
             return;
 
-        var agentService = App.Current?.Services?.GetRequiredService<IAgentService>();
-        if (agentService is null)
-        {
-            AgentStatusText = "智能体服务不可用。";
-            return;
-        }
-
         IsAgentRunning = true;
         AgentStatusText = "TOC 对齐智能体运行中…";
 
+        // GetRequiredService throws (it does not return null) when the service
+        // cannot be activated, and AsyncRelayCommand rethrows task failures on
+        // the UI thread unhandled — resolve inside the try so a DI failure
+        // surfaces as a status message instead of crashing the app.
         try
         {
+            var agentService = App.Current?.Services?.GetRequiredService<IAgentService>();
+            if (agentService is null)
+            {
+                AgentStatusText = "智能体服务不可用。";
+                return;
+            }
+
             var context = new AgentToolContext { Document = _structureDocument };
 
             var result = await agentService.RunAsync(
@@ -816,20 +820,24 @@ public partial class AnalysisViewModel : ViewModelBase
         if (IsAgentRunning)
             return;
 
-        var agentService = App.Current?.Services?.GetRequiredService<IAgentService>();
-        if (agentService is null)
-        {
-            AgentStatusText = "智能体服务不可用。";
-            return;
-        }
-
         IsAgentRunning = true;
         AgentStatusText = "TOC 规则调优智能体运行中…";
         ShowAgentRunTrace = false;
         AgentRunTraceText = string.Empty;
 
+        // GetRequiredService throws (it does not return null) when the service
+        // cannot be activated, and AsyncRelayCommand rethrows task failures on
+        // the UI thread unhandled — resolve inside the try so a DI failure
+        // surfaces as a status message instead of crashing the app.
         try
         {
+            var agentService = App.Current?.Services?.GetRequiredService<IAgentService>();
+            if (agentService is null)
+            {
+                AgentStatusText = "智能体服务不可用。";
+                return;
+            }
+
             var context = new AgentToolContext { Document = _structureDocument };
 
             var settingsService = App.Current?.Services?.GetRequiredService<ISettingsService>();

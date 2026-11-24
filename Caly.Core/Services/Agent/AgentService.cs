@@ -28,7 +28,6 @@ using Caly.Core.Models;
 using Caly.Core.Services.Interfaces;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
-using Microsoft.Extensions.Logging;
 
 namespace Caly.Core.Services.Agent;
 
@@ -38,6 +37,13 @@ namespace Caly.Core.Services.Agent;
 /// (AiBaseUrl / AiModel / AiCredentialRef); the credential lives in the OS secret
 /// store and is resolved fresh on every run so rotations take effect immediately.
 /// </summary>
+/// <remarks>
+/// This app has no Microsoft.Extensions.Logging pipeline wired into DI, so the
+/// service must not take an <c>ILogger&lt;T&gt;</c> constructor dependency: the
+/// container would fail to activate it and every agent button would throw on
+/// first click. Logging consumers here pass <see cref="NullLoggerFactory"/>
+/// explicitly, matching McpRegistryService.
+/// </remarks>
 /// <remarks>
 /// Tool execution flows through <see cref="FunctionInvokingChatClient"/> so
 /// <see cref="AgentCallSiteDefinition.MaxToolIterations"/> bounds the loop, and
@@ -49,7 +55,6 @@ internal sealed class AgentService : IAgentService
     private readonly ISettingsService _settingsService;
     private readonly ISecretStore _secretStore;
     private readonly IMcpRegistryService _mcpRegistry;
-    private readonly ILogger<AgentService> _logger;
 
     /// <summary>
     /// Test seam: replaces the OpenAI-compatible client built from settings.
@@ -59,9 +64,8 @@ internal sealed class AgentService : IAgentService
     public AgentService(
         ISettingsService settingsService,
         ISecretStore secretStore,
-        IMcpRegistryService mcpRegistry,
-        ILogger<AgentService> logger)
-        : this(settingsService, secretStore, mcpRegistry, logger, chatClientFactory: null)
+        IMcpRegistryService mcpRegistry)
+        : this(settingsService, secretStore, mcpRegistry, chatClientFactory: null)
     {
     }
 
@@ -69,13 +73,11 @@ internal sealed class AgentService : IAgentService
         ISettingsService settingsService,
         ISecretStore secretStore,
         IMcpRegistryService mcpRegistry,
-        ILogger<AgentService> logger,
         Func<CalySettings, string, IChatClient>? chatClientFactory)
     {
         _settingsService = settingsService;
         _secretStore = secretStore;
         _mcpRegistry = mcpRegistry;
-        _logger = logger;
         _chatClientFactory = chatClientFactory;
     }
 
@@ -121,8 +123,6 @@ internal sealed class AgentService : IAgentService
 
         var agent = new ChatClientAgent(invokingClient, options,
             Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance);
-
-        _logger.LogInformation("Agent run {CallSiteId} with {ToolCount} tool(s).", definition.Id, resolved.Tools.Count);
 
         var response = await agent.RunAsync(userPrompt, session: null, cancellationToken: ct).ConfigureAwait(false);
 
