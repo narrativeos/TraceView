@@ -287,6 +287,55 @@ public sealed partial class DocumentsTabsControl : UserControl
         _originalPaneLength = 0;
         e.Handled = true;
     }
+
+    /// <summary>Bounds for dragging the built-in agent conversation column.</summary>
+    private const int MaxAgentColumnWidth = 720;
+    private const int MinAgentColumnWidth = 280;
+
+    private Point? _lastAgentColumnPoint;
+    private double _originalAgentColumnWidth;
+
+    private void AgentColumnResize_OnPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is not Grid || GetAgentViewModel(sender) is not { } vm)
+        {
+            return;
+        }
+
+        _lastAgentColumnPoint = e.GetPosition(null);
+        _originalAgentColumnWidth = vm.AgentColumnWidth;
+        e.Handled = true;
+        e.PreventGestureRecognition();
+    }
+
+    private void AgentColumnResize_OnPointerMoved(object? sender, PointerEventArgs e)
+    {
+        // Dragging left widens the right-anchored conversation column.
+        if (!_lastAgentColumnPoint.HasValue || sender is not Grid || GetAgentViewModel(sender) is not { } vm)
+        {
+            return;
+        }
+
+        var mouseMovement = (e.GetPosition(null) - _lastAgentColumnPoint).Value;
+        vm.AgentColumnWidth = Math.Max(Math.Min(_originalAgentColumnWidth - mouseMovement.X, MaxAgentColumnWidth), MinAgentColumnWidth);
+    }
+
+    private void AgentColumnResize_OnPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (!_lastAgentColumnPoint.HasValue || sender is not Grid)
+        {
+            return;
+        }
+
+        _lastAgentColumnPoint = null;
+        _originalAgentColumnWidth = 0;
+        e.Handled = true;
+    }
+
+    private static AnalysisViewModel? GetAgentViewModel(object? sender) =>
+        (sender as Control)?.DataContext is DocumentViewModel documentViewModel
+            ? documentViewModel.AnalysisViewModel
+            : null;
     #endregion
 
     private void PageNumberTextBox_OnKeyDown(object? sender, KeyEventArgs e)

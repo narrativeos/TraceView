@@ -512,7 +512,7 @@
 
 					</DockPanel>
 
-					<Grid Grid.Row="1" ColumnDefinitions="*,Auto">
+					<Grid Grid.Row="1" ColumnDefinitions="*,Auto,Auto">
 
 					<SplitView Grid.Column="0"
 							   Name="PART_SplitView"
@@ -3007,9 +3007,21 @@
 
 					</SplitView>
 
+					<!-- Resize the built-in agent conversation column -->
+					<Grid Grid.Column="1"
+						  Width="4"
+						  Background="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+						  IsVisible="{Binding AnalysisViewModel.ShowAgentConversation}"
+						  PointerEntered="Resize_OnPointerEntered"
+						  PointerExited="Resize_OnPointerExited"
+						  PointerMoved="AgentColumnResize_OnPointerMoved"
+						  PointerPressed="AgentColumnResize_OnPointerPressed"
+						  PointerReleased="AgentColumnResize_OnPointerReleased">
+					</Grid>
+
 					<!-- 内置智能体对话：独立右栏，不再占用左侧缩略图列 -->
-					<Border Grid.Column="1"
-							Width="360"
+					<Border Grid.Column="2"
+							Width="{Binding AnalysisViewModel.AgentColumnWidth}"
 							IsVisible="{Binding AnalysisViewModel.ShowAgentConversation}"
 							Background="{DynamicResource CalyCardBackgroundBrush}"
 							BorderBrush="{DynamicResource CalyCardBorderBrush}"

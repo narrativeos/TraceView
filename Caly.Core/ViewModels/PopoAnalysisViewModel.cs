@@ -728,6 +728,10 @@ public partial class AnalysisViewModel : ViewModelBase
     [ObservableProperty]
     private bool _showAgentConversation;
 
+    /// <summary>Width of the conversation column; the resize handle writes it while dragging.</summary>
+    [ObservableProperty]
+    private double _agentColumnWidth = 360;
+
     [RelayCommand]
     private void HideAgentConversation() => ShowAgentConversation = false;
 
