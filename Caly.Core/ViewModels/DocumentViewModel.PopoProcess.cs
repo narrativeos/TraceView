@@ -432,6 +432,13 @@ public sealed partial class DocumentViewModel : PopoService.IPopoProgressCallbac
                 StructureDocument = result.StructureDocument;
                 ShowAnalysisColumn = true;
 
+                // Pair the analysis panel with the freshly processed document (same pairing as
+                // LoadStructureDocument): its tree drives the TOC popup and the 改前改后对照 compare.
+                if (!ReferenceEquals(AnalysisViewModel?.StructureDocument, result.StructureDocument))
+                {
+                    AnalysisViewModel = new AnalysisViewModel(result.StructureDocument, artifactsDir, ProjectPath);
+                }
+
                 // Populate block_ids and build tree (same as TryLoadPopoData)
                 if (result.StructureDocument.TreeRoot is not null && artifactsDir is not null)
                 {

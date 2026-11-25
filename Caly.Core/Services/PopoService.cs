@@ -1008,6 +1008,19 @@ public sealed class PopoService : IDisposable
                     ? NestRuleOverrides(flat)
                     : null,
             };
+            if (item["level_diff"] is JsonArray levelDiff)
+            {
+                foreach (var diff in levelDiff.OfType<JsonObject>())
+                {
+                    entry.LevelDiffs.Add(new PopoTocLevelDiff
+                    {
+                        NodeId = GetString(diff["node_id"]),
+                        Old = GetInt(diff["old"]),
+                        New = GetInt(diff["new"]),
+                    });
+                }
+            }
+
             lineage.Revisions.Add(entry);
             lineage.HeadRevision = Math.Max(lineage.HeadRevision, entry.Rev);
         }
@@ -1357,6 +1370,11 @@ public sealed class PopoTocRevision
     /// <summary>Node-id-aligned level changes this replay recorded.</summary>
     public int LevelDiffCount { get; set; }
 
+    /// <summary>The same level changes as node-id-aligned entries, parsed from the
+    /// ledger's <c>level_diff</c> array. Used by the 改前/改后 compare view to map
+    /// each tree node to its pre- and post-replay level.</summary>
+    public List<PopoTocLevelDiff> LevelDiffs { get; } = new();
+
     public int LevelJumpViolations { get; set; }
 
     public int MaxDepth { get; set; }
@@ -1370,4 +1388,19 @@ public sealed class PopoTocRevision
 
     /// <summary>Badge signal: any quality metric that deserves a look.</summary>
     public bool NeedsAttention => LevelJumpViolations > 0 || NumberingViolationCount > 0;
+}
+
+/// <summary>
+/// One node's level change recorded by a retoc replay: the same node (by node_id)
+/// sat at level <see cref="Old"/> before the replay and <see cref="New"/> after it
+/// (1-based, matching the tree's Level values). Contract: narrative-operator-MinerU-Popo
+/// docs/toc-metadata-schema.md.
+/// </summary>
+public sealed class PopoTocLevelDiff
+{
+    public string NodeId { get; set; } = string.Empty;
+
+    public int Old { get; set; }
+
+    public int New { get; set; }
 }

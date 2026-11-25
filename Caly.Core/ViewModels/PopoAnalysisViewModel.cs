@@ -538,6 +538,7 @@ public partial class AnalysisViewModel : ViewModelBase
     {
         TocRevisions.Clear();
         HasTocLineage = false;
+        HasTocCompare = false;
 
         var taskId = PopoJsonService.TryReadTaskId(_projectPath);
         if (string.IsNullOrWhiteSpace(taskId))
@@ -564,6 +565,12 @@ public partial class AnalysisViewModel : ViewModelBase
                 TocRevisions.Add(new TocRevisionEntryViewModel(revision));
             }
             HasTocLineage = TocRevisions.Count > 0;
+
+            // The compare entry lights up only when the head replay actually moved levels and
+            // the tree is there to draw both sides against.
+            HasTocCompare = _structureDocument.TreeRoot is not null &&
+                lineage.Revisions.Count > 0 &&
+                lineage.Revisions[lineage.Revisions.Count - 1].LevelDiffs.Any(d => d.Old != d.New);
 
             var head = TocRevisions.FirstOrDefault();
             TocLineageBadgeText = head is null
@@ -636,6 +643,123 @@ public partial class AnalysisViewModel : ViewModelBase
             IsTocLineageBusy = false;
         }
     }
+
+    #region TOC 改前改后对照 (compare view)
+
+    [ObservableProperty]
+    private bool _showTocComparePanel;
+
+    /// <summary>Whether a 改前改后对照 exists to show: the head replay moved levels and a
+    /// structure tree is loaded to align the two columns against.</summary>
+    [ObservableProperty]
+    private bool _hasTocCompare;
+
+    /// <summary>Header line, e.g. "改前 r2 → 改后 r3 · 层级变更 5 · 共 40 条".</summary>
+    [ObservableProperty]
+    private string _tocCompareSummaryText = string.Empty;
+
+    /// <summary>Aligned rows for the compare overlay: one heading node per row, left at its
+    /// pre-replay level and right at its post-replay level.</summary>
+    public ObservableCollection<TocCompareRowViewModel> TocCompareRows { get; } = new();
+
+    /// <summary>Loads the lineage sidecar for a panel that did not open through
+    /// <see cref="GenerateToc"/> (the document-level TOC popup), so the compare entry's
+    /// visibility resolves there too. Best-effort; failures show in the lineage badge.</summary>
+    internal System.Threading.Tasks.Task RefreshTocLineageAsync() => LoadTocLineageAsync();
+
+    /// <summary>
+    /// Builds the 改前/改后 rows from the head revision's level_diff and opens the compare
+    /// overlay. The head's diff describes exactly that one replay: left is <c>old</c>, right
+    /// is <c>new</c>; unchanged rows use the tree's current level on both sides (the in-memory
+    /// tree may not reflect the last replay, so the diff wins wherever it speaks). Returns
+    /// false when there is nothing to connect (no tree, no head, no level change matching a
+    /// tree row) so callers can fall back to the inline lineage summary.
+    /// </summary>
+    private bool TryOpenTocCompare(PopoTocRevision? head, PopoTocRevision? previous)
+    {
+        if (_structureDocument.TreeRoot is null ||
+            head is null ||
+            !head.LevelDiffs.Any(d => d.Old != d.New))
+            return false;
+
+        var diffMap = new Dictionary<string, PopoTocLevelDiff>(head.LevelDiffs.Count);
+        foreach (var diff in head.LevelDiffs)
+        {
+            if (!string.IsNullOrEmpty(diff.NodeId))
+                diffMap[diff.NodeId] = diff;
+        }
+
+        TocCompareRows.Clear();
+        var changed = 0;
+        foreach (var row in TocCompareBuilder.BuildRows(_structureDocument.TreeRoot, diffMap))
+        {
+            if (row.IsChanged)
+                changed++;
+            TocCompareRows.Add(row);
+        }
+
+        // Diffs that match no tree row (foreign artifact, or a tree from another task):
+        // drawing an all-unchanged compare would misreport, so fall back instead.
+        if (changed == 0)
+            return false;
+
+        TocCompareSummaryText = previous is null
+            ? $"改后 r{head.Rev} · 层级变更 {changed} · 共 {TocCompareRows.Count} 条"
+            : $"改前 r{previous.Rev} → 改后 r{head.Rev} · 层级变更 {changed} · 共 {TocCompareRows.Count} 条";
+        HasTocCompare = true;
+        ShowTocComparePanel = true;
+        return true;
+    }
+
+    /// <summary>Fetches the lineage and tries to open the compare view; false means nothing
+    /// comparable (caller falls back to the inline lineage summary).</summary>
+    private async System.Threading.Tasks.Task<bool> TryOpenTocCompareFromLineageAsync(string? taskId, string? popoBaseUrl)
+    {
+        if (string.IsNullOrWhiteSpace(taskId))
+            return false;
+
+        try
+        {
+            using var popo = new PopoService(popoBaseUrl);
+            var lineage = await popo.FetchTocLineageAsync(taskId);
+            var head = lineage is { Revisions.Count: > 0 } ? lineage.Revisions[lineage.Revisions.Count - 1] : null;
+            var previous = lineage is { Revisions.Count: > 1 } ? lineage.Revisions[lineage.Revisions.Count - 2] : null;
+            return TryOpenTocCompare(head, previous);
+        }
+        catch (System.Exception)
+        {
+            // The fallback path reports the fetch failure in its own message.
+            return false;
+        }
+    }
+
+    /// <summary>The TOC popups' 改前改后对照 entry: fetches the head revision's level changes
+    /// and opens the compare overlay; when nothing is comparable it only notifies, leaving
+    /// the conversation untouched.</summary>
+    [RelayCommand]
+    private async System.Threading.Tasks.Task OpenTocCompareAsync()
+    {
+        if (_structureDocument.TreeRoot is null)
+            return;
+
+        var settings = App.Current?.Services?.GetRequiredService<ISettingsService>()?.GetSettings();
+        if (await TryOpenTocCompareFromLineageAsync(PopoJsonService.TryReadTaskId(_projectPath), settings?.PopoBaseUrl))
+            return;
+
+        HasTocCompare = false;
+        App.Messenger.Send(new ShowNotificationMessage(
+            Avalonia.Controls.Notifications.NotificationType.Information,
+            "目录对照",
+            "当前修订没有可展示的层级变更（需要至少一次 AI 重放并产生变更）。"));
+    }
+
+    [RelayCommand]
+    private void CloseTocCompare()
+    {
+        ShowTocComparePanel = false;
+    }
+
+    #endregion
 
     #endregion
 
@@ -1230,7 +1354,11 @@ public partial class AnalysisViewModel : ViewModelBase
                 lastDone.ApproveLabel = "查看改前改后对比";
                 lastDone.DenyLabel = "撤销到上一修订";
                 lastDone.ApproveCommand = new AsyncRelayCommand(async () =>
-                    await AppendLineageComparisonAsync(PopoJsonService.TryReadTaskId(_projectPath), settings?.PopoBaseUrl));
+                {
+                    var compareTaskId = PopoJsonService.TryReadTaskId(_projectPath);
+                    if (!await TryOpenTocCompareFromLineageAsync(compareTaskId, settings?.PopoBaseUrl))
+                        await AppendLineageComparisonAsync(compareTaskId, settings?.PopoBaseUrl);
+                });
                 lastDone.DenyCommand = new AsyncRelayCommand(async () =>
                 {
                     lastDone.ShowActions = false;
@@ -1369,7 +1497,10 @@ public partial class AnalysisViewModel : ViewModelBase
         {
             // Compare is non-destructive and repeatable; unlike approval it must not hide the
             // undo action — losing undo after viewing the compare would strand the write.
-            await AppendLineageComparisonAsync(taskId, settings?.PopoBaseUrl);
+            // Prefer the side-by-side compare view; the head/previous revisions are already
+            // at hand, so no refetch is needed to build it.
+            if (!TryOpenTocCompare(head, previous))
+                await AppendLineageComparisonAsync(taskId, settings?.PopoBaseUrl);
         });
 
         card.DenyCommand = new AsyncRelayCommand(async () =>

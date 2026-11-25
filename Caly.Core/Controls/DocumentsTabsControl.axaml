@@ -2732,6 +2732,14 @@
                                                          Orientation="Horizontal"
                                                          Spacing="8"
                                                          VerticalAlignment="Center">
+                                                 <Button Command="{Binding AnalysisViewModel.OpenTocCompareCommand}"
+                                                         IsVisible="{Binding AnalysisViewModel.HasTocCompare}"
+                                                         FontSize="12"
+                                                         Padding="10,5"
+                                                         AutomationProperties.Name="目录改前改后对照"
+                                                         ToolTip.Tip="左右对照目录与 AI 重排后的层级，连线标出发生变更的条目">
+                                                     <TextBlock Text="改前改后对照"/>
+                                                 </Button>
                                                  <Button Command="{Binding OpenTocTuneConversationCommand}"
                                                          IsEnabled="{Binding CanOpenTocTuneConversation}"
                                                          FontSize="12"
@@ -2764,6 +2772,139 @@
                                                         FontFamily="{DynamicResource CalyMonoFontFamily}"
                                                         FontSize="12.5"
                                                         Foreground="{DynamicResource CalyStrongForegroundBrush}"/>
+                                         </ScrollViewer>
+                                     </DockPanel>
+                                 </Border>
+                             </Panel>
+
+                             <!-- TOC Compare Overlay (改前/改后左右对照，中线连线标出层级变更) -->
+                             <Panel Grid.Column="0"
+                                    Grid.ColumnSpan="7"
+                                    IsVisible="{Binding AnalysisViewModel.ShowTocComparePanel}">
+                                 <Rectangle Fill="{DynamicResource CalyScrimBrush}"/>
+                                 <Border Background="{DynamicResource CalyCardBackgroundBrush}"
+                                         BorderBrush="{DynamicResource CalyCardBorderBrush}"
+                                         BorderThickness="1"
+                                         CornerRadius="6"
+                                         Padding="20"
+                                         HorizontalAlignment="Center"
+                                         VerticalAlignment="Center"
+                                         MinWidth="880"
+                                         MaxWidth="1060"
+                                         MaxHeight="640">
+                                     <DockPanel>
+                                         <Grid DockPanel.Dock="Top"
+                                               ColumnDefinitions="*,Auto"
+                                               Margin="0,0,0,10">
+                                             <StackPanel Grid.Column="0"
+                                                         Spacing="2"
+                                                         VerticalAlignment="Center">
+                                                 <TextBlock Text="目录改前改后对照"
+                                                            FontWeight="Bold"
+                                                            FontSize="15"
+                                                            Foreground="{DynamicResource CalyStrongForegroundBrush}"/>
+                                                 <TextBlock Text="{Binding AnalysisViewModel.TocCompareSummaryText}"
+                                                            FontSize="11.5"
+                                                            Foreground="{DynamicResource CalyMutedForegroundBrush}"/>
+                                             </StackPanel>
+                                             <Button Grid.Column="1"
+                                                     Command="{Binding AnalysisViewModel.CloseTocCompareCommand}"
+                                                     AutomationProperties.Name="关闭对照面板"
+                                                     ToolTip.Tip="关闭对照面板"
+                                                     Padding="8,4"
+                                                     VerticalAlignment="Top">
+                                                 <Path Classes="toolIcon" Width="14" Height="14" Data="{StaticResource glyph_close_regular}"/>
+                                             </Button>
+                                         </Grid>
+                                         <!-- Column headers: 改前 / 改后 share the row lane -->
+                                         <Grid DockPanel.Dock="Top"
+                                               ColumnDefinitions="*,84,*"
+                                               Margin="0,0,0,6">
+                                             <TextBlock Grid.Column="0"
+                                                        Text="改前目录"
+                                                        FontSize="11"
+                                                        FontWeight="SemiBold"
+                                                        Foreground="{DynamicResource CalyMutedForegroundBrush}"/>
+                                             <TextBlock Grid.Column="2"
+                                                        Text="AI 重排后"
+                                                        FontSize="11"
+                                                        FontWeight="SemiBold"
+                                                        Foreground="{DynamicResource CalyAccentAmberBrush}"/>
+                                         </Grid>
+                                         <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                                       Padding="2,0,8,0">
+                                             <ItemsControl ItemsSource="{Binding AnalysisViewModel.TocCompareRows}">
+                                                 <ItemsControl.ItemTemplate>
+                                                     <DataTemplate x:DataType="vm:TocCompareRowViewModel">
+                                                         <Panel>
+                                                             <!-- changed rows get an amber row tint so the movement stands out -->
+                                                             <Border Background="{DynamicResource CalyAccentAmberBrush}"
+                                                                     Opacity="0.07"
+                                                                     CornerRadius="3"
+                                                                     IsVisible="{Binding IsChanged}"/>
+                                                             <Grid ColumnDefinitions="*,84,*"
+                                                                   MinHeight="25">
+                                                                 <StackPanel Grid.Column="0"
+                                                                             Orientation="Horizontal"
+                                                                             Spacing="6"
+                                                                             Margin="{Binding LeftMargin}"
+                                                                             VerticalAlignment="Center">
+                                                                     <TextBlock Text="{Binding Title}"
+                                                                                FontSize="12.5"
+                                                                                Foreground="{DynamicResource CalyStrongForegroundBrush}"
+                                                                                TextTrimming="CharacterEllipsis"/>
+                                                                     <TextBlock Text="{Binding PageText}"
+                                                                                FontSize="11"
+                                                                                Foreground="{DynamicResource CalyMutedForegroundBrush}"
+                                                                                VerticalAlignment="Center"/>
+                                                                 </StackPanel>
+                                                                 <!-- connector lane: hairline when unchanged, amber line + level badge when changed -->
+                                                                 <Panel Grid.Column="1">
+                                                                     <Border Height="1"
+                                                                             Background="{DynamicResource CalyMutedForegroundBrush}"
+                                                                             Opacity="0.3"
+                                                                             VerticalAlignment="Center"
+                                                                             IsVisible="{Binding IsUnchanged}"/>
+                                                                     <Border Height="2"
+                                                                             Background="{DynamicResource CalyAccentAmberBrush}"
+                                                                             CornerRadius="1"
+                                                                             VerticalAlignment="Center"
+                                                                             IsVisible="{Binding IsChanged}"/>
+                                                                     <Border IsVisible="{Binding IsChanged}"
+                                                                             HorizontalAlignment="Center"
+                                                                             VerticalAlignment="Center"
+                                                                             CornerRadius="8"
+                                                                             Background="{DynamicResource CalyCardBackgroundBrush}"
+                                                                             BorderBrush="{DynamicResource CalyAccentAmberBrush}"
+                                                                             BorderThickness="1"
+                                                                             Padding="6,1">
+                                                                         <TextBlock Text="{Binding BadgeText}"
+                                                                                    FontFamily="{DynamicResource CalyMonoFontFamily}"
+                                                                                    FontSize="11"
+                                                                                    FontWeight="SemiBold"
+                                                                                    Foreground="{DynamicResource CalyAccentAmberBrush}"/>
+                                                                     </Border>
+                                                                 </Panel>
+                                                                 <StackPanel Grid.Column="2"
+                                                                             Orientation="Horizontal"
+                                                                             Spacing="6"
+                                                                             Margin="{Binding RightMargin}"
+                                                                             VerticalAlignment="Center">
+                                                                     <TextBlock Text="{Binding Title}"
+                                                                                FontSize="12.5"
+                                                                                FontWeight="Medium"
+                                                                                Foreground="{DynamicResource CalyStrongForegroundBrush}"
+                                                                                TextTrimming="CharacterEllipsis"/>
+                                                                     <TextBlock Text="{Binding PageText}"
+                                                                                FontSize="11"
+                                                                                Foreground="{DynamicResource CalyMutedForegroundBrush}"
+                                                                                VerticalAlignment="Center"/>
+                                                                 </StackPanel>
+                                                             </Grid>
+                                                         </Panel>
+                                                     </DataTemplate>
+                                                 </ItemsControl.ItemTemplate>
+                                             </ItemsControl>
                                          </ScrollViewer>
                                      </DockPanel>
                                  </Border>

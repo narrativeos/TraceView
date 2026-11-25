@@ -288,6 +288,10 @@ public sealed partial class DocumentViewModel
 
             TocMarkdownText = PopoJsonService.GenerateTocMarkdown(entries);
             ShowTocPanel = true;
+
+            // Load the lineage sidecar in the background so the 改前改后对照 entry appears in
+            // this popup too (the analysis-level popup already does this in GenerateToc).
+            _ = AnalysisViewModel?.RefreshTocLineageAsync();
         }
         catch (System.Exception ex)
         {
@@ -543,6 +547,15 @@ public sealed partial class DocumentViewModel
 
         // Assign the loaded document to StructureDocument (needed for TOC generation and other features)
         StructureDocument = minerUDoc;
+
+        // The analysis panel must run against this document: the reopen-time MinerU load built
+        // its AnalysisViewModel from middle.json alone, whose TreeRoot is null, leaving every
+        // tree-dependent affordance (TOC 生成目录, 改前改后对照) dark. The Popo document carries
+        // the tree and has the MinerU PreprocBlocks/PageTypes merged in above.
+        if (!ReferenceEquals(AnalysisViewModel?.StructureDocument, minerUDoc))
+        {
+            AnalysisViewModel = new AnalysisViewModel(minerUDoc, artifactsDir, ProjectPath);
+        }
 
         // Show the analysis column when Popo data is loaded
         ShowAnalysisColumn = true;

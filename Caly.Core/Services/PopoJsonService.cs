@@ -2235,7 +2235,7 @@ public static class PopoJsonService
     /// placeholder "Default Title" is not a real heading (same filter as
     /// SectionPathResolver / TreeNodeViewModel).
     /// </summary>
-    private static bool IsTocHeadingNode(AnalysisTreeNode node)
+    internal static bool IsTocHeadingNode(AnalysisTreeNode node)
     {
         if (node.Type is not ("text" or "title") || node.Level <= 0)
             return false;

@@ -89,6 +89,16 @@ public class PopoTocLineageTests
         Assert.Equal("agent", head.Source);
         Assert.Equal("ccc1c6785f61aabbccddeeff", head.Fingerprint);
         Assert.Equal(2, head.LevelDiffCount);
+
+        // The compare view consumes the same level_diff as node-id-aligned entries.
+        Assert.Equal(2, head.LevelDiffs.Count);
+        Assert.Equal("n7", head.LevelDiffs[0].NodeId);
+        Assert.Equal(2, head.LevelDiffs[0].Old);
+        Assert.Equal(3, head.LevelDiffs[0].New);
+        Assert.Equal("n9", head.LevelDiffs[1].NodeId);
+        Assert.Equal(3, head.LevelDiffs[1].Old);
+        Assert.Equal(2, head.LevelDiffs[1].New);
+
         Assert.Equal(1, head.LevelJumpViolations);
         Assert.Equal(5, head.MaxDepth);
         Assert.Equal(1, head.NumberingViolationCount);
@@ -96,6 +106,7 @@ public class PopoTocLineageTests
 
         var first = lineage.Revisions.Single(r => r.Rev == 1);
         Assert.Equal(0, first.LevelDiffCount);
+        Assert.Empty(first.LevelDiffs);
         Assert.Equal(0, first.NumberingViolationCount);
         Assert.False(first.NeedsAttention);
     }

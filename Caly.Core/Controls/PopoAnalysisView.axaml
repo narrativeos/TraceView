@@ -187,6 +187,14 @@
                                     Orientation="Horizontal"
                                     Spacing="8"
                                     VerticalAlignment="Center">
+                            <Button Command="{Binding OpenTocCompareCommand}"
+                                    IsVisible="{Binding HasTocCompare}"
+                                    FontSize="12"
+                                    Padding="10,5"
+                                    AutomationProperties.Name="目录改前改后对照"
+                                    ToolTip.Tip="左右对照目录与 AI 重排后的层级，连线标出发生变更的条目">
+                                <TextBlock Text="改前改后对照"/>
+                            </Button>
                             <Button Command="{Binding OpenTocTuneConversationCommand}"
                                     FontSize="12"
                                     FontWeight="SemiBold"
