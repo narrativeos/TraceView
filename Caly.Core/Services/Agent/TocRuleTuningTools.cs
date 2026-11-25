@@ -104,6 +104,11 @@ internal static class TocRuleOverrideValidator
         ["levels.fallback_depth_table"] = new(OverrideKind.DepthTable),
         ["levels.fallback_default_level"] = new(OverrideKind.IntRange, Min: 1, Max: 12),
         ["levels.sibling_align"] = new(OverrideKind.Bool),
+        // Type-first class level pipeline (docs §2.9); default-off gates.
+        ["levels.sibling_anchor"] = new(OverrideKind.Bool),
+        ["levels.class_rank"] = new(OverrideKind.Bool),
+        ["levels.seq_level"] = new(OverrideKind.Bool),
+        ["levels.gap_fill"] = new(OverrideKind.Bool),
         ["linking.excluded_title_patterns"] = new(OverrideKind.RegexList),
         ["linking.garbage_keywords"] = new(OverrideKind.StringList),
         ["linking.structural_headings"] = new(OverrideKind.StringList),
