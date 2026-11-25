@@ -103,6 +103,7 @@ internal static class TocRuleOverrideValidator
         ["levels.top_level_unnumbered_flags"] = new(OverrideKind.RegexFlagList),
         ["levels.fallback_depth_table"] = new(OverrideKind.DepthTable),
         ["levels.fallback_default_level"] = new(OverrideKind.IntRange, Min: 1, Max: 12),
+        ["levels.sibling_align"] = new(OverrideKind.Bool),
         ["linking.excluded_title_patterns"] = new(OverrideKind.RegexList),
         ["linking.garbage_keywords"] = new(OverrideKind.StringList),
         ["linking.structural_headings"] = new(OverrideKind.StringList),
