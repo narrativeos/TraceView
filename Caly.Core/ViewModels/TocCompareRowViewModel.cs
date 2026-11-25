@@ -52,6 +52,12 @@ public sealed class TocCompareRowViewModel
 
     public Thickness RightMargin => TocCompareBuilder.IndentFor(RightLevel);
 
+    /// <summary>Level chip text for the left column, e.g. "L5", so the hierarchy is readable without counting indents.</summary>
+    public string LeftLevelText => "L" + LeftLevel.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>Level chip text for the right column, e.g. "L3".</summary>
+    public string RightLevelText => "L" + RightLevel.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
     public bool IsChanged => LeftLevel != RightLevel;
 
     public bool IsUnchanged => !IsChanged;
@@ -71,8 +77,9 @@ public sealed class TocCompareRowViewModel
 /// </summary>
 public static class TocCompareBuilder
 {
-    /// <summary>Horizontal indent added per TOC level, matching the tree view's rhythm.</summary>
-    public const double IndentPerLevel = 14.0;
+    /// <summary>Horizontal indent added per TOC level; a slightly stronger step than the tree
+    /// view so the hierarchy reads at a glance in the compare columns.</summary>
+    public const double IndentPerLevel = 18.0;
 
     public static Thickness IndentFor(int level) =>
         new(System.Math.Max(0, level - 1) * IndentPerLevel, 0, 0, 0);

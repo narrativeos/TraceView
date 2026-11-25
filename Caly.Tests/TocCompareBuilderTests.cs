@@ -76,8 +76,8 @@ public class TocCompareBuilderTests
         Assert.All(rows, r => Assert.Equal(string.Empty, r.BadgeText));
         // Unchanged rows indent by their tree level.
         Assert.Equal(new Thickness(0, 0, 0, 0), rows[0].LeftMargin);
-        Assert.Equal(new Thickness(14, 0, 0, 0), rows[1].LeftMargin);
-        Assert.Equal(new Thickness(28, 0, 0, 0), rows[5].LeftMargin);
+        Assert.Equal(new Thickness(TocCompareBuilder.IndentPerLevel, 0, 0, 0), rows[1].LeftMargin);
+        Assert.Equal(new Thickness(TocCompareBuilder.IndentPerLevel * 2, 0, 0, 0), rows[5].LeftMargin);
     }
 
     [Fact]
@@ -99,8 +99,8 @@ public class TocCompareBuilderTests
         Assert.Equal(3, moved.LeftLevel);
         Assert.Equal(2, moved.RightLevel);
         Assert.Equal("3→2", moved.BadgeText);
-        Assert.Equal(new Thickness(28, 0, 0, 0), moved.LeftMargin);
-        Assert.Equal(new Thickness(14, 0, 0, 0), moved.RightMargin);
+        Assert.Equal(new Thickness(TocCompareBuilder.IndentPerLevel * 2, 0, 0, 0), moved.LeftMargin);
+        Assert.Equal(new Thickness(TocCompareBuilder.IndentPerLevel, 0, 0, 0), moved.RightMargin);
 
         var recordedUnchanged = rows.Single(r => r.Title == "1.1 适用范围");
         Assert.False(recordedUnchanged.IsChanged);

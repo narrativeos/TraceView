@@ -2830,7 +2830,52 @@
                                                         FontSize="11"
                                                         FontWeight="SemiBold"
                                                         Foreground="{DynamicResource CalyAccentAmberBrush}"/>
-                                         </Grid>
+                                          </Grid>
+                                          <!-- legend: what the connector lines, badges and L# chips mean -->
+                                          <StackPanel DockPanel.Dock="Top"
+                                                      Orientation="Horizontal"
+                                                      Spacing="14"
+                                                      Margin="0,0,0,8">
+                                              <StackPanel Orientation="Horizontal"
+                                                          Spacing="4">
+                                                  <Border Width="16"
+                                                          Height="3"
+                                                          CornerRadius="1.5"
+                                                          Background="{DynamicResource CalyAccentAmberBrush}"
+                                                          Opacity="0.55"
+                                                          VerticalAlignment="Center"/>
+                                                  <Border CornerRadius="7"
+                                                          Background="{DynamicResource CalyAccentAmberBrush}"
+                                                          Padding="5,1"
+                                                          VerticalAlignment="Center">
+                                                      <TextBlock Text="5→3"
+                                                                 FontFamily="{DynamicResource CalyMonoFontFamily}"
+                                                                 FontSize="10"
+                                                                 FontWeight="Bold"
+                                                                 Foreground="{DynamicResource CalyCardBackgroundBrush}"/>
+                                                  </Border>
+                                                  <TextBlock Text="层级变更"
+                                                             FontSize="10.5"
+                                                             Foreground="{DynamicResource CalyMutedForegroundBrush}"
+                                                             VerticalAlignment="Center"/>
+                                              </StackPanel>
+                                              <StackPanel Orientation="Horizontal"
+                                                          Spacing="4">
+                                                  <Border Width="16"
+                                                          Height="1"
+                                                          Background="{DynamicResource CalyMutedForegroundBrush}"
+                                                          Opacity="0.4"
+                                                          VerticalAlignment="Center"/>
+                                                  <TextBlock Text="未变"
+                                                             FontSize="10.5"
+                                                             Foreground="{DynamicResource CalyMutedForegroundBrush}"
+                                                             VerticalAlignment="Center"/>
+                                              </StackPanel>
+                                              <TextBlock Text="L# = 该行目录层级"
+                                                         FontSize="10.5"
+                                                         Foreground="{DynamicResource CalyMutedForegroundBrush}"
+                                                         VerticalAlignment="Center"/>
+                                          </StackPanel>
                                          <ScrollViewer VerticalScrollBarVisibility="Auto"
                                                        Padding="2,0,8,0">
                                              <ItemsControl ItemsSource="{Binding AnalysisViewModel.TocCompareRows}">
@@ -2839,16 +2884,40 @@
                                                          <Panel>
                                                              <!-- changed rows get an amber row tint so the movement stands out -->
                                                              <Border Background="{DynamicResource CalyAccentAmberBrush}"
-                                                                     Opacity="0.07"
+                                                                     Opacity="0.13"
                                                                      CornerRadius="3"
                                                                      IsVisible="{Binding IsChanged}"/>
                                                              <Grid ColumnDefinitions="*,84,*"
-                                                                   MinHeight="25">
+                                                                   MinHeight="26">
                                                                  <StackPanel Grid.Column="0"
                                                                              Orientation="Horizontal"
                                                                              Spacing="6"
                                                                              Margin="{Binding LeftMargin}"
                                                                              VerticalAlignment="Center">
+                                                                     <!-- level chip: neutral when unchanged, amber-outlined once the level moved -->
+                                                                     <Border IsVisible="{Binding IsUnchanged}"
+                                                                             CornerRadius="3"
+                                                                             BorderThickness="1"
+                                                                             BorderBrush="{DynamicResource CalyCardBorderBrush}"
+                                                                             Padding="4,0"
+                                                                             VerticalAlignment="Center">
+                                                                         <TextBlock Text="{Binding LeftLevelText}"
+                                                                                    FontFamily="{DynamicResource CalyMonoFontFamily}"
+                                                                                    FontSize="10.5"
+                                                                                    Foreground="{DynamicResource CalyMutedForegroundBrush}"/>
+                                                                     </Border>
+                                                                     <Border IsVisible="{Binding IsChanged}"
+                                                                             CornerRadius="3"
+                                                                             BorderThickness="1"
+                                                                             BorderBrush="{DynamicResource CalyAccentAmberBrush}"
+                                                                             Padding="4,0"
+                                                                             VerticalAlignment="Center">
+                                                                         <TextBlock Text="{Binding LeftLevelText}"
+                                                                                    FontFamily="{DynamicResource CalyMonoFontFamily}"
+                                                                                    FontSize="10.5"
+                                                                                    FontWeight="SemiBold"
+                                                                                    Foreground="{DynamicResource CalyAccentAmberBrush}"/>
+                                                                     </Border>
                                                                      <TextBlock Text="{Binding Title}"
                                                                                 FontSize="12.5"
                                                                                 Foreground="{DynamicResource CalyStrongForegroundBrush}"
@@ -2858,31 +2927,30 @@
                                                                                 Foreground="{DynamicResource CalyMutedForegroundBrush}"
                                                                                 VerticalAlignment="Center"/>
                                                                  </StackPanel>
-                                                                 <!-- connector lane: hairline when unchanged, amber line + level badge when changed -->
+                                                                 <!-- connector lane: hairline when unchanged, thick amber line + solid level-diff badge when changed -->
                                                                  <Panel Grid.Column="1">
                                                                      <Border Height="1"
                                                                              Background="{DynamicResource CalyMutedForegroundBrush}"
                                                                              Opacity="0.3"
                                                                              VerticalAlignment="Center"
                                                                              IsVisible="{Binding IsUnchanged}"/>
-                                                                     <Border Height="2"
+                                                                     <Border Height="3"
                                                                              Background="{DynamicResource CalyAccentAmberBrush}"
-                                                                             CornerRadius="1"
+                                                                             Opacity="0.55"
+                                                                             CornerRadius="1.5"
                                                                              VerticalAlignment="Center"
                                                                              IsVisible="{Binding IsChanged}"/>
                                                                      <Border IsVisible="{Binding IsChanged}"
                                                                              HorizontalAlignment="Center"
                                                                              VerticalAlignment="Center"
-                                                                             CornerRadius="8"
-                                                                             Background="{DynamicResource CalyCardBackgroundBrush}"
-                                                                             BorderBrush="{DynamicResource CalyAccentAmberBrush}"
-                                                                             BorderThickness="1"
-                                                                             Padding="6,1">
+                                                                             CornerRadius="9"
+                                                                             Background="{DynamicResource CalyAccentAmberBrush}"
+                                                                             Padding="8,2">
                                                                          <TextBlock Text="{Binding BadgeText}"
                                                                                     FontFamily="{DynamicResource CalyMonoFontFamily}"
-                                                                                    FontSize="11"
-                                                                                    FontWeight="SemiBold"
-                                                                                    Foreground="{DynamicResource CalyAccentAmberBrush}"/>
+                                                                                    FontSize="12"
+                                                                                    FontWeight="Bold"
+                                                                                    Foreground="{DynamicResource CalyCardBackgroundBrush}"/>
                                                                      </Border>
                                                                  </Panel>
                                                                  <StackPanel Grid.Column="2"
@@ -2890,6 +2958,29 @@
                                                                              Spacing="6"
                                                                              Margin="{Binding RightMargin}"
                                                                              VerticalAlignment="Center">
+                                                                     <!-- level chip: solid amber on the new level so the destination stands out -->
+                                                                     <Border IsVisible="{Binding IsUnchanged}"
+                                                                             CornerRadius="3"
+                                                                             BorderThickness="1"
+                                                                             BorderBrush="{DynamicResource CalyCardBorderBrush}"
+                                                                             Padding="4,0"
+                                                                             VerticalAlignment="Center">
+                                                                         <TextBlock Text="{Binding RightLevelText}"
+                                                                                    FontFamily="{DynamicResource CalyMonoFontFamily}"
+                                                                                    FontSize="10.5"
+                                                                                    Foreground="{DynamicResource CalyMutedForegroundBrush}"/>
+                                                                     </Border>
+                                                                     <Border IsVisible="{Binding IsChanged}"
+                                                                             CornerRadius="3"
+                                                                             Background="{DynamicResource CalyAccentAmberBrush}"
+                                                                             Padding="4,0"
+                                                                             VerticalAlignment="Center">
+                                                                         <TextBlock Text="{Binding RightLevelText}"
+                                                                                    FontFamily="{DynamicResource CalyMonoFontFamily}"
+                                                                                    FontSize="10.5"
+                                                                                    FontWeight="Bold"
+                                                                                    Foreground="{DynamicResource CalyCardBackgroundBrush}"/>
+                                                                     </Border>
                                                                      <TextBlock Text="{Binding Title}"
                                                                                 FontSize="12.5"
                                                                                 FontWeight="Medium"
