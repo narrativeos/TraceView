@@ -109,6 +109,9 @@ internal static class TocRuleOverrideValidator
         ["levels.class_rank"] = new(OverrideKind.Bool),
         ["levels.seq_level"] = new(OverrideKind.Bool),
         ["levels.gap_fill"] = new(OverrideKind.Bool),
+        // R15 class-exclusion patterns (docs §2.9): matching titles leave every
+        // class table (S01/R01/O01/O02) but stay structural; empty = no change.
+        ["levels.class_excluded_patterns"] = new(OverrideKind.RegexList),
         ["linking.excluded_title_patterns"] = new(OverrideKind.RegexList),
         ["linking.garbage_keywords"] = new(OverrideKind.StringList),
         ["linking.structural_headings"] = new(OverrideKind.StringList),
