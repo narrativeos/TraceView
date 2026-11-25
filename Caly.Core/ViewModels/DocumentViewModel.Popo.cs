@@ -257,6 +257,18 @@ public sealed partial class DocumentViewModel
     public bool CanGenerateToc => PopoTreeRoot is not null;
 
     /// <summary>
+    /// Can open the built-in agent conversation from the TOC overlay: the conversation
+    /// lives on the document's <see cref="AnalysisViewModel"/>, which only exists once
+    /// MinerU data has been loaded.
+    /// </summary>
+    public bool CanOpenTocTuneConversation => AnalysisViewModel is not null;
+
+    partial void OnAnalysisViewModelChanged(AnalysisViewModel? value)
+    {
+        OnPropertyChanged(nameof(CanOpenTocTuneConversation));
+    }
+
+    /// <summary>
     /// Generates a Table of Contents from the Popo tree and displays it in an overlay.
     /// Reads directly from the in-memory StructureDocument (parsed from popo_result.json).
     /// No intermediate files (toc.json/toc.md) are written.
@@ -291,6 +303,17 @@ public sealed partial class DocumentViewModel
     private void CloseTocPanel()
     {
         ShowTocPanel = false;
+    }
+
+    /// <summary>
+    /// TOC overlay 的「AI 重排编排」入口：关闭弹框并进入内置智能体对话的
+    /// TOC 重排优化流程（预填可编辑提示词，用户发送后才开始执行，零副作用）。
+    /// </summary>
+    [RelayCommand]
+    private void OpenTocTuneConversation()
+    {
+        ShowTocPanel = false;
+        AnalysisViewModel?.SeedTocTunePromptCommand.Execute(null);
     }
 
     // === References (参考文献) ===

@@ -898,6 +898,17 @@ public partial class AnalysisViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// TOC 预览弹框的「AI 重排编排」入口：关闭弹框，再按工具栏按钮的同一方式
+    /// 预填可编辑调优提示词并打开对话栏（用户发送后才开始执行）。
+    /// </summary>
+    [RelayCommand]
+    private void OpenTocTuneConversation()
+    {
+        ShowTocPanel = false;
+        SeedTocTunePrompt();
+    }
+
+    /// <summary>
     /// Sends whatever is in the composer. When a run is in flight the message is logged and
     /// carried into the next run instead of starting one; otherwise a preflight must pass
     /// before the popo.toc-tune loop begins — no silent zero-write failures.
