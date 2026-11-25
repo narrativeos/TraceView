@@ -76,9 +76,12 @@
                 <Button Grid.Column="1"
                         Content="重试"
                         Command="{Binding TestAgentConnectionCommand}"
-                        FontSize="12"
+                        FontSize="11"
+                        Padding="8,2"
+                        Background="Transparent"
+                        BorderBrush="{DynamicResource CalyCardBorderBrush}"
                         Margin="8,0,0,0"
-                        VerticalAlignment="Top"/>
+                        VerticalAlignment="Center"/>
             </Grid>
         </Border>
 
@@ -101,18 +104,26 @@
                     <Button Grid.Column="0"
                             Content="发送"
                             Command="{Binding SendAgentPromptCommand}"
-                            FontSize="12"/>
+                            FontSize="12"
+                            FontWeight="SemiBold"
+                            MinWidth="64"
+                            Padding="12,5"/>
                     <Button Grid.Column="1"
                             Content="取消"
                             Command="{Binding CancelAgentRunCommand}"
                             IsVisible="{Binding IsAgentRunning}"
                             FontSize="12"
+                            Padding="12,5"
                             Margin="6,0,0,0"/>
                     <Button Grid.Column="2"
                             Content="测试连接"
                             Command="{Binding TestAgentConnectionCommand}"
-                            FontSize="12"
-                            Margin="6,0,0,0"/>
+                            FontSize="11"
+                            Padding="8,2"
+                            Background="Transparent"
+                            BorderBrush="{DynamicResource CalyCardBorderBrush}"
+                            Margin="6,0,0,0"
+                            VerticalAlignment="Center"/>
                     <TextBlock Grid.Column="3"
                                Text="Enter 发送 · Shift+Enter 换行"
                                FontSize="11"
