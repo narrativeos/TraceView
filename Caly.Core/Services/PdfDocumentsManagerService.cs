@@ -31,6 +31,7 @@ using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Caly.Core.Services.Interfaces;
 using Caly.Core.ViewModels;
+using Caly.Core.Views;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Caly.Core.Services;
@@ -56,6 +57,10 @@ internal sealed partial class PdfDocumentsManagerService : IPdfDocumentsManagerS
     private readonly CancellationTokenSource _processingQueueCts = new();
 
     private readonly ConcurrentDictionary<string, PdfDocumentRecord> _openedFiles = new();
+
+    // Paths currently being opened (before they register in _openedFiles). Used to
+    // collapse concurrent open requests for the same file into a single flow.
+    private readonly ConcurrentDictionary<string, byte> _openingFiles = new();
 
     private async Task ProcessDocumentsQueue(CancellationToken token)
     {
@@ -239,6 +244,28 @@ internal sealed partial class PdfDocumentsManagerService : IPdfDocumentsManagerS
             return;
         }
 
+        // Register the in-flight open before the project-exists dialog awaits. The file
+        // only lands in _openedFiles once the dialog returns, so without this guard two
+        // concurrent requests for the same file both pass the check above and show two
+        // dialogs: the first opens the project while the second lingers on screen.
+        if (!_openingFiles.TryAdd(pdfPath, 0))
+        {
+            return;
+        }
+
+        try
+        {
+            await OpenLoadDocumentCoreAsync(storageFile, pdfPath, password, cancellationToken);
+        }
+        finally
+        {
+            _openingFiles.TryRemove(pdfPath, out _);
+        }
+    }
+
+    private async Task OpenLoadDocumentCoreAsync(IStorageFile storageFile, string pdfPath, string? password, CancellationToken cancellationToken)
+    {
+        Debug.ThrowOnUiThread();
 
         // Determine project path - check if any projects already exist for this PDF
         string projectPath;
@@ -251,6 +278,12 @@ internal sealed partial class PdfDocumentsManagerService : IPdfDocumentsManagerS
 
             if (selectedPath is not null)
             {
+                if (selectedPath == ProjectExistsWindow.CancelOpen)
+                {
+                    // User dismissed the dialog - do not open the document.
+                    return;
+                }
+
                 // User selected an existing project
                 projectPath = selectedPath;
             }

@@ -21,8 +21,11 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
+using Avalonia.Input;
+using Avalonia.VisualTree;
 using Caly.Core.Services;
 using Caly.Core.Utilities;
 using Microsoft.Extensions.DependencyInjection;
@@ -36,9 +39,17 @@ namespace Caly.Core.Views;
 /// </summary>
 public partial class ProjectExistsWindow : Window
 {
+    /// <summary>
+    /// Returned by <see cref="Window.Close"/> when the user cancels (Esc) instead of
+    /// selecting an existing project or creating a new one. A project path cannot
+    /// contain a NUL character, so this cannot collide with a real selection.
+    /// </summary>
+    public const string CancelOpen = "\0cancel";
+
     private readonly string _pdfPath;
     private readonly List<string> _existingProjects;
     private ListBox? _projectList;
+    private bool _closing;
 
     /// <summary>
     /// Default constructor required by Avalonia XAML loader.
@@ -95,13 +106,52 @@ public partial class ProjectExistsWindow : Window
     {
         if (_projectList?.SelectedItem is ProjectListItem item)
         {
-            Close(item.Path);
+            CloseWithResult(item.Path);
+        }
+    }
+
+    /// <summary>
+    /// Closes on the first pointer press over a row. <see cref="SelectionChanged"/>
+    /// does not fire when clicking the already-selected row, so this guarantees every
+    /// click on a project closes the dialog.
+    /// </summary>
+    private void ProjectList_OnPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (e.Source is Visual source &&
+            source.FindAncestorOfType<ListBoxItem>() is { DataContext: ProjectListItem item })
+        {
+            CloseWithResult(item.Path);
         }
     }
 
     private void CreateNewButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
-        Close(null);
+        CloseWithResult(null);
+    }
+
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            CloseWithResult(CancelOpen);
+            e.Handled = true;
+            return;
+        }
+
+        base.OnKeyDown(e);
+    }
+
+    private void CloseWithResult(string? result)
+    {
+        // PointerPressed and the resulting selection change can both reach a close
+        // path within one interaction; only the first one counts.
+        if (_closing)
+        {
+            return;
+        }
+
+        _closing = true;
+        Close(result);
     }
 }
 

@@ -32,7 +32,7 @@
                        Text="发现已有项目，请选择："
                        FontWeight="Bold"
                        FontSize="14"/>
-            <TextBlock Text="点击项目名直接打开，或创建新项目。"
+            <TextBlock Text="点击项目名直接打开，或创建新项目（按 Esc 取消）。"
                        FontSize="12"
                        Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
                        TextWrapping="Wrap"/>
@@ -56,6 +56,7 @@
                          MaxHeight="200"
                          Padding="4"
                          BorderThickness="0"
+                         PointerPressed="ProjectList_OnPointerPressed"
                          SelectionChanged="ProjectList_OnSelectionChanged">
                     <ListBox.ItemTemplate>
                         <DataTemplate DataType="views:ProjectListItem">
