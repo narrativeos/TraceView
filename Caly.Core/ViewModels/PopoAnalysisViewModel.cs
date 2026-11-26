@@ -468,6 +468,14 @@ public partial class AnalysisViewModel : ViewModelBase
     [ObservableProperty]
     private string _tocMarkdownText = string.Empty;
 
+    /// <summary>Structured TOC rows for the popup, styled like the 改前改后对照 rows.</summary>
+    [ObservableProperty]
+    private IReadOnlyList<TocEntryViewModel> _tocEntries = System.Array.Empty<TocEntryViewModel>();
+
+    /// <summary>False only when generation failed; the popup then falls back to the message text.</summary>
+    [ObservableProperty]
+    private bool _hasTocRows;
+
     [ObservableProperty]
     private bool _showTocPanel;
 
@@ -495,6 +503,8 @@ public partial class AnalysisViewModel : ViewModelBase
         {
             var entries = PopoJsonService.BuildTableOfContents(_structureDocument.TreeRoot, _structureDocument);
             TocMarkdownText = PopoJsonService.GenerateTocMarkdown(entries);
+            TocEntries = TocEntryViewModel.From(entries);
+            HasTocRows = TocEntries.Count > 0;
             ShowTocPanel = true;
             _ = LoadTocLineageAsync();
         }

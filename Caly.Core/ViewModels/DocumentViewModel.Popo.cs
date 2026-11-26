@@ -23,6 +23,7 @@ using Caly.Core.Services;
 using Caly.Core.Services.Store;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.IO;
@@ -248,6 +249,14 @@ public sealed partial class DocumentViewModel
     [ObservableProperty]
     private string _tocMarkdownText = string.Empty;
 
+    /// <summary>Structured TOC rows for the popup, styled like the 改前改后对照 rows.</summary>
+    [ObservableProperty]
+    private IReadOnlyList<TocEntryViewModel> _tocEntries = Array.Empty<TocEntryViewModel>();
+
+    /// <summary>False only when generation failed; the popup then falls back to the message text.</summary>
+    [ObservableProperty]
+    private bool _hasTocRows;
+
     [ObservableProperty]
     private bool _showTocPanel;
 
@@ -287,6 +296,8 @@ public sealed partial class DocumentViewModel
                 : new System.Collections.Generic.List<TocEntry>();
 
             TocMarkdownText = PopoJsonService.GenerateTocMarkdown(entries);
+            TocEntries = TocEntryViewModel.From(entries);
+            HasTocRows = TocEntries.Count > 0;
             ShowTocPanel = true;
 
             // Load the lineage sidecar in the background so the 改前改后对照 entry appears in
@@ -296,6 +307,8 @@ public sealed partial class DocumentViewModel
         catch (System.Exception ex)
         {
             TocMarkdownText = $"# 目录\n\n生成失败: {ex.Message}";
+            TocEntries = Array.Empty<TocEntryViewModel>();
+            HasTocRows = false;
             ShowTocPanel = true;
         }
     }

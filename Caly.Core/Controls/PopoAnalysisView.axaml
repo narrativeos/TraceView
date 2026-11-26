@@ -283,14 +283,55 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                     </ScrollViewer>
-                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                    <ScrollViewer DockPanel.Dock="Top"
                                   MaxHeight="500"
+                                  VerticalScrollBarVisibility="Auto"
                                   Padding="2,0,8,0">
-                        <TextBlock Text="{Binding TocMarkdownText}"
-                                   TextWrapping="Wrap"
-                                   FontFamily="{DynamicResource CalyMonoFontFamily}"
-                                   FontSize="12.5"
-                                   Foreground="{DynamicResource CalyStrongForegroundBrush}"/>
+                        <Panel>
+                            <!-- Fallback: plain text only when generation failed -->
+                            <TextBlock Text="{Binding TocMarkdownText}"
+                                       IsVisible="{Binding !HasTocRows}"
+                                       TextWrapping="Wrap"
+                                       FontFamily="{DynamicResource CalyMonoFontFamily}"
+                                       FontSize="12.5"
+                                       Foreground="{DynamicResource CalyStrongForegroundBrush}"/>
+                            <ItemsControl ItemsSource="{Binding TocEntries}"
+                                          IsVisible="{Binding HasTocRows}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:TocEntryViewModel">
+                                        <Grid ColumnDefinitions="Auto,*,Auto"
+                                              MinHeight="26"
+                                              Margin="{Binding Indent}">
+                                            <Border Grid.Column="0"
+                                                    CornerRadius="3"
+                                                    BorderThickness="1"
+                                                    BorderBrush="{DynamicResource CalyCardBorderBrush}"
+                                                    Padding="4,0"
+                                                    Margin="0,0,6,0"
+                                                    VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding LevelText}"
+                                                           FontFamily="{DynamicResource CalyMonoFontFamily}"
+                                                           FontSize="10.5"
+                                                           Foreground="{DynamicResource CalyMutedForegroundBrush}"/>
+                                            </Border>
+                                            <TextBlock Grid.Column="1"
+                                                       Text="{Binding Title}"
+                                                       FontSize="12.5"
+                                                       FontWeight="Medium"
+                                                       Foreground="{DynamicResource CalyStrongForegroundBrush}"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="2"
+                                                       Text="{Binding PageText}"
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource CalyMutedForegroundBrush}"
+                                                       Margin="6,0,0,0"
+                                                       VerticalAlignment="Center"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </Panel>
                     </ScrollViewer>
                 </DockPanel>
             </Border>
